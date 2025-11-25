@@ -26,7 +26,7 @@ class KnowledgeGraphSync:
                                  Expected format:
                                  {
                                      "name": "Product Name",
-                                     "molecules": ["Molecule1", "Molecule2"]
+                                     "molecules": [{"name": "Molecule1", "strength": "500mg"}, ...]
                                  }
         """
         product_name = product_data.get("name")
@@ -39,9 +39,10 @@ class KnowledgeGraphSync:
         query = """
         MERGE (p:Product {name: $product_name})
         WITH p
-        UNWIND $molecules as molecule_name
-        MERGE (m:Molecule {name: molecule_name})
-        MERGE (p)-[:CONTAINS]->(m)
+        UNWIND $molecules as mol_data
+        MERGE (m:Molecule {name: mol_data.name})
+        MERGE (p)-[r:CONTAINS]->(m)
+        SET r.strength = mol_data.strength
         """
         
         self.conn.query(query, {"product_name": product_name, "molecules": molecules})

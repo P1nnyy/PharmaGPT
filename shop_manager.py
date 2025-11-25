@@ -179,6 +179,7 @@ class PharmaShop:
         """
         Sell item using FIFO logic with Sealed/Open state machine.
         Supports Payment Methods: CASH, CREDIT.
+        Optimized to reduce DB roundtrips and ensure Atomic Credit Validation.
         """
         if payment_method == "CREDIT" and not customer_phone:
             raise ValueError("Customer phone number is required for Credit payments.")
@@ -197,10 +198,6 @@ class PharmaShop:
         ORDER BY b.expiry_date ASC
         """
         
-        total_transaction_tax = 0.0
-        total_transaction_amount = 0.0
-        sold_details = []
-        
         with self.driver.session() as session:
             batches = list(session.run(check_stock_query, product_name=product_name))
             
@@ -211,13 +208,17 @@ class PharmaShop:
             if total_available < qty:
                 raise ValueError(f"Insufficient stock for {product_name}. Requested: {qty}, Available: {total_available}")
 
-            # --- PRE-CALCULATE COST FOR CREDIT CHECK ---
+            # --- CALCULATE SPLITS & COST ---
             temp_qty = qty
             calculated_total_cost = 0.0
+            total_transaction_tax = 0.0
+            batch_updates = []
+            sold_details = []
             
             for batch in batches:
                 if temp_qty <= 0: break
                 
+                batch_no = batch['batch']
                 sealed = batch['sealed']
                 loose = batch['loose']
                 pack_size = batch['pack_size']
@@ -229,97 +230,104 @@ class PharmaShop:
                 batch_total_atoms = (sealed * pack_size) + loose
                 take_from_batch = min(temp_qty, batch_total_atoms)
                 
-                # Price + Tax
-                batch_cost = (unit_price * take_from_batch)
-                batch_tax = (unit_price * tax_rate) * take_from_batch
-                calculated_total_cost += (batch_cost + batch_tax)
-                
-                temp_qty -= take_from_batch
-            
-            # --- CREDIT VALIDATION ---
-            customer_id = None
-            if payment_method == "CREDIT":
-                customer = self.get_customer(customer_phone)
-                if not customer:
-                    raise ValueError(f"Customer with phone {customer_phone} not found.")
-                
-                new_balance = customer['balance'] + calculated_total_cost
-                if new_balance > customer['limit']:
-                    raise ValueError(f"Credit Limit Exceeded. Current: {customer['balance']}, Limit: {customer['limit']}, Bill: {calculated_total_cost:.2f}")
-                
-                customer_id = customer['id']
-
-            # --- EXECUTE SALE ---
-            remaining_qty = qty
-            
-            # Create Bill
-            bill_id = str(uuid.uuid4())
-            create_bill_query = """
-            CREATE (bill:Bill {id: $bill_id, date: datetime(), product: $product_name, total_qty: $qty, total_amount: $total_amount, payment_method: $method})
-            RETURN elementId(bill) as id
-            """
-            session.run(create_bill_query, bill_id=bill_id, product_name=product_name, qty=qty, total_amount=calculated_total_cost, method=payment_method)
-            
-            # If Credit, Log Transaction and Update Customer
-            if payment_method == "CREDIT":
-                credit_tx_query = """
-                MATCH (c:Customer {id: $customer_id})
-                MATCH (bill:Bill {id: $bill_id})
-                SET c.current_credit_balance = c.current_credit_balance + $amount
-                CREATE (tx:CreditTransaction {
-                    id: $tx_id,
-                    amount: $amount,
-                    type: 'DEBIT',
-                    timestamp: datetime()
-                })
-                CREATE (c)-[:HAS_TRANSACTION]->(tx)
-                CREATE (bill)-[:BILLED_TO]->(c)
-                """
-                session.run(credit_tx_query, customer_id=customer_id, bill_id=bill_id, amount=calculated_total_cost, tx_id=str(uuid.uuid4()))
-
-            for batch in batches:
-                if remaining_qty <= 0:
-                    break
-                
-                batch_no = batch['batch']
-                sealed = batch['sealed']
-                loose = batch['loose']
-                pack_size = batch['pack_size']
-                mrp_per_pack = batch['price']
-                tax_rate = batch['tax_rate']
-                
-                unit_price = mrp_per_pack / pack_size if pack_size > 0 else mrp_per_pack
-                
-                # Logic: Use loose first, then open packs if needed
-                batch_total_atoms = (sealed * pack_size) + loose
-                take_from_batch = min(remaining_qty, batch_total_atoms)
-                
                 # Calculate how many packs we need to open
                 needed_from_sealed = max(0, take_from_batch - loose)
                 packs_to_open = (needed_from_sealed + pack_size - 1) // pack_size if pack_size > 0 else 0
                 
-                # Calculate Tax
-                tax_amount = (unit_price * tax_rate) * take_from_batch
-                total_transaction_tax += tax_amount
+                # Calculate Tax & Cost
+                batch_cost = (unit_price * take_from_batch)
+                batch_tax = (unit_price * tax_rate) * take_from_batch
                 
-                # Update Inventory
+                calculated_total_cost += (batch_cost + batch_tax)
+                total_transaction_tax += batch_tax
+                
+                # New Inventory State
                 new_sealed = sealed - packs_to_open
                 new_loose = loose + (packs_to_open * pack_size) - take_from_batch
                 
-                update_query = """
-                MATCH (b:InventoryBatch {batch_number: $batch_number})
-                MATCH (bill:Bill {id: $bill_id})
-                CREATE (bill)-[:SOLD {tax_amount: $tax_amount, qty: $qty_sold}]->(b)
-                SET b.sealed_packs = $new_sealed,
-                    b.loose_tablets = $new_loose
-                """
-                
-                session.run(update_query, batch_number=batch_no, bill_id=bill_id, 
-                            tax_amount=tax_amount, qty_sold=take_from_batch,
-                            new_sealed=new_sealed, new_loose=new_loose)
+                batch_updates.append({
+                    "batch_number": batch_no,
+                    "tax_amount": batch_tax,
+                    "qty_sold": take_from_batch,
+                    "new_sealed": new_sealed,
+                    "new_loose": new_loose
+                })
                 
                 sold_details.append(f"{take_from_batch} units from {batch_no}")
-                remaining_qty -= take_from_batch
+                temp_qty -= take_from_batch
+            
+            # --- PREPARE TRANSACTION ---
+            bill_id = str(uuid.uuid4())
+            tx_id = str(uuid.uuid4())
+            customer_id = None
+            
+            if payment_method == "CREDIT":
+                # Fetch customer ID first (needed for the query)
+                customer = self.get_customer(customer_phone)
+                if not customer:
+                    raise ValueError(f"Customer with phone {customer_phone} not found.")
+                customer_id = customer['id']
+                
+                # ATOMIC QUERY: Check Balance -> Update Balance -> Create Bill -> Update Inventory
+                query = """
+                MATCH (c:Customer {id: $customer_id})
+                WHERE c.current_credit_balance + $total_amount <= c.max_credit_limit
+                
+                // Update Customer
+                SET c.current_credit_balance = c.current_credit_balance + $total_amount
+                
+                // Create Transaction Record
+                CREATE (tx:CreditTransaction {
+                    id: $tx_id,
+                    amount: $total_amount,
+                    type: 'DEBIT',
+                    timestamp: datetime()
+                })
+                CREATE (c)-[:HAS_TRANSACTION]->(tx)
+                
+                // Create Bill
+                CREATE (bill:Bill {id: $bill_id, date: datetime(), product: $product_name, total_qty: $qty, total_amount: $total_amount, payment_method: $method})
+                CREATE (bill)-[:BILLED_TO]->(c)
+                
+                // Update Inventory
+                WITH bill
+                UNWIND $batch_updates as update
+                MATCH (b:InventoryBatch {batch_number: update.batch_number})
+                CREATE (bill)-[:SOLD {tax_amount: update.tax_amount, qty: update.qty_sold}]->(b)
+                SET b.sealed_packs = update.new_sealed,
+                    b.loose_tablets = update.new_loose
+                
+                RETURN elementId(bill) as id
+                """
+                
+                result = session.run(query, customer_id=customer_id, total_amount=calculated_total_cost,
+                                     tx_id=tx_id, bill_id=bill_id, product_name=product_name, qty=qty,
+                                     method=payment_method, batch_updates=batch_updates)
+                
+                record = result.single()
+                if not record:
+                    # The query returned nothing, meaning the WHERE clause failed (Credit Limit Exceeded)
+                    # Fetch current balance to show in error
+                    curr = self.get_customer(customer_phone)
+                    raise ValueError(f"Credit Limit Exceeded. Current Balance: {curr['balance']:.2f}, Limit: {curr['limit']:.2f}, Attempted Bill: {calculated_total_cost:.2f}")
+
+            else:
+                # CASH Transaction (No Customer Check)
+                query = """
+                CREATE (bill:Bill {id: $bill_id, date: datetime(), product: $product_name, total_qty: $qty, total_amount: $total_amount, payment_method: $method})
+                
+                WITH bill
+                UNWIND $batch_updates as update
+                MATCH (b:InventoryBatch {batch_number: update.batch_number})
+                CREATE (bill)-[:SOLD {tax_amount: update.tax_amount, qty: update.qty_sold}]->(b)
+                SET b.sealed_packs = update.new_sealed,
+                    b.loose_tablets = update.new_loose
+                
+                RETURN elementId(bill) as id
+                """
+                session.run(query, bill_id=bill_id, product_name=product_name, qty=qty, 
+                            total_amount=calculated_total_cost, method=payment_method, 
+                            batch_updates=batch_updates)
                 
         return {
             "status": "success",
@@ -353,27 +361,25 @@ class PharmaShop:
             total_tax = record["total_tax"] if record and record["total_tax"] is not None else 0.0
             return total_tax
 
-
-
     def get_substitutes(self, product_name):
         """
         Find substitutes for a given product.
         Criteria:
-        1. Share the same molecule(s).
+        1. Share the same molecule(s) AND Strength.
         2. In stock (atomic_quantity > 0).
         3. Sorted by Price (Low to High).
         """
-        # Note: We assume 'strength' is implied by the molecule match or we'd need explicit strength properties.
-        # For this implementation, we match products that share at least one molecule.
-        # Ideally, we should match ALL molecules for a proper substitute.
-        
         query = """
-        MATCH (p:Product {name: $product_name})-[:CONTAINS]->(m:Molecule)
-        WITH p, collect(m) as source_molecules
-        MATCH (other:Product)-[:CONTAINS]->(m:Molecule)
+        MATCH (p:Product {name: $product_name})-[r1:CONTAINS]->(m:Molecule)
+        WITH p, collect({node: m, strength: r1.strength}) as source_components
+        
+        MATCH (other:Product)-[r2:CONTAINS]->(m:Molecule)
         WHERE other.name <> p.name
-        WITH p, source_molecules, other, collect(m) as other_molecules
-        WHERE any(x IN source_molecules WHERE x IN other_molecules) 
+        
+        WITH p, source_components, other, collect({node: m, strength: r2.strength}) as other_components
+        
+        // Check if there is any overlap in (Molecule, Strength)
+        WHERE any(sc IN source_components WHERE any(oc IN other_components WHERE sc.node = oc.node AND sc.strength = oc.strength))
         
         // Ensure we only look at products with stock
         MATCH (other)<-[:IS_BATCH_OF]-(b:InventoryBatch)

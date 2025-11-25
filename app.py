@@ -47,7 +47,7 @@ with tab1:
                 except Exception as e:
                     st.error(f"Agent Error: {e}")
         
-        st.rerun()
+
 
 with tab2:
     st.header("Point of Sale")

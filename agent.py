@@ -61,8 +61,10 @@ tools = [check_inventory_tool, sell_item_tool]
 
 # --- Agent State ---
 
+from langgraph.graph.message import add_messages
+
 class AgentState(TypedDict):
-    messages: List[BaseMessage]
+    messages: Annotated[List[BaseMessage], add_messages]
 
 # --- Nodes ---
 
@@ -115,6 +117,10 @@ def run_agent(user_input: str):
     Run the agent with a user input string.
     Returns the final response string.
     """
-    initial_state = {"messages": [SystemMessage(content="You are a helpful pharmacy assistant. Use the available tools to manage inventory and sales."), HumanMessage(content=user_input)]}
+    # Merge system prompt into the first HumanMessage to avoid Gemini API issues with SystemMessage + Tools
+    system_prompt = "You are a helpful pharmacy assistant. Use the available tools to manage inventory and sales."
+    combined_input = f"{system_prompt}\n\nUser Request: {user_input}"
+    
+    initial_state = {"messages": [HumanMessage(content=combined_input)]}
     result = app.invoke(initial_state)
     return result['messages'][-1].content
