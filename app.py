@@ -46,6 +46,8 @@ with tab1:
                     st.session_state.messages.append({"role": "assistant", "content": response})
                 except Exception as e:
                     st.error(f"Agent Error: {e}")
+        
+        st.rerun()
 
 with tab2:
     st.header("Point of Sale")

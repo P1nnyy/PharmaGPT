@@ -49,20 +49,14 @@ class PharmaShop:
         """
         # ... execute and return the closest match name ...
     def __init__(self):
-        uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-        user = os.getenv("NEO4J_USER", "neo4j")
-        password = os.getenv("NEO4J_PASSWORD")
-        
-        if not password:
-            # Fallback or error if password is missing. 
-            # The user might have put it in .env manually or we might need to ask.
-            # For now, we raise an error to prompt the user if it fails.
-            pass 
-            
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        from neo4j_utils import get_db_connection
+        self.conn = get_db_connection()
+        self.driver = self.conn.get_driver()
 
     def close(self):
-        self.driver.close()
+        # Driver is managed by singleton, but we can close it if we want to force it.
+        # Generally, we leave it open for the application lifetime.
+        pass
 
     def find_product_fuzzy(self, search_term):
         """
