@@ -10,6 +10,8 @@ import json
 import uuid
 import shutil
 from datetime import datetime
+from pydantic import BaseModel
+from typing import List
 
 app = FastAPI()
 
@@ -102,6 +104,24 @@ def get_invoices():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class DeleteInvoicesRequest(BaseModel):
+    invoice_ids: List[str]
+
+@app.post("/api/invoices/delete")
+async def delete_invoices(request: DeleteInvoicesRequest):
+    try:
+        invoices = load_invoices()
+        initial_count = len(invoices)
+        # Filter out invoices whose IDs are in the request
+        updated_invoices = [inv for inv in invoices if inv["id"] not in request.invoice_ids]
+        
+        if len(updated_invoices) < initial_count:
+            save_invoices(updated_invoices)
+            
+        return {"status": "success", "deleted_count": initial_count - len(updated_invoices)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/agent")
 async def chat_agent(query: str):
     try:
@@ -149,6 +169,23 @@ async def add_inventory(items: List[InventoryItem]):
         print(f"❌ Error adding inventory: {e}")
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class DeleteRequest(BaseModel):
+    batch_numbers: List[str]
+
+@app.post("/api/inventory/delete")
+async def delete_inventory_items(request: DeleteRequest):
+    try:
+        results = []
+        for batch_id in request.batch_numbers:
+            success = shop.delete_batch(batch_id)
+            results.append({"batch": batch_id, "success": success})
+        return {"status": "success", "results": results}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/inventory")

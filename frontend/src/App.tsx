@@ -62,7 +62,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white font-sans">
+    <div className="h-screen bg-[#0f0f0f] text-white font-sans overflow-hidden flex">
       {/* Sidebar */}
       <Sidebar
         onScanClick={handleScanClick}
@@ -71,9 +71,9 @@ function App() {
       />
 
       {/* Main Content Area */}
-      <main className="pl-64 p-8">
+      <main className="flex-1 pl-64 p-8 h-full overflow-hidden flex flex-col">
         {activeTab === 'home' && (
-          <div>
+          <div className="h-full overflow-y-auto pr-2 custom-scrollbar">
             <h1 className="text-3xl font-bold mb-4">Dashboard</h1>
             <p className="text-gray-400">Welcome to PharmaGPT Glass.</p>
           </div>
@@ -84,7 +84,7 @@ function App() {
         )}
 
         {activeTab === 'catalog' && (
-          <div>
+          <div className="h-full overflow-y-auto pr-2 custom-scrollbar">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-3xl font-bold">Product Catalog</h1>
@@ -116,7 +116,7 @@ function App() {
         )}
 
         {activeTab === 'ingestion' && (
-          <div>
+          <div className="h-full overflow-y-auto pr-2 custom-scrollbar">
             <h1 className="text-3xl font-bold mb-4">Bill Ingestion</h1>
             {isLoading ? (
               <div className="flex items-center gap-3 text-blue-400">
@@ -215,14 +215,14 @@ function App() {
         )}
 
         {activeTab === 'settings' && (
-          <div>
+          <div className="h-full overflow-y-auto pr-2 custom-scrollbar">
             <h1 className="text-3xl font-bold mb-4">Settings</h1>
             <p className="text-gray-400">Configure your application.</p>
           </div>
         )}
 
         {activeTab === 'profile' && (
-          <div>
+          <div className="h-full overflow-y-auto pr-2 custom-scrollbar">
             <h1 className="text-3xl font-bold mb-4">User Profile</h1>
             <p className="text-gray-400">Manage your account.</p>
           </div>

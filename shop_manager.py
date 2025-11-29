@@ -76,6 +76,7 @@ class PharmaShop:
                b.expiry_date as expiry_date,
                coalesce(p.pack_size, 1) as pack_size,
                b.mrp as mrp,
+               b.buy_price as buy_price,
                coalesce(p.tax_rate, 0.0) as tax_rate,
                m.name as manufacturer,
                d.name as dosage_form
@@ -107,6 +108,7 @@ class PharmaShop:
                     "total_atoms": total_atoms,
                     "expiry_date": expiry,
                     "mrp": record['mrp'] if record['mrp'] is not None else 0.0,
+                    "purchase_rate": record['buy_price'] if record['buy_price'] is not None else 0.0,
                     "tax_rate": (record['tax_rate'] or 0.0) * 100,
                     "pack_size": pack_size
                 })

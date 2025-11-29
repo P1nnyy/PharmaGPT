@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, CheckCircle2, Lock } from 'lucide-react';
+import { Calculator, CheckCircle2 } from 'lucide-react';
 import type { ProductFormData } from '../../types/product';
 
 interface ProductMathProps {
@@ -36,39 +36,52 @@ export const ProductMath: React.FC<ProductMathProps> = ({ formData, onChange, is
                         <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">SKU Unit</span>
                     </div>
 
-                    <span>containing</span>
+                    {!isLocked ? (
+                        <>
+                            <span>containing</span>
 
-                    {/* Conversion Input (Pill) */}
-                    <div className="relative group">
-                        <input
-                            type="number"
-                            value={formData.conversion}
-                            onChange={(e) => onChange('conversion', parseFloat(e.target.value) || 0)}
-                            disabled={isLocked}
-                            className={`rounded-full px-3 py-1 font-bold w-20 text-center focus:outline-none transition-all ${isLocked
-                                    ? 'bg-gray-800/50 border border-gray-700 text-gray-500 cursor-not-allowed'
-                                    : 'bg-purple-500/10 border border-purple-500/30 text-white focus:border-purple-400 focus:bg-purple-500/20'
-                                }`}
-                        />
-                        {isLocked && (
-                            <div className="absolute -top-2 -right-2 bg-gray-800 rounded-full p-1 border border-gray-700">
-                                <Lock size={10} className="text-gray-400" />
+                            {/* Conversion Input (Pill) */}
+                            <div className="relative group">
+                                <input
+                                    type="number"
+                                    value={formData.conversion}
+                                    onChange={(e) => onChange('conversion', parseFloat(e.target.value) || 0)}
+                                    className="bg-purple-500/10 border border-purple-500/30 rounded-full px-3 py-1 text-white font-bold w-20 text-center focus:outline-none focus:border-purple-400 focus:bg-purple-500/20 transition-all"
+                                />
+                                <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Count</span>
                             </div>
-                        )}
-                        <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Count</span>
-                    </div>
 
-                    {/* Atomic Unit Input (Pill) */}
-                    <div className="relative group">
-                        <input
-                            type="text"
-                            value={formData.atomicUnit}
-                            onChange={(e) => onChange('atomicUnit', e.target.value)}
-                            className="bg-purple-500/10 border border-purple-500/30 rounded-full px-4 py-1 text-white font-bold w-28 text-center focus:outline-none focus:border-purple-400 focus:bg-purple-500/20 transition-all placeholder-gray-500"
-                            placeholder="Units"
-                        />
-                        <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Atomic Unit</span>
-                    </div>
+                            {/* Atomic Unit Input (Pill) */}
+                            <div className="relative group">
+                                <input
+                                    type="text"
+                                    value={formData.atomicUnit}
+                                    onChange={(e) => onChange('atomicUnit', e.target.value)}
+                                    className="bg-purple-500/10 border border-purple-500/30 rounded-full px-4 py-1 text-white font-bold w-28 text-center focus:outline-none focus:border-purple-400 focus:bg-purple-500/20 transition-all placeholder-gray-500"
+                                    placeholder="Units"
+                                />
+                                <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Atomic Unit</span>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <span>. Sold as</span>
+
+                            {/* Atomic Unit Input (Pill) - Single Unit */}
+                            <div className="relative group">
+                                <input
+                                    type="text"
+                                    value={formData.atomicUnit}
+                                    onChange={(e) => onChange('atomicUnit', e.target.value)}
+                                    className="bg-purple-500/10 border border-purple-500/30 rounded-full px-4 py-1 text-white font-bold w-32 text-center focus:outline-none focus:border-purple-400 focus:bg-purple-500/20 transition-all placeholder-gray-500"
+                                    placeholder="Single Unit"
+                                />
+                                <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Atomic Unit</span>
+                            </div>
+
+                            <span className="text-sm text-gray-500 italic ml-2">(1 {formData.skuUnit} = 1 {formData.atomicUnit})</span>
+                        </>
+                    )}
                 </div>
             </div>
 
