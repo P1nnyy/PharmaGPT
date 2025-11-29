@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { LayoutGrid, List, Filter, Search, Calendar, FileText, Package } from 'lucide-react';
+import { LayoutGrid, List, Filter, Search, Calendar, Package } from 'lucide-react';
 
 interface InvoiceItem {
     product_name: string;
