@@ -6,7 +6,8 @@ import {
     FileText,
     Settings,
     User,
-    Camera
+    Camera,
+    BookOpen
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -53,6 +54,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onScanClick, activeTab, onNavigate })
                     label="Inventory"
                     id="inventory"
                     active={activeTab === 'inventory'}
+                    onClick={onNavigate}
+                />
+                <NavItem
+                    icon={<BookOpen size={20} />}
+                    label="Catalog"
+                    id="catalog"
+                    active={activeTab === 'catalog'}
                     onClick={onNavigate}
                 />
                 <NavItem

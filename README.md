@@ -48,7 +48,14 @@ PharmaGPT is a high-speed, "Apple Glass" style AI Agent designed for modern phar
     npm run dev
     ```
 
-## 📝 Recent Changes (Refactor v2)
+## 📝 Recent Changes (Refactor v2.1)
+- **Product Definition Module**: Added a comprehensive "Product Master" form with Glassmorphic UI.
+- **Universal Pharmacy Logic**: Implemented dynamic inventory modeling:
+    - **Mode A (Divisible)**: Tablets/Capsules with variable conversion (e.g., 1 Strip = 10 Tabs).
+    - **Mode B (Whole)**: Syrups/Creams/Powders with fixed conversion (1 Unit).
+    - **Mode C (Hybrid)**: Injections with variable conversion (e.g., 1 Box = 5 Vials).
+- **Auto-Learn UI**: Integrated "New Product" detection in the bill scanning workflow.
+- **Catalog View**: Added a dedicated Catalog management tab in the sidebar.
 - **Feature Pruning**: Removed legacy CRM and complex sales tabs to focus on core inventory speed.
 - **UI Overhaul**: Implemented `glass_styles.css` and a new React frontend.
 - **Schema Upgrade**: Enhanced Neo4j schema for better product-molecule relationships.

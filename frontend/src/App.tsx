@@ -2,9 +2,12 @@ import { useState, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import InvoicesView from './components/InvoicesView'
 import InventoryView from './components/InventoryView'
+import ProductForm from './components/ProductForm'
 
 function App() {
   const [isScanModalOpen, setIsScanModalOpen] = useState(false)
+  const [isProductFormOpen, setIsProductFormOpen] = useState(false)
+  const [productFormInitialData, setProductFormInitialData] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('home')
   const [extractedData, setExtractedData] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -80,6 +83,34 @@ function App() {
           <InventoryView />
         )}
 
+        {activeTab === 'catalog' && (
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold">Product Catalog</h1>
+                <p className="text-gray-400">Manage your master list of medicines.</p>
+              </div>
+              <button
+                onClick={() => setIsProductFormOpen(true)}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                <span>+ Add Product</span>
+              </button>
+            </div>
+
+            {/* Placeholder for Catalog List */}
+            <div className="bg-[#1a1a1a] rounded-xl border border-white/10 p-8 text-center">
+              <p className="text-gray-400 mb-4">Your product catalog will appear here.</p>
+              <button
+                onClick={() => setIsProductFormOpen(true)}
+                className="text-blue-400 hover:text-blue-300 text-sm font-medium"
+              >
+                Create your first product definition
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'invoices' && (
           <InvoicesView />
         )}
@@ -109,8 +140,34 @@ function App() {
                       </thead>
                       <tbody>
                         {extractedData.map((item, idx) => (
-                          <tr key={idx} className="border-b border-white/5 hover:bg-white/5">
-                            <td className="p-3">{item.product_name}</td>
+                          <tr key={idx} className={`border-b border-white/5 hover:bg-white/5 ${item.is_new_product ? 'bg-blue-500/10' : ''}`}>
+                            <td className="p-3">
+                              {item.is_new_product ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-blue-400">{item.product_name}</span>
+                                  <button
+                                    onClick={() => {
+                                      setProductFormInitialData({
+                                        name: item.product_name,
+                                        mrp: item.mrp,
+                                        manufacturer: item.manufacturer || '',
+                                        // Default values for new product
+                                        conversion: 10,
+                                        skuUnit: 'Strip',
+                                        atomicUnit: 'Tablet',
+                                        category: 'Tablet' // Default category
+                                      });
+                                      setIsProductFormOpen(true);
+                                    }}
+                                    className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded transition-colors"
+                                  >
+                                    Define
+                                  </button>
+                                </div>
+                              ) : (
+                                item.product_name
+                              )}
+                            </td>
                             <td className="p-3">{item.batch_number}</td>
                             <td className="p-3">{item.expiry_date}</td>
                             <td className="p-3">{item.quantity_packs}</td>
@@ -170,6 +227,24 @@ function App() {
             <p className="text-gray-400">Manage your account.</p>
           </div>
         )}
+
+        {/* Product Form Modal */}
+        <ProductForm
+          isOpen={isProductFormOpen}
+          initialData={productFormInitialData}
+          onClose={() => {
+            setIsProductFormOpen(false);
+            setProductFormInitialData(null);
+          }}
+          onSubmit={(data) => {
+            console.log("Product Data:", data);
+            // If we were editing a new product from the grid, we might want to update the grid here
+            // For now, just alert
+            alert("Product Saved! The system would now run the CREATE Cypher queries.");
+            setIsProductFormOpen(false);
+            setProductFormInitialData(null);
+          }}
+        />
 
         {/* Scan Mode Modal */}
         {isScanModalOpen && (
