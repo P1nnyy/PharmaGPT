@@ -31,3 +31,14 @@ MERGE (p)-[:IS_CATEGORY]->(c);
 // MATCH (p:Product {name: "Dolo 650"})
 // MERGE (c:Composition {name: "Paracetamol"})
 // MERGE (p)-[:CONTAINS_SALT]->(c);
+
+// 5. Dosage Form Constraints [NEW]
+// Ensure Dosage Form names are unique
+CREATE CONSTRAINT dosage_form_name_unique IF NOT EXISTS FOR (d:DosageForm) REQUIRE d.name IS UNIQUE;
+
+// 6. Dosage Form Migration (Schema Evolution) [NEW]
+// Link all existing products that don't have a form to a default "Tablet" form
+MATCH (p:Product)
+WHERE NOT (p)-[:HAS_FORM]->()
+MERGE (d:DosageForm {name: "Tablet"})
+MERGE (p)-[:HAS_FORM]->(d);

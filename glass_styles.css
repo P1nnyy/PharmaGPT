@@ -1,0 +1,174 @@
+/* Glassmorphism & Motion Design System */
+
+/* Variables */
+:root {
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+    --accent-color: #00a8ff;
+    --text-primary: rgba(255, 255, 255, 0.95);
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Global Reset & Background */
+[data-testid="stAppViewContainer"] {
+    background: radial-gradient(circle at 50% 0%, #1e1e2f 0%, #0f0f1a 50%, #000000 100%);
+    color: var(--text-primary);
+    font-family: var(--font-family);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulseGlow {
+    0% {
+        box-shadow: 0 0 5px rgba(0, 168, 255, 0.2);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(0, 168, 255, 0.5);
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(0, 168, 255, 0.2);
+    }
+}
+
+/* Glass Cards */
+.glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: var(--glass-shadow);
+    margin-bottom: 24px;
+    animation: fadeInUp 0.6s ease-out forwards;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Typography */
+h1,
+h2,
+h3 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-bottom: 0.5em;
+}
+
+p,
+span,
+div {
+    color: var(--text-secondary);
+}
+
+/* Spotlight Search Bar */
+.stTextInput>div>div>input {
+    background: rgba(0, 0, 0, 0.4) !important;
+    color: white !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 16px !important;
+    padding: 16px 20px !important;
+    font-size: 1.1rem !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stTextInput>div>div>input:focus {
+    border-color: var(--accent-color) !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+    box-shadow: 0 0 0 4px rgba(0, 168, 255, 0.1);
+    transform: scale(1.01);
+}
+
+/* Buttons */
+.stButton>button {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    color: white;
+    font-weight: 600;
+    padding: 12px 28px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+}
+
+.stButton>button:hover {
+    background: linear-gradient(135deg, var(--accent-color) 0%, #0077b6 100%);
+    border-color: transparent;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 168, 255, 0.3);
+}
+
+/* Dataframe/Table Styling */
+[data-testid="stDataFrame"] {
+    background: transparent !important;
+    border: none !important;
+}
+
+[data-testid="stDataFrame"] div[role="grid"] {
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+/* Header Styling */
+[data-testid="stHeader"] {
+    background: transparent;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 16px;
+    background-color: transparent;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 8px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 48px;
+    background-color: transparent;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: white;
+}
+
+/* Custom Classes for App Logic */
+.metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+}
+
+.metric-label {
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+}

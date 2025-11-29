@@ -8,46 +8,22 @@ import uuid
 load_dotenv()
 
 class PharmaShop:
+    # --- v2 Features (CRM) - Deprecated for v1 "Glass" Pivot ---
     def create_customer(self, name, phone, max_limit=2000.0):
         """
-        Create a new customer with a credit limit.
+        [DEPRECATED] Create a new customer with a credit limit.
+        Moved to v2_features.
         """
-        customer_id = str(uuid.uuid4())
-        query = """
-        MERGE (c:Customer {phone: $phone})
-        ON CREATE SET 
-            c.id = $id,
-            c.name = $name,
-            c.current_credit_balance = 0.0,
-            c.max_credit_limit = $max_limit,
-            c.created_at = datetime()
-        RETURN c.id as id
-        """
-        with self.driver.session() as session:
-            result = session.run(query, id=customer_id, name=name, phone=phone, max_limit=max_limit)
-            record = result.single()
-            return record["id"] if record else None
+        pass
 
     def get_customer(self, phone):
         """
-        Get customer details by phone.
+        [DEPRECATED] Get customer details by phone.
+        Moved to v2_features.
         """
-        query = """
-        MATCH (c:Customer {phone: $phone})
-        RETURN c.id as id, c.name as name, c.current_credit_balance as balance, c.max_credit_limit as limit
-        """
-        with self.driver.session() as session:
-            result = session.run(query, phone=phone)
-            record = result.single()
-            return dict(record) if record else None
+        pass
 
-    def find_product_fuzzy(self, search_term):
-        query = """
-        CALL db.index.fulltext.queryNodes("productNames", $term + "~") YIELD node, score
-        RETURN node.name as name, score
-        ORDER BY score DESC LIMIT 1
-        """
-        # ... execute and return the closest match name ...
+
     def __init__(self):
         from neo4j_utils import get_db_connection
         self.conn = get_db_connection()
@@ -58,7 +34,7 @@ class PharmaShop:
         # Generally, we leave it open for the application lifetime.
         pass
 
-    def find_product_fuzzy(self, search_term):
+    def find_product_fuzzy(self, search_term: str) -> list[str]:
         """
         Find products using fuzzy search on the fulltext index.
         Returns a list of matching product names.
@@ -73,7 +49,7 @@ class PharmaShop:
             return [record["name"] for record in result]
 
     @staticmethod
-    def get_readable_stock(sealed, loose):
+    def get_readable_stock(sealed: int, loose: int) -> str:
         """
         Convert sealed/loose count to human-readable format.
         """
@@ -87,16 +63,22 @@ class PharmaShop:
 
     def check_inventory(self):
         """
-        Query the graph to list all products with Sealed/Open tracking.
+        Query the graph to list all products with Sealed/Open tracking and full details.
         """
         query = """
         MATCH (p:Product)<-[:IS_BATCH_OF]-(b:InventoryBatch)
+        OPTIONAL MATCH (p)-[:MANUFACTURED_BY]->(m:Manufacturer)
+        OPTIONAL MATCH (p)-[:HAS_FORM]->(d:DosageForm)
         RETURN p.name as product_name, 
                b.batch_number as batch_number, 
                coalesce(b.sealed_packs, 0) as sealed,
                coalesce(b.loose_tablets, 0) as loose,
                b.expiry_date as expiry_date,
-               coalesce(p.pack_size, 1) as pack_size
+               coalesce(p.pack_size, 1) as pack_size,
+               b.mrp as mrp,
+               coalesce(p.tax_rate, 0.0) as tax_rate,
+               m.name as manufacturer,
+               d.name as dosage_form
         ORDER BY b.expiry_date ASC
         """
         data = []
@@ -111,20 +93,22 @@ class PharmaShop:
                 loose = record['loose']
                 pack_size = record['pack_size']
                 
-                # Fallback for old data that might still have 'current_stock'
-                # We can't easily access 'current_stock' if we didn't query it, 
-                # but for this refactor we assume new schema or migration.
-                # To be safe, let's assume 0 if null.
-                
                 readable_stock = self.get_readable_stock(sealed, loose)
                 total_atoms = (sealed * pack_size) + loose
                 
                 data.append({
-                    "Product": record['product_name'],
-                    "Batch": record['batch_number'],
-                    "Stock": readable_stock,
-                    "Stock_Raw": total_atoms,
-                    "Expiry": expiry
+                    "product_name": record['product_name'],
+                    "dosage_form": record['dosage_form'] or "N/A",
+                    "manufacturer": record['manufacturer'] or "N/A",
+                    "batch_number": record['batch_number'],
+                    "stock_display": readable_stock,
+                    "quantity_packs": sealed,
+                    "quantity_loose": loose,
+                    "total_atoms": total_atoms,
+                    "expiry_date": expiry,
+                    "mrp": record['mrp'] if record['mrp'] is not None else 0.0,
+                    "tax_rate": (record['tax_rate'] or 0.0) * 100,
+                    "pack_size": pack_size
                 })
         return data
 
@@ -147,22 +131,66 @@ class PharmaShop:
                 return True
             return False
 
-    def add_medicine_stock(self, product_name, batch_id, expiry_date, qty_packs, pack_size=10):
+    def _normalize_string(self, s):
+        return " ".join(s.lower().split()) if s else ""
+
+    def _find_best_match(self, name, candidates, cutoff=0.85):
+        import difflib
+        norm_name = self._normalize_string(name)
+        best_match = None
+        best_ratio = 0.0
+        
+        for candidate in candidates:
+            norm_cand = self._normalize_string(candidate)
+            ratio = difflib.SequenceMatcher(None, norm_name, norm_cand).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = candidate
+        
+        return best_match if best_ratio >= cutoff else None
+
+    def add_medicine_stock(self, product_name, batch_id, expiry_date, qty_packs, pack_size=10, 
+                       mrp=10.0, buy_price=5.0, tax_rate=0.1, manufacturer_name="Generic Pharma Co.", dosage_form="Tablet"):
         """
         Add new stock. Stores as SEALED packs initially.
+        Uses Smart Entity Resolution to merge with existing products.
         """
-        query = """
-        MERGE (p:Product {name: $product_name})
-        ON CREATE SET p.created_at = datetime(), p.pack_size = $pack_size
-        ON MATCH SET p.pack_size = $pack_size
+        # 1. Smart Entity Resolution
+        existing_products = self.get_product_names()
+        match = self._find_best_match(product_name, existing_products)
         
+        final_product_name = match if match else product_name
+        
+        if match:
+            print(f"🧩 Smart Merge: Mapped '{product_name}' -> Existing '{match}'")
+
+        query = """
+        // 1. Product (set properties and link to Manufacturer/DosageForm)
+        MERGE (p:Product {name: $product_name})
+        ON CREATE SET 
+            p.created_at = datetime(), 
+            p.pack_size = $pack_size,
+            p.tax_rate = $tax_rate
+        ON MATCH SET 
+            p.pack_size = $pack_size,
+            p.tax_rate = $tax_rate
+
+        // 2. Manufacturer
+        MERGE (m:Manufacturer {name: $manufacturer_name})
+        MERGE (p)-[:MANUFACTURED_BY]->(m)
+
+        // 3. Dosage Form
+        MERGE (d:DosageForm {name: $dosage_form})
+        MERGE (p)-[:HAS_FORM]->(d)
+
+        // 4. Batch (set MRP and Buy Price dynamically)
         MERGE (b:InventoryBatch {batch_number: $batch_id})
         ON CREATE SET 
             b.expiry_date = date($expiry_date),
             b.sealed_packs = $qty_packs,
             b.loose_tablets = 0,
-            b.mrp = 10.0,
-            b.buy_price = 5.0
+            b.mrp = $mrp,
+            b.buy_price = $buy_price
         ON MATCH SET
             b.sealed_packs = coalesce(b.sealed_packs, 0) + $qty_packs
         
@@ -170,10 +198,12 @@ class PharmaShop:
         """
         
         with self.driver.session() as session:
-            session.run(query, product_name=product_name, batch_id=batch_id, 
-                        expiry_date=expiry_date, qty_packs=qty_packs, pack_size=pack_size)
+            session.run(query, product_name=final_product_name, batch_id=batch_id, 
+                        expiry_date=expiry_date, qty_packs=qty_packs, pack_size=pack_size,
+                        mrp=mrp, buy_price=buy_price, tax_rate=tax_rate, manufacturer_name=manufacturer_name,
+                        dosage_form=dosage_form)
             
-        return f"✅ Added {qty_packs} Sealed Packs of {product_name} (Batch: {batch_id})"
+        return f"✅ Added {qty_packs} Sealed Packs of {final_product_name} (Batch: {batch_id})"
 
     def sell_item(self, product_name, qty, payment_method="CASH", customer_phone=None):
         """
@@ -193,7 +223,7 @@ class PharmaShop:
                coalesce(b.loose_tablets, 0) as loose,
                b.expiry_date as expiry, 
                b.mrp as price, 
-               p.tax_rate as tax_rate,
+               coalesce(p.tax_rate, 0.0) as tax_rate,
                coalesce(p.pack_size, 1) as pack_size
         ORDER BY b.expiry_date ASC
         """
@@ -271,6 +301,11 @@ class PharmaShop:
                 # ATOMIC QUERY: Check Balance -> Update Balance -> Create Bill -> Update Inventory
                 query = """
                 MATCH (c:Customer {id: $customer_id})
+                
+                // Explicit Locking to prevent Race Conditions
+                SET c._lock = 1 REMOVE c._lock
+                
+                WITH c
                 WHERE c.current_credit_balance + $total_amount <= c.max_credit_limit
                 
                 // Update Customer
@@ -405,33 +440,77 @@ class PharmaShop:
         return substitutes
 
 
-if __name__ == "__main__":
-    try:
-        shop = PharmaShop()
-        
-        print("--- Initial Inventory ---")
-        inventory = shop.check_inventory()
-        print(f"{'Product':<20} | {'Batch':<10} | {'Stock':<5} | {'Expiry':<12}")
-        print("-" * 55)
-        for item in inventory:
-            print(f"{item['Product']:<20} | {item['Batch']:<10} | "
-                  f"{item['Stock']:<5} | {str(item['Expiry']):<12}")
-        print("-" * 55)
-        
-        print("\n--- Selling 2 units of Dolo 650 ---")
-        tax = shop.sell_item("Dolo 650", 2)
-        if tax is not None:
-             print(f"Transaction completed. Total Tax: {tax}")
-        
-        print("\n--- Updated Inventory ---")
-        inventory = shop.check_inventory()
-        for item in inventory:
-            print(f"{item['Product']:<20} | {item['Batch']:<10} | {item['Stock']:<5}")
-        
-        print("\n--- Tax Liability ---")
-        tax = shop.calculate_taxes()
-        print(f"Total Tax Liability: {tax}")
-        
-        shop.close()
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    def delete_batch(self, batch_number):
+        """
+        Delete a batch from inventory.
+        """
+        query = """
+        MATCH (b:InventoryBatch {batch_number: $batch_number})
+        DETACH DELETE b
+        """
+        with self.driver.session() as session:
+            session.run(query, batch_number=batch_number)
+        return True
+
+    def update_batch(self, batch_number, new_expiry, new_sealed, new_loose):
+        """
+        Update batch details.
+        """
+        query = """
+        MATCH (b:InventoryBatch {batch_number: $batch_number})
+        SET b.expiry_date = date($new_expiry),
+            b.sealed_packs = $new_sealed,
+            b.loose_tablets = $new_loose
+        """
+        with self.driver.session() as session:
+            session.run(query, batch_number=batch_number, new_expiry=new_expiry, 
+                        new_sealed=new_sealed, new_loose=new_loose)
+        return True
+
+    def get_inventory_logs(self):
+        """
+        Fetch a log of all items ever purchased (added to inventory).
+        """
+        query = """
+        MATCH (b:InventoryBatch)-[:IS_BATCH_OF]->(p:Product)
+        OPTIONAL MATCH (p)-[:MANUFACTURED_BY]->(m:Manufacturer)
+        OPTIONAL MATCH (p)-[:HAS_FORM]->(d:DosageForm)
+        RETURN p.name as product_name,
+               b.batch_number as batch_number,
+               b.expiry_date as expiry_date,
+               b.mrp as mrp,
+               coalesce(p.tax_rate, 0.0) as tax_rate,
+               m.name as manufacturer,
+               d.name as dosage_form,
+               b.sealed_packs as initial_sealed,
+               b.loose_tablets as initial_loose,
+               p.created_at as date_added
+        ORDER BY b.expiry_date DESC
+        """
+        data = []
+        with self.driver.session() as session:
+            result = session.run(query)
+            for record in result:
+                expiry = record['expiry_date']
+                if hasattr(expiry, 'to_native'):
+                    expiry = expiry.to_native()
+                
+                date_added = record['date_added']
+                if hasattr(date_added, 'to_native'):
+                    date_added = date_added.to_native()
+
+                data.append({
+                    "Date Added": date_added,
+                    "Product": record['product_name'],
+                    "Batch": record['batch_number'],
+                    "Form": record['dosage_form'] or "N/A",
+                    "Manufacturer": record['manufacturer'] or "N/A",
+                    "MRP": record['mrp'] if record['mrp'] is not None else 0.0,
+                    "Tax (%)": (record['tax_rate'] or 0.0) * 100,
+                    "Initial Sealed": record['initial_sealed'],
+                    "Initial Loose": record['initial_loose'],
+                    "Expiry": expiry
+                })
+        return data
+
+

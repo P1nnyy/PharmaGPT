@@ -25,17 +25,8 @@ def check_inventory_tool():
     # Format nicely
     summary = "Current Inventory:\n"
     for item in inventory:
-        # item['Stock'] is the readable string like "5 Strips, 3 Loose"
-        # We can extract pack size from the raw data if we want, but check_inventory returns it now?
-        # Wait, check_inventory returns a list of dicts. Let's check what keys it has.
-        # It has "Product", "Batch", "Stock", "Stock_Raw", "Expiry".
-        # It does NOT explicitly return "Pack Size" in the dict, but we can infer or update check_inventory to return it.
-        # Actually, let's just use the readable string which implies the pack structure.
-        # But the agent might need the explicit number.
-        # Let's update shop_manager.py's check_inventory to return 'Pack_Size' in the dict first?
-        # Or just rely on the readable string.
-        # "Stock": "5 Strips, 3 Loose" is good.
-        summary += f"- {item['Product']} (Batch: {item['Batch']}): {item['Stock']}, Expires: {item['Expiry']}\n"
+        # item['stock_display'] is the readable string like "5 Sealed Packs, 3 Loose Units"
+        summary += f"- {item['product_name']} (Batch: {item['batch_number']}): {item['stock_display']}, Expires: {item['expiry_date']}\n"
     return summary
 
 @tool

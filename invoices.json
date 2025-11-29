@@ -1,0 +1,118 @@
+[
+  {
+    "id": "953ec199-f289-435e-a679-82f1febb6fdd",
+    "filename": "830d73cb-200a-49bb-ae26-2d4966e783e6.png",
+    "image_url": "http://localhost:8000/uploads/830d73cb-200a-49bb-ae26-2d4966e783e6.png",
+    "upload_date": "2025-11-29 01:35:11",
+    "items": [
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "025488",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 12,
+        "pack_size": 10,
+        "mrp": 165.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "025488",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 1,
+        "pack_size": 10,
+        "mrp": 165.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "025488",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 103,
+        "pack_size": 10,
+        "mrp": 165.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "d2032",
+        "expiry_date": "2025-10-31",
+        "quantity_packs": 7,
+        "pack_size": 10,
+        "mrp": 120.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "1/2 dram plastic",
+        "batch_number": "d3706",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 5,
+        "pack_size": 10,
+        "mrp": 180.0,
+        "manufacturer": "ZDef",
+        "dosage_form": "UNKNOWN"
+      }
+    ]
+  },
+  {
+    "id": "090ab8b9-caf7-49e2-8390-356045bb5edd",
+    "filename": "235247dd-b9ad-46bf-9c64-ad1273b6eaad.png",
+    "image_url": "http://localhost:8000/uploads/235247dd-b9ad-46bf-9c64-ad1273b6eaad.png",
+    "upload_date": "2025-11-29 01:23:46",
+    "items": [
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "025488",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 12,
+        "pack_size": 100,
+        "mrp": 165.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "025488",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 1,
+        "pack_size": 100,
+        "mrp": 165.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "025488",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 103,
+        "pack_size": 100,
+        "mrp": 165.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "Belladonna 30",
+        "batch_number": "d2032",
+        "expiry_date": "2025-10-31",
+        "quantity_packs": 7,
+        "pack_size": 100,
+        "mrp": 120.0,
+        "manufacturer": "WS",
+        "dosage_form": "Drops"
+      },
+      {
+        "product_name": "1/2 dram plastic",
+        "batch_number": "d3706",
+        "expiry_date": "UNKNOWN",
+        "quantity_packs": 5,
+        "pack_size": 10,
+        "mrp": 180.0,
+        "manufacturer": "ZDef",
+        "dosage_form": "Drops"
+      }
+    ]
+  }
+]
