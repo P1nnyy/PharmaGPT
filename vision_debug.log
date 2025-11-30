@@ -1,0 +1,124 @@
+```json
+{
+  "summary": {},
+  "items": [
+    {
+      "debug_raw_row_text": "ROSULIP 20 TABS 1x10 5SN0568 01/07/2027 224.58 320.83",
+      "product_name": "ROSULIP 20 TABS",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 320.83,
+      "buy_price": 224.58,
+      "gst_rate": null,
+      "batch_number": "5SN0568",
+      "expiry_date": "01/07/2027"
+    },
+    {
+      "debug_raw_row_text": "METOLAR 25 TABS 1x10 5SA0346 01/01/2028 र 29.84 र 42.63",
+      "product_name": "METOLAR 25 TABS",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 42.63,
+      "buy_price": 29.84,
+      "gst_rate": null,
+      "batch_number": "5SA0346",
+      "expiry_date": "01/01/2028"
+    },
+    {
+      "debug_raw_row_text": "BETNOVATE S 1x10 MWaP 01/01/20270 र 31.66 ₹45.23",
+      "product_name": "BETNOVATE S",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 45.23,
+      "buy_price": 31.66,
+      "gst_rate": null,
+      "batch_number": "MWaP",
+      "expiry_date": "01/01/2027"
+    },
+    {
+      "debug_raw_row_text": "COLLAFLEX PRO SACHET 1x10 UN25012BR 01/07/2027 ₹104.02 ₹148.6",
+      "product_name": "COLLAFLEX PRO SACHET",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 148.6,
+      "buy_price": 104.02,
+      "gst_rate": null,
+      "batch_number": "UN25012BR",
+      "expiry_date": "01/07/2027"
+    },
+    {
+      "debug_raw_row_text": "HYDE CREAM 30GM 1x10 BEW03AFA 01/06/2027 ₹ 82.03 117.19",
+      "product_name": "HYDE CREAM 30GM",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 117.19,
+      "buy_price": 82.03,
+      "gst_rate": null,
+      "batch_number": "BEW03AFA",
+      "expiry_date": "01/06/2027"
+    },
+    {
+      "debug_raw_row_text": "MONTAIR FX TABS 1x10 ATS12ABA 01/07/2027 291.55 416.5",
+      "product_name": "MONTAIR FX TABS",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 416.5,
+      "buy_price": 291.55,
+      "gst_rate": null,
+      "batch_number": "ATS12ABA",
+      "expiry_date": "01/07/2027"
+    },
+    {
+      "debug_raw_row_text": "LOBATE-GN CREAM 1x10 GF001 01/12/2026D 57.22 81.75",
+      "product_name": "LOBATE-GN CREAM",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 81.75,
+      "buy_price": 57.22,
+      "gst_rate": null,
+      "batch_number": "GF001",
+      "expiry_date": "01/12/2026"
+    },
+    {
+      "debug_raw_row_text": "EUMOSON M 1x10 5HW22 01/02/2027 97.09 138.7",
+      "product_name": "EUMOSON M",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 138.7,
+      "buy_price": 97.09,
+      "gst_rate": null,
+      "batch_number": "5HW22",
+      "expiry_date": "01/02/2027"
+    },
+    {
+      "debug_raw_row_text": "LEVESAM ORAL SOLUTION 1x10 TPL0048 01/03/2027 र 296.80 ₹424",
+      "product_name": "LEVESAM ORAL SOLUTION",
+      "pack_label": "1x10",
+      "pack_size": 10,
+      "quantity": null,
+      "is_free": false,
+      "mrp": 424.0,
+      "buy_price": 296.8,
+      "gst_rate": null,
+      "batch_number": "TPL0048",
+      "expiry_date": "01/03/2027"
+    }
+  ]
+}
+```

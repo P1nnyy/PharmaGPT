@@ -10,6 +10,7 @@ interface InventoryItem {
     dosage_form: string; // Mapped to Category
     manufacturer: string;
     batch_number: string;
+    pack_label?: string;
     stock_display: string;
     quantity_packs: number;
     quantity_loose: number;
@@ -258,9 +259,10 @@ const InventoryView: React.FC = () => {
     };
 
     // Grid Columns Template
+    // Grid Columns Template
     const GRID_COLS = isEditMode
-        ? "grid-cols-[2.5fr_1fr_1.5fr_1.5fr_1fr_1fr_1fr_50px]"
-        : "grid-cols-[2.5fr_1fr_1.5fr_1.5fr_1fr_1fr_1fr]";
+        ? "grid-cols-[2.5fr_1fr_1fr_1.5fr_1.5fr_1fr_1fr_1fr_50px]"
+        : "grid-cols-[2.5fr_1fr_1fr_1.5fr_1.5fr_1fr_1fr_1fr]";
 
     // --- Render ---
 
@@ -428,6 +430,7 @@ const InventoryView: React.FC = () => {
                 {/* Table Header (Fixed) */}
                 <div className={`grid ${GRID_COLS} gap-4 px-6 py-4 bg-white/5 border border-white/10 rounded-t-xl text-gray-400 text-sm font-medium transition-all duration-300`}>
                     <div>Product Name</div>
+                    <div>Pack Size</div>
                     <div>Category</div>
                     <div>Batch Info</div>
                     <div>Expiry</div>
@@ -483,6 +486,13 @@ const InventoryView: React.FC = () => {
                                     <div className={`transition-opacity duration-300 ${isEditMode ? 'opacity-40' : 'opacity-100'}`}>
                                         <div className="font-medium text-white">{item.product_name}</div>
                                         <div className="text-xs text-gray-500">{item.manufacturer}</div>
+                                    </div>
+
+                                    {/* Pack Size */}
+                                    <div className={`transition-opacity duration-300 ${isEditMode ? 'opacity-40' : 'opacity-100'}`}>
+                                        <span className="px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-500 font-mono">
+                                            {item.pack_label || "1x10"}
+                                        </span>
                                     </div>
 
                                     {/* Category */}

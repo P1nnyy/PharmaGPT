@@ -48,14 +48,20 @@ PharmaGPT is a high-speed, "Apple Glass" style AI Agent designed for modern phar
     npm run dev
     ```
 
-## 📝 Recent Changes (Refactor v2.1)
-- **Product Definition Module**: Added a comprehensive "Product Master" form with Glassmorphic UI.
-- **Universal Pharmacy Logic**: Implemented dynamic inventory modeling:
-    - **Mode A (Divisible)**: Tablets/Capsules with variable conversion (e.g., 1 Strip = 10 Tabs).
-    - **Mode B (Whole)**: Syrups/Creams/Powders with fixed conversion (1 Unit).
-    - **Mode C (Hybrid)**: Injections with variable conversion (e.g., 1 Box = 5 Vials).
-- **Auto-Learn UI**: Integrated "New Product" detection in the bill scanning workflow.
-- **Catalog View**: Added a dedicated Catalog management tab in the sidebar.
-- **Feature Pruning**: Removed legacy CRM and complex sales tabs to focus on core inventory speed.
-- **UI Overhaul**: Implemented `glass_styles.css` and a new React frontend.
-- **Schema Upgrade**: Enhanced Neo4j schema for better product-molecule relationships.
+## 📝 Recent Changes (Refactor v2.2 - Smart Ingestion)
+- **Smart Ingestion**:
+    - **Duplicate Detection**: Automatically detects if a bill has already been uploaded (based on Supplier + Invoice No).
+    - **Merge Workflow**: Interactive UI to review and merge duplicate bills into existing inventory without double-counting.
+- **Golden Record Identity**:
+    - Products are now uniquely identified by **Name + Pack Size** (e.g., "Dolo 650" 1x15 is distinct from "Dolo 650" 1x10).
+    - Prevents inventory corruption from different pack sizes of the same medicine.
+- **Enhanced Vision Agent**:
+    - **Batch & Pack Extraction**: Improved heuristics to extract Batch Numbers (including "PCode" fallbacks) and Pack Sizes (from product names) when columns are missing.
+    - **Data Normalization**: Automatic normalization of unit types (e.g., "Tabs" -> "Tablet", "Syp" -> "Syrup").
+- **Universal Pharmacy Logic**:
+    - **Mode A (Divisible)**: Tablets/Capsules with variable conversion.
+    - **Mode B (Whole)**: Syrups/Creams with fixed conversion.
+    - **Mode C (Hybrid)**: Injections with variable conversion.
+- **UI Overhaul**:
+    - **Glassmorphism**: Deep dark mode with translucent cards.
+    - **Inventory Grid**: Improved readability and sorting.

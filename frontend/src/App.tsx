@@ -10,6 +10,8 @@ function App() {
   const [productFormInitialData, setProductFormInitialData] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('home')
   const [extractedData, setExtractedData] = useState<any[]>([])
+  const [isMergeMode, setIsMergeMode] = useState(false)
+  const [mergeSummary, setMergeSummary] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -33,8 +35,10 @@ function App() {
     const file = event.target.files?.[0]
     if (file) {
       setIsLoading(true)
-      setIsScanModalOpen(false) // Close modal immediately or keep open? Let's close it and show loading in dashboard.
-      setActiveTab('ingestion') // Switch to a view to show results
+      setIsScanModalOpen(false)
+      setActiveTab('ingestion')
+      setIsMergeMode(false) // Reset merge mode
+      setMergeSummary(null)
 
       const formData = new FormData()
       formData.append('file', file)
@@ -45,12 +49,22 @@ function App() {
           body: formData,
         })
 
+        if (response.status === 409) {
+          const result = await response.json();
+          // Show data for review before merging
+          setExtractedData(result.data);
+          setIsMergeMode(true);
+          setMergeSummary(result.summary);
+          alert(`Duplicate Invoice Detected!\nSupplier: ${result.summary.supplier_name}\nInvoice No: ${result.summary.invoice_number}\n\nPlease review the items below. Click "Merge to Inventory" to update stock.`);
+          setIsLoading(false);
+          return;
+        }
+
         if (!response.ok) {
           throw new Error(`Upload failed: ${response.statusText}`)
         }
 
         const result = await response.json()
-        // Handle new response structure where data is items
         setExtractedData(result.data)
       } catch (error) {
         console.error("Error uploading file:", error)
@@ -131,6 +145,7 @@ function App() {
                       <thead>
                         <tr className="border-b border-white/10 text-gray-400 text-sm">
                           <th className="p-3">Product</th>
+                          <th className="p-3">Pack Size</th>
                           <th className="p-3">Batch</th>
                           <th className="p-3">Expiry</th>
                           <th className="p-3">Qty</th>
@@ -144,18 +159,26 @@ function App() {
                             <td className="p-3">
                               {item.is_new_product ? (
                                 <div className="flex items-center gap-2">
-                                  <span className="font-medium text-blue-400">{item.product_name}</span>
+                                  <input
+                                    type="text"
+                                    value={item.product_name}
+                                    onChange={(e) => {
+                                      const newData = [...extractedData];
+                                      newData[idx].product_name = e.target.value;
+                                      setExtractedData(newData);
+                                    }}
+                                    className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-full"
+                                  />
                                   <button
                                     onClick={() => {
                                       setProductFormInitialData({
                                         name: item.product_name,
                                         mrp: item.mrp,
                                         manufacturer: item.manufacturer || '',
-                                        // Default values for new product
                                         conversion: 10,
                                         skuUnit: 'Strip',
                                         atomicUnit: 'Tablet',
-                                        category: 'Tablet' // Default category
+                                        category: 'Tablet'
                                       });
                                       setIsProductFormOpen(true);
                                     }}
@@ -165,14 +188,98 @@ function App() {
                                   </button>
                                 </div>
                               ) : (
-                                item.product_name
+                                <input
+                                  type="text"
+                                  value={item.product_name}
+                                  onChange={(e) => {
+                                    const newData = [...extractedData];
+                                    newData[idx].product_name = e.target.value;
+                                    setExtractedData(newData);
+                                  }}
+                                  className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-full"
+                                />
                               )}
                             </td>
-                            <td className="p-3">{item.batch_number}</td>
-                            <td className="p-3">{item.expiry_date}</td>
-                            <td className="p-3">{item.quantity_packs}</td>
-                            <td className="p-3">₹{item.rate || (item.mrp * 0.7).toFixed(2)}</td>
-                            <td className="p-3">₹{item.mrp}</td>
+                            <td className="p-3">
+                              <input
+                                type="text"
+                                value={item.pack_label || ""}
+                                onChange={(e) => {
+                                  const newData = [...extractedData];
+                                  newData[idx].pack_label = e.target.value;
+                                  setExtractedData(newData);
+                                }}
+                                className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-20 font-mono text-yellow-400"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <input
+                                type="text"
+                                value={item.batch_number}
+                                onChange={(e) => {
+                                  const newData = [...extractedData];
+                                  newData[idx].batch_number = e.target.value;
+                                  setExtractedData(newData);
+                                }}
+                                className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-24"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <input
+                                type="date"
+                                value={item.expiry_date}
+                                onChange={(e) => {
+                                  const newData = [...extractedData];
+                                  newData[idx].expiry_date = e.target.value;
+                                  setExtractedData(newData);
+                                }}
+                                className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-32"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const newData = [...extractedData];
+                                  newData[idx].quantity = parseInt(e.target.value) || 0;
+                                  setExtractedData(newData);
+                                }}
+                                className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-16 text-center"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center">
+                                <span className="text-gray-500 mr-1">₹</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.buy_price || (item.mrp * 0.7).toFixed(2)}
+                                  onChange={(e) => {
+                                    const newData = [...extractedData];
+                                    newData[idx].buy_price = parseFloat(e.target.value) || 0;
+                                    setExtractedData(newData);
+                                  }}
+                                  className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-20"
+                                />
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center">
+                                <span className="text-gray-500 mr-1">₹</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.mrp}
+                                  onChange={(e) => {
+                                    const newData = [...extractedData];
+                                    newData[idx].mrp = parseFloat(e.target.value) || 0;
+                                    setExtractedData(newData);
+                                  }}
+                                  className="bg-transparent border-b border-white/20 focus:border-blue-500 outline-none w-20"
+                                />
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -180,30 +287,52 @@ function App() {
                     <button
                       onClick={async () => {
                         try {
-                          const response = await fetch('http://localhost:8000/api/inventory/add', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify(extractedData),
-                          })
+                          if (isMergeMode) {
+                            // MERGE LOGIC
+                            const response = await fetch('http://localhost:8000/api/invoices/merge', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                items: extractedData,
+                                summary: mergeSummary
+                              })
+                            });
 
-                          if (!response.ok) {
-                            throw new Error(`Commit failed: ${response.statusText}`)
+                            if (!response.ok) throw new Error(`Merge failed: ${response.statusText}`);
+
+                            const result = await response.json();
+                            alert(`Merge Successful! Updated ${result.results.length} items.`);
+                            setExtractedData([]);
+                            setIsMergeMode(false);
+                            setMergeSummary(null);
+                            setActiveTab('inventory');
+                          } else {
+                            // NORMAL COMMIT LOGIC
+                            const response = await fetch('http://localhost:8000/api/inventory/add', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify(extractedData),
+                            })
+
+                            if (!response.ok) {
+                              throw new Error(`Commit failed: ${response.statusText}`)
+                            }
+
+                            const result = await response.json()
+                            alert(`Success! ${result.results.length} items added to inventory.`)
+                            setExtractedData([]) // Clear data after commit
+                            setActiveTab('inventory') // Go to inventory tab
                           }
-
-                          const result = await response.json()
-                          alert(`Success! ${result.results.length} items added to inventory.`)
-                          setExtractedData([]) // Clear data after commit
-                          setActiveTab('inventory') // Go to inventory tab
                         } catch (error) {
                           console.error("Error committing inventory:", error)
                           alert("Failed to commit to inventory. Please try again.")
                         }
                       }}
-                      className="mt-6 bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-medium transition-colors cursor-pointer"
+                      className={`mt-6 px-6 py-2 rounded-lg font-medium transition-colors cursor-pointer ${isMergeMode ? 'bg-yellow-600 hover:bg-yellow-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}`}
                     >
-                      Commit to Inventory
+                      {isMergeMode ? "Merge to Inventory" : "Commit to Inventory"}
                     </button>
                   </div>
                 ) : (

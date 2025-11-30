@@ -77,6 +77,7 @@ class PharmaShop:
                coalesce(p.pack_size, 1) as pack_size,
                b.mrp as mrp,
                b.buy_price as buy_price,
+               b.pack_label as pack_label,
                coalesce(p.tax_rate, 0.0) as tax_rate,
                m.name as manufacturer,
                d.name as dosage_form
@@ -110,7 +111,8 @@ class PharmaShop:
                     "mrp": record['mrp'] if record['mrp'] is not None else 0.0,
                     "purchase_rate": record['buy_price'] if record['buy_price'] is not None else 0.0,
                     "tax_rate": (record['tax_rate'] or 0.0) * 100,
-                    "pack_size": pack_size
+                    "pack_size": pack_size,
+                    "pack_label": record['pack_label'] or "1x10"
                 })
         return data
 
@@ -152,7 +154,8 @@ class PharmaShop:
         return best_match if best_ratio >= cutoff else None
 
     def add_medicine_stock(self, product_name, batch_id, expiry_date, qty_packs, pack_size=10, 
-                       mrp=10.0, buy_price=5.0, tax_rate=0.1, manufacturer_name="Generic Pharma Co.", dosage_form="Tablet"):
+                       mrp=10.0, buy_price=5.0, tax_rate=0.1, manufacturer_name="Generic Pharma Co.", dosage_form="Tablet",
+                       hsn_code=None, mfg_date=None, pack_label="1x10", invoice_id=None):
         """
         Add new stock. Stores as SEALED packs initially.
         Uses Smart Entity Resolution to merge with existing products.
@@ -172,10 +175,14 @@ class PharmaShop:
         ON CREATE SET 
             p.created_at = datetime(), 
             p.pack_size = $pack_size,
-            p.tax_rate = $tax_rate
+            p.pack_label = $pack_label,
+            p.tax_rate = $tax_rate,
+            p.hsn_code = $hsn_code
         ON MATCH SET 
             p.pack_size = $pack_size,
-            p.tax_rate = $tax_rate
+            p.pack_label = $pack_label,
+            p.tax_rate = $tax_rate,
+            p.hsn_code = coalesce($hsn_code, p.hsn_code)
 
         // 2. Manufacturer
         MERGE (m:Manufacturer {name: $manufacturer_name})
@@ -189,21 +196,37 @@ class PharmaShop:
         MERGE (b:InventoryBatch {batch_number: $batch_id})
         ON CREATE SET 
             b.expiry_date = date($expiry_date),
+            b.mfg_date = CASE WHEN $mfg_date IS NOT NULL THEN date($mfg_date) ELSE null END,
             b.sealed_packs = $qty_packs,
             b.loose_tablets = 0,
             b.mrp = $mrp,
-            b.buy_price = $buy_price
+            b.buy_price = $buy_price,
+            b.pack_size = $pack_size,
+            b.pack_label = $pack_label
         ON MATCH SET
-            b.sealed_packs = coalesce(b.sealed_packs, 0) + $qty_packs
+            b.sealed_packs = coalesce(b.sealed_packs, 0) + $qty_packs,
+            b.mfg_date = CASE WHEN $mfg_date IS NOT NULL THEN date($mfg_date) ELSE b.mfg_date END,
+            b.pack_size = $pack_size,
+            b.pack_label = $pack_label
         
         MERGE (b)-[:IS_BATCH_OF]->(p)
+
+        // 5. Link to Invoice (Optional)
+        WITH b
+        CALL {
+            WITH b
+            WITH b WHERE $invoice_id IS NOT NULL
+            MATCH (i:Invoice) WHERE elementId(i) = $invoice_id
+            MERGE (i)-[:INCLUDES_BATCH]->(b)
+        }
         """
         
         with self.driver.session() as session:
             session.run(query, product_name=final_product_name, batch_id=batch_id, 
                         expiry_date=expiry_date, qty_packs=qty_packs, pack_size=pack_size,
                         mrp=mrp, buy_price=buy_price, tax_rate=tax_rate, manufacturer_name=manufacturer_name,
-                        dosage_form=dosage_form)
+                        dosage_form=dosage_form, hsn_code=hsn_code, mfg_date=mfg_date, pack_label=pack_label,
+                        invoice_id=invoice_id)
             
         return f"✅ Added {qty_packs} Sealed Packs of {final_product_name} (Batch: {batch_id})"
 
@@ -516,3 +539,95 @@ class PharmaShop:
         return data
 
 
+    def check_invoice_exists(self, invoice_number, supplier_name):
+        """
+        Check if an invoice exists for a given supplier.
+        """
+        query = """
+        MATCH (i:Invoice {invoice_no: $invoice_number})-[:RECEIVED_FROM]->(s:Supplier {name: $supplier_name})
+        RETURN elementId(i) as id
+        """
+        with self.driver.session() as session:
+            result = session.run(query, invoice_number=invoice_number, supplier_name=supplier_name)
+            record = result.single()
+            return record["id"] if record else None
+
+    def merge_invoice_stock(self, invoice_data):
+        """
+        Merge items from a duplicate invoice into the existing inventory.
+        """
+        items = invoice_data.get("items", [])
+        supplier_name = invoice_data.get("supplier", "Unknown Supplier")
+        invoice_number = invoice_data.get("id") # This is usually the invoice number in our current logic
+        
+        # Find the existing invoice ID
+        existing_invoice_id = self.check_invoice_exists(invoice_number, supplier_name)
+        if not existing_invoice_id:
+            # Fallback: If check failed but we are here, maybe just proceed without linking? 
+            # Or maybe the invoice_number passed here is the UUID, but we need the actual "invoice_no" string?
+            # In upload_invoice, "id" is set to "invoice_number".
+            pass
+
+        results = []
+        for item in items:
+            # Use add_medicine_stock to handle batch creation/update and linking
+            # We need to update add_medicine_stock to accept invoice_id (TODO)
+            # For now, we just add stock. The linking to "OLD invoice" might require a separate query or update to add_medicine_stock.
+            # Let's update add_medicine_stock to take invoice_id.
+            
+            final_buy_price = item.get("buy_price") if item.get("buy_price") is not None else (item.get("rate") if item.get("rate") is not None else 0.0)
+            
+            res = self.add_medicine_stock(
+                product_name=item.get("product_name"),
+                batch_id=item.get("batch_number", "UNKNOWN"),
+                expiry_date=item.get("expiry_date"),
+                qty_packs=item.get("quantity", 0),
+                pack_size=item.get("pack_size", 1),
+                mrp=item.get("mrp", 0.0),
+                buy_price=final_buy_price,
+                manufacturer_name=item.get("manufacturer", "Generic Pharma Co."),
+                dosage_form=item.get("dosage_form", "Tablet"),
+                tax_rate=(item.get("gst_rate", 0.0) or 0.0) / 100.0,
+                hsn_code=item.get("hsn_code"),
+                mfg_date=item.get("mfg_date"),
+                pack_label=item.get("pack_label", "1x1"),
+                invoice_id=existing_invoice_id # Pass existing invoice ID
+            )
+            results.append(res)
+        return results
+
+    def create_invoice_record(self, invoice_data):
+        """
+        Persist invoice metadata to Neo4j.
+        Creates (:Invoice) and links to (:Supplier).
+        """
+        query = """
+        MERGE (s:Supplier {name: $supplier_name})
+        CREATE (i:Invoice {
+            id: $invoice_id,
+            invoice_no: $invoice_number,
+            date: date($invoice_date),
+            created_at: datetime(),
+            net_amount: $net_amount,
+            image_url: $image_url
+        })
+        MERGE (i)-[:RECEIVED_FROM]->(s)
+        RETURN elementId(i) as id
+        """
+        
+        # Prepare params
+        params = {
+            "supplier_name": invoice_data.get("supplier", "Unknown Supplier"),
+            "invoice_id": invoice_data.get("id"),
+            "invoice_number": invoice_data.get("id"), # Fallback if invoice_number not in record
+            "invoice_date": invoice_data.get("invoice_date") or datetime.now().strftime("%Y-%m-%d"),
+            "net_amount": invoice_data.get("net_amount", 0.0),
+            "image_url": invoice_data.get("image_url", "")
+        }
+        
+        # If invoice_number exists in summary/metadata, use it
+        # Note: The invoice_record passed here comes from backend_server.py which has "id" as invoice number usually
+        
+        with self.driver.session() as session:
+            session.run(query, **params)
+        return True

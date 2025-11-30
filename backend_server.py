@@ -43,6 +43,8 @@ def save_invoices(invoices):
     with open(INVOICES_FILE, "w") as f:
         json.dump(invoices, f, indent=2)
 
+from fastapi.responses import JSONResponse
+
 @app.post("/api/upload")
 async def upload_invoice(file: UploadFile = File(...)):
     try:
@@ -60,17 +62,51 @@ async def upload_invoice(file: UploadFile = File(...)):
             contents = f.read()
             extracted_data = analyze_bill_image(contents)
             
-        # Handle both old (list) and new (dict) formats for backward compatibility
-        if isinstance(extracted_data, list):
+        # Handle new nested format with metadata
+        if isinstance(extracted_data, dict) and "metadata" in extracted_data:
+            items = extracted_data.get("items", [])
+            metadata = extracted_data.get("metadata", {})
+            
+            # Extract metadata fields
+            supplier_name = metadata.get("supplier_name", "Unknown Supplier")
+            invoice_number = metadata.get("invoice_number", str(uuid.uuid4())[:8])
+            invoice_date = metadata.get("invoice_date", datetime.now().strftime("%Y-%m-%d"))
+            
+            summary = {
+                "invoice_number": invoice_number,
+                "invoice_date": invoice_date,
+                "supplier_name": supplier_name,
+                "net_amount": sum(item.get("buy_price", item.get("rate", item.get("mrp", 0))) * (item.get("quantity") or item.get("quantity_packs") or 0) for item in items)
+            }
+        # Handle old list format
+        elif isinstance(extracted_data, list):
             items = extracted_data
             summary = {
                 "invoice_number": str(uuid.uuid4())[:8],
                 "invoice_date": datetime.now().strftime("%Y-%m-%d"),
-                "net_amount": sum(item.get("rate", item.get("mrp", 0)) * item.get("quantity_packs", 0) for item in extracted_data)
+                "supplier_name": "Unknown Supplier",
+                "net_amount": sum(item.get("buy_price", item.get("rate", item.get("mrp", 0))) * (item.get("quantity") or item.get("quantity_packs") or 0) for item in extracted_data)
             }
+        # Handle old dict format without metadata
         else:
             items = extracted_data.get("items", [])
             summary = extracted_data.get("summary", {})
+            summary["supplier_name"] = summary.get("supplier_name", "Unknown Supplier")
+
+        # --- DUPLICATE CHECK ---
+        existing_id = shop.check_invoice_exists(summary["invoice_number"], summary["supplier_name"])
+        if existing_id:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": "Duplicate",
+                    "message": "Bill exists. Merge?",
+                    "can_merge": True,
+                    "existing_id": existing_id,
+                    "data": items, # Return data so frontend can show/merge it
+                    "summary": summary
+                }
+            )
             
         # Create invoice record
         invoice_record = {
@@ -79,14 +115,21 @@ async def upload_invoice(file: UploadFile = File(...)):
             "image_url": f"http://localhost:8000/uploads/{filename}",
             "upload_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "invoice_date": summary.get("invoice_date"),
+            "supplier": summary.get("supplier_name"),
             "net_amount": summary.get("net_amount"),
             "items": items
         }
         
-        # Save to history
+        # Save to history (JSON)
         invoices = load_invoices()
         invoices.insert(0, invoice_record) # Add to top
         save_invoices(invoices)
+        
+        # Save to Neo4j (Graph)
+        try:
+            shop.create_invoice_record(invoice_record)
+        except Exception as e:
+            print(f"⚠️ Failed to save invoice to Neo4j: {e}")
         
         return {
             "status": "success", 
@@ -94,6 +137,25 @@ async def upload_invoice(file: UploadFile = File(...)):
             "summary": summary,
             "invoice_id": invoice_record["id"]
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class MergeRequest(BaseModel):
+    items: List[dict]
+    summary: dict
+
+@app.post("/api/invoices/merge")
+async def merge_invoice(request: MergeRequest):
+    try:
+        # Construct invoice_data from request
+        invoice_data = {
+            "items": request.items,
+            "supplier": request.summary.get("supplier_name"),
+            "id": request.summary.get("invoice_number")
+        }
+        
+        results = shop.merge_invoice_stock(invoice_data)
+        return {"status": "success", "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -130,19 +192,78 @@ async def chat_agent(query: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import List, Optional
+import re
 
 class InventoryItem(BaseModel):
-    product_name: str
-    batch_number: str
-    expiry_date: str
-    quantity_packs: int
-    pack_size: int = 10
-    mrp: float = 10.0
-    rate: float = 5.0
-    manufacturer: str = "Generic Pharma Co."
-    dosage_form: str = "Tablet"
+    product_name: Optional[str] = "Unknown Product"
+    batch_number: Optional[str] = "UNKNOWN"
+    expiry_date: Optional[str] = None
+    quantity: Optional[int] = 0
+    pack_label: Optional[str] = Field("1x1", description="Exact text from bill like '1x15', '200ml'")
+    pack_size: Optional[int] = Field(None, description="Atomic count")
+    mrp: Optional[float] = 0.0
+    rate: Optional[float] = 0.0
+    buy_price: Optional[float] = 0.0
+    manufacturer: Optional[str] = "Generic Pharma Co."
+    dosage_form: Optional[str] = "Tablet"
+    hsn_code: Optional[str] = None
+    mfg_date: Optional[str] = None
+    is_free: Optional[bool] = False
+    gst_rate: Optional[float] = 0.0
+
+    @validator('dosage_form', pre=True, always=True)
+    def normalize_unit_type(cls, v):
+        if not v:
+            return "Tablet"
+        
+        s = str(v).lower().strip()
+        
+        if s in ["tab", "tabs", "tablet", "tablets", "t"]:
+            return "Tablet"
+        if s in ["cap", "caps", "capsule", "capsules"]:
+            return "Capsule"
+        if s in ["inj", "vial", "amp", "injection"]:
+            return "Injection"
+        if s in ["syp", "syrup", "susp", "liq", "liquid"]:
+            return "Syrup"
+        if s in ["crm", "cream", "oint", "ointment", "gel"]:
+            return "Cream"
+            
+        return v.title()
+
+    @validator('quantity', pre=True, always=True)
+    def set_quantity(cls, v):
+        if v is None: return 0
+        try:
+            return int(v)
+        except:
+            return 0
+
+    @validator('pack_size', always=True, pre=True)
+    def derive_pack_size(cls, v, values):
+        if v is not None:
+            try:
+                if int(v) > 0: return int(v)
+            except:
+                pass
+        
+        label = values.get('pack_label')
+        if not label:
+            return 1
+            
+        # Try to parse "1x15" or "10x10"
+        match = re.search(r'(\d+)\s*[xX]\s*(\d+)', str(label))
+        if match:
+            return int(match.group(2))
+            
+        # Try to parse "15T" or "10s"
+        match = re.search(r'(\d+)\s*[tTsS]', str(label))
+        if match:
+            return int(match.group(1))
+            
+        return 1
 
 @app.post("/api/inventory/add")
 async def add_inventory(items: List[InventoryItem]):
@@ -151,16 +272,24 @@ async def add_inventory(items: List[InventoryItem]):
         results = []
         for item in items:
             print(f"Processing item: {item}")
+            
+            # Determine buy price (prefer buy_price, fallback to rate, fallback to 0)
+            final_buy_price = item.buy_price if item.buy_price is not None else (item.rate if item.rate is not None else 0.0)
+            
             result = shop.add_medicine_stock(
                 product_name=item.product_name,
                 batch_id=item.batch_number,
                 expiry_date=item.expiry_date,
-                qty_packs=item.quantity_packs,
+                qty_packs=item.quantity,
                 pack_size=item.pack_size,
                 mrp=item.mrp,
-                buy_price=item.rate,
+                buy_price=final_buy_price,
                 manufacturer_name=item.manufacturer,
-                dosage_form=item.dosage_form
+                dosage_form=item.dosage_form,
+                tax_rate=item.gst_rate / 100.0 if item.gst_rate else 0.0,
+                hsn_code=item.hsn_code,
+                mfg_date=item.mfg_date,
+                pack_label=item.pack_label
             )
             print(f"✅ Result: {result}")
             results.append(result)

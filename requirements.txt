@@ -1,4 +1,10 @@
+fastapi
+uvicorn
 neo4j
+google-generativeai
 python-dotenv
-streamlit
-pandas
+pydantic
+python-multipart
+pillow
+python-dateutil
+requests
