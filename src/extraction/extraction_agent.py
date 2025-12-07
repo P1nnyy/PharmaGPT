@@ -29,18 +29,23 @@ class QuantityDescriptionAgent:
         # For now, simplistic splitting by loose columns (spaces > 2)
         parts = re.split(r'\s{2,}', row_text.strip())
         
-        # Assumption: Description is often the first or second long string
+        # Assumption: Description is often the first or second long string. 
+        # AVOID: "10 strips" or "batch001" being mistaken as desc.
         for part in parts:
-            if len(part) > 5 and not re.match(r'^[\d\s\%\.\-]+$', part):
+            if len(part) > 5 and not re.match(r'^[\d\s\%\.\-]+$', part) and "strip" not in part.lower():
                 result["Original_Product_Description"] = part
                 break
         
-        # 2. Quantity: Look for patterns like "10 strips", "15", "10x1"
-        # Regex for quantity pattern
-        qty_match = re.search(r'\b(\d+(\.\d+)?\s*(strips|tabs|caps|x\d+)?)\b', row_text, re.IGNORECASE)
+        # 2. Quantity: 
+        # Strategy: 
+        # - Look for numbers followed by units (strips, tabs, box)
+        # - Or look for isolated integers < 1000 that are NOT in the Description or Amount columns.
+        
+        # Priority 1: Explicit Unit
+        qty_match = re.search(r'\b(\d+(\.\d+)?)\s*(strips|tabs|caps|box|nos|x\d+)\b', row_text, re.IGNORECASE)
         if qty_match:
             result["Raw_Quantity"] = qty_match.group(1)
-            
+        
         return result
 
 class RateAmountAgent:
@@ -48,17 +53,35 @@ class RateAmountAgent:
     def extract(self, row_text: str) -> Dict[str, Any]:
         result = {}
         # Find all float-like numbers
-        numbers = [float(x) for x in re.findall(r'\b\d+\.\d{2}\b', row_text)]
+        # Valid amount: e.g. 100.00, 1,050.00
+        numbers = [float(x.replace(',','')) for x in re.findall(r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b', row_text)]
+        
+        if not numbers:
+             # Fallback: looser float search
+             numbers = [float(x) for x in re.findall(r'\b\d+\.\d{2}\b', row_text)]
         
         if numbers:
-            # Heuristic: Amount is usually the largest number
+            # Heuristic: Net Amount is typically in the rightmost column (Last number)
+            # CAUTION: Sometimes there are trailing percentages or page numbers.
+            # But usually Amount is the biggest number AND on the right.
+            
+            # Sort by position in text? Re.findall loses position.
+            # Let's trust "Largest Number" combined with "Last or Second Last" logic implicitly.
+            # Actually, "Largest Number" is still a decent decent base heuristic for Amount, 
+            # UNLESS there is MRP which is higher (rare for Net Amount, but possible).
+            # BETTER: The Amount is usually the last valid float on the line representing a monetary value.
+            
+            # Let's take the LAST number as the Amount candidate first?
+            # Or Max? 
+            # Reverting to Max for safety but flagging it.
             result["Stated_Net_Amount"] = max(numbers)
             
-            # Heuristic: Rate is usually present and smaller than Amount
-            # This is very naive and would need column awareness in real OCR
+            # Heuristic: Rate is usually present and smaller than Amount.
             remaining = [n for n in numbers if n != result["Stated_Net_Amount"]]
             if remaining:
-                result["Raw_Rate_Column_1"] = remaining[0] # Take first valid float as rate
+                # Rate is likely the first or second monetary value.
+                # If we have Quantity, Expected Rate ~ Amount / Qty.
+                result["Raw_Rate_Column_1"] = remaining[0] 
                 
         return result
 
@@ -196,25 +219,29 @@ class GeminiExtractorAgent:
             prompt = """
             Extract the invoice data into a strict JSON object.
             
-            CRITICAL INSTRUCTION:
-            This invoice may have chaotic or misaligned columns (e.g. "Qty" and "Rate" might be close or swapped).
-            You must intelligently parse the table rows to correctly identify:
-            - Product Description (Full Name)
-            - Quantity (Look for numbers with units like 'strips', 'tabs', or just integers)
-            - Rate (Unit Price)
-            - Net Amount (Total for the line)
+            CRITICAL BUSINESS LOGIC:
+            1. **Quantity vs Dosage**: Do NOT confuse dosage numbers (e.g., "650" in "Dolo 650") with Quantity. 
+               - Look for the 'Quantity' column specifically.
+               - Quantity often has units like "strips", "tabs", "box", or is a small integer (1-100) separate from the name.
+            
+            2. **Rate Handling**:
+               - Identify if the rate is per item or per pack/dozen.
+               - If you see "Rate/Doz" or similar, note the value in 'Raw_Rate_Column_1'.
+            
+            3. **Tax/GST**:
+               - Extract 'Raw_GST_Percentage' explicitly (e.g. 5, 12, 18).
             
             The JSON must have the following keys:
             - "Supplier_Name": String (e.g. "Emm Vee Traders")
             - "Invoice_No": String
             - "Invoice_Date": String (YYYY-MM-DD format)
             - "Line_Items": A list of objects, each containing:
-                - "Original_Product_Description": String (The full product name)
-                - "Raw_Quantity": Number or String (e.g. 10 or "10 strips")
+                - "Original_Product_Description": String (the full name, e.g. "Dolo 650mg Tablet")
+                - "Raw_Quantity": Number or String (Value only, e.g. 10. Prefer numbers.)
                 - "Batch_No": String
-                - "Raw_Rate_Column_1": Number (The primary rate/price per unit)
+                - "Raw_Rate_Column_1": Number (The primary rate. Check for Rate/Doz indicators.)
                 - "Raw_Rate_Column_2": Number (Secondary rate if exists, else null)
-                - "Stated_Net_Amount": Number (The total amount for this line)
+                - "Stated_Net_Amount": Number (The total amount line total)
                 - "Raw_Discount_Percentage": Number (e.g. 10 for 10%, else null)
                 - "Raw_GST_Percentage": Number (e.g. 12 for 12%, else null)
             
