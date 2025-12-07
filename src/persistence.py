@@ -1,0 +1,77 @@
+from typing import List, Dict, Any
+from src.schemas import InvoiceExtraction, NormalizedLineItem
+
+def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]]):
+    """
+    Ingests invoice and line item data into Neo4j.
+    
+    Creates/Merges:
+    - (:Invoice)
+    - (:Product)
+    - (:Line_Item)
+    
+    Relationships:
+    - (:Invoice)-[:CONTAINS]->(:Line_Item)
+    - (:Line_Item)-[:REFERENCES]->(:Product)
+    """
+    
+    # Calculate Grand Total from line items to ensure consistency
+    grand_total = sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
+    
+    with driver.session() as session:
+        # 1. Merge Invoice
+        # Using a transaction for atomicity
+        session.write_transaction(_create_invoice_tx, invoice_data, grand_total)
+        
+        # 2. Process Line Items
+        for item in normalized_items:
+            session.write_transaction(_create_line_item_tx, invoice_data.Invoice_No, item)
+
+def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
+    query = """
+    MERGE (i:Invoice {invoice_number: $invoice_no, supplier_name: $supplier_name})
+    ON CREATE SET 
+        i.invoice_date = $invoice_date,
+        i.grand_total = $grand_total,
+        i.created_at = timestamp()
+    ON MATCH SET
+        i.grand_total = $grand_total,
+        i.updated_at = timestamp()
+    """
+    tx.run(query, 
+           invoice_no=invoice_data.Invoice_No, 
+           supplier_name=invoice_data.Supplier_Name,
+           invoice_date=invoice_data.Invoice_Date,
+           grand_total=grand_total)
+
+def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any]):
+    query = """
+    MATCH (i:Invoice {invoice_number: $invoice_no})
+    
+    // Merge Product based on Standard Name
+    MERGE (p:Product {name: $standard_item_name})
+    
+    // Create Line Item
+    CREATE (l:Line_Item {
+        pack_size: $pack_size,
+        quantity: $quantity,
+        cost_price: $cost_price,
+        discount_amount: $discount_amount,
+        taxable_value: $taxable_value,
+        net_amount: $net_amount
+    })
+    
+    // Create Relationships
+    MERGE (i)-[:CONTAINS]->(l)
+    MERGE (l)-[:REFERENCES]->(p)
+    """
+    
+    tx.run(query,
+           invoice_no=invoice_no,
+           standard_item_name=item.get("Standard_Item_Name"),
+           pack_size=item.get("Pack_Size_Description"),
+           quantity=item.get("Standard_Quantity"),
+           cost_price=item.get("Calculated_Cost_Price_Per_Unit"),
+           discount_amount=item.get("Discount_Amount_Currency"),
+           taxable_value=item.get("Calculated_Taxable_Value"),
+           net_amount=item.get("Net_Line_Amount"))
