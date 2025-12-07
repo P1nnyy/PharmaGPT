@@ -1,6 +1,13 @@
 import re
-from typing import Union
+from typing import Union, Tuple, Dict, Any
 from src.schemas import RawLineItem
+
+PRODUCT_MAPPING = {
+    "Product A": ("Standard Product A", "10 strips"),
+    "Product B": ("Standard Product B", "1x1"),
+    "Dolo 650": ("Dolo 650mg Tablet", "15 tabs"),
+    "Augmentin 625": ("Augmentin 625 Duo", "10 tabs"),
+}
 
 def parse_float(value: Union[str, float, None]) -> float:
     """
@@ -23,18 +30,12 @@ def parse_float(value: Union[str, float, None]) -> float:
 def calculate_cost_price(raw_item: RawLineItem, supplier_name: str) -> float:
     """
     Calculates the Cost Price Per Unit based on supplier-specific rules.
-    
-    Rules:
-    - Emm Vee Traders: Rate is per dozen (Rate/Doz), so CP = Rate / 12.
-    - Zero Quantity: If quantity is effectively 0, treat as 0 value (return 0.0).
-    - Default: CP = Rate (Rate per unit/pack).
     """
     
     # 1. Parse inputs
     raw_qty = parse_float(raw_item.Raw_Quantity)
     
-    # Check for primary rate column first, fallback to secondary if needed (though logic usually relies on primary)
-    # The prompt implies Raw_Rate_Column_1 is the main one for Rate/Doz logic.
+    # Check for primary rate column first, fallback to secondary if needed
     raw_rate = parse_float(raw_item.Raw_Rate_Column_1)
     if raw_rate == 0.0 and raw_item.Raw_Rate_Column_2 is not None:
          raw_rate = parse_float(raw_item.Raw_Rate_Column_2)
@@ -50,15 +51,22 @@ def calculate_cost_price(raw_item: RawLineItem, supplier_name: str) -> float:
         # Rate is per Dozen
         return raw_rate / 12.0
     
-    
     # Default: Standard Rate (Rate per pack/strip)
     return raw_rate
+
+def standardize_product(raw_description: str) -> Tuple[str, str]:
+    """
+    Maps a raw product description to a Standard Item Name and Pack Size.
+    Returns (raw_description, "Unit") if no match is found.
+    """
+    if raw_description in PRODUCT_MAPPING:
+        return PRODUCT_MAPPING[raw_description]
+    
+    return (raw_description, "Unit")
 
 def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     """
     Calculates financial figures including Cost Price, Discount Amount, Taxable Value, and Net Amount.
-    Performs reconciliation with stated net amount.
-    
     Returns a dictionary corresponding to normalized fields.
     """
     
@@ -72,7 +80,6 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     stated_net_amount = parse_float(raw_item.Stated_Net_Amount)
     
     # 3. Calculate Gross Value
-    # Gross Value = Quantity * CP
     gross_value = qty * cp_per_unit
     
     # 4. Calculate Discount Amount
@@ -88,28 +95,35 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     calculated_net = taxable_value + tax_amount
     
     # 8. Reconciliation
-    # Tolerance: +/- 0.05
     diff = abs(calculated_net - stated_net_amount)
     final_net_amount = calculated_net
     
     if diff <= 0.05:
-        # If within tolerance, use stated amount (Round Off logic)
         final_net_amount = stated_net_amount
-        # In a real system, we might log this: print(f"Round off applied. Diff: {diff}")
-    else:
-        # Outside tolerance: Use calculated amount (or flag error). 
-        # Prompt says "If they differ due to minor rounding... use Stated_Net_Amount".
-        # Implicitly, if they differ significantly, we strictly mostly trust calculation or flag it.
-        # Here we stick to calculated amount as the "truth" derived from components, 
-        # unless specifically asked to overwrite with stated for large diffs (unlikely).
-        pass
-
+    
     return {
         "Standard_Quantity": qty,
         "Calculated_Cost_Price_Per_Unit": cp_per_unit,
         "Discount_Amount_Currency": discount_amount,
         "Calculated_Taxable_Value": taxable_value,
         "Net_Line_Amount": final_net_amount,
-        # Missing fields from NormalizedLineItem that aren't calculated here but required:
-        # Standard_Item_Name, Pack_Size_Description - will need to be filled from elsewhere or dummy.
+    }
+
+def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, Any]:
+    """
+    The Master Function:
+    Combines financial calculations AND product standardization to produce
+    a complete dictionary ready for the NormalizedLineItem schema.
+    """
+    # 1. Get Financials
+    financials = calculate_financials(raw_item, supplier_name)
+    
+    # 2. Get Standard Product Details
+    std_name, pack_size = standardize_product(raw_item.Original_Product_Description)
+    
+    # 3. Merge them
+    return {
+        **financials,
+        "Standard_Item_Name": std_name,
+        "Pack_Size_Description": pack_size
     }
