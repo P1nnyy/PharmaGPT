@@ -156,9 +156,42 @@ def _mock_ocr(image_path: str) -> Dict[str, Any]:
         "rows": []
     }
 
-def extract_invoice_data(invoice_image_path: str) -> dict:
+class ValidatorAgent:
+    """Agent 5: Validator and Pydantic Check"""
+    def validate(self, extraction_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            # 1. Pydantic Validation (Structural & Type Check)
+            model = InvoiceExtraction(**extraction_data)
+            
+            # 2. Financial Sanity Checks (Business Logic)
+            for item in model.Line_Items:
+                # Sanity: Quantity must be positive (parsing might result in 0 or negative)
+                if isinstance(item.Raw_Quantity, (int, float)) and item.Raw_Quantity <= 0:
+                     logger.warning(f"Validation Warning: Non-positive quantity for {item.Original_Product_Description}")
+                
+                # Sanity: Net Amount plausible? (if Rate and Qty available)
+                # Just a loose check if both are numeric
+                if (isinstance(item.Raw_Quantity, (int, float)) and 
+                    isinstance(item.Raw_Rate_Column_1, (int, float)) and 
+                    isinstance(item.Stated_Net_Amount, (int, float))):
+                    
+                    expected = item.Raw_Quantity * item.Raw_Rate_Column_1
+                    if item.Stated_Net_Amount > expected * 2: # Very loose check (allows for tax/errors)
+                        logger.warning(f"Validation Warning: Net Amount {item.Stated_Net_Amount} seems high compared to Qty * Rate {expected}")
+
+            logger.info("Validation Successful")
+            return model.model_dump()
+            
+        except Exception as e:
+            logger.error(f"Validation Failed: {e}")
+            # In a real system, might return None or raise Error. 
+            # Returning None signals failure to downstream.
+            return None
+
+def extract_invoice_data(invoice_image_path: str) -> Optional[Dict[str, Any]]:
     """
     Orchestrates extraction using the Council of Agents.
+    Returns None if validation fails.
     """
     logger.info(f"Starting extraction for: {invoice_image_path}")
     
@@ -181,15 +214,11 @@ def extract_invoice_data(invoice_image_path: str) -> dict:
     consensus = ConsensusEngine()
     
     for row in row_texts:
-        # Run Agents in Parallel (conceptually)
+        # Run Agents
         p1 = agent_qty.extract(row)
         p2 = agent_rate.extract(row)
         p3 = agent_perc.extract(row)
         
-        # Add a dummy batch agent/logic for now as it wasn't requested but Schema needs it
-        # Or let's say QuantityAgent extracts it? 
-        # For this prototype, I'll inject a batch into p1 (Description Agent) if found
-        # Simple heuristic: AlphaNumeric > 3 chars that isn't other stuff
         batch_match = re.search(r'Batch\w+', row, re.IGNORECASE)
         if batch_match:
             p1["Batch_No"] = batch_match.group(0)
@@ -198,12 +227,19 @@ def extract_invoice_data(invoice_image_path: str) -> dict:
         final_item = consensus.resolve([p1, p2, p3])
         line_items.append(final_item)
     
-    # 4. Construct Final Object
-    extraction_model = InvoiceExtraction(
-        Supplier_Name=header_data["Supplier_Name"],
-        Invoice_No=header_data["Invoice_No"],
-        Invoice_Date=header_data["Invoice_Date"],
-        Line_Items=line_items
-    )
+    # 4. Construct Preliminary Object
+    raw_data = {
+        "Supplier_Name": header_data["Supplier_Name"],
+        "Invoice_No": header_data["Invoice_No"],
+        "Invoice_Date": header_data["Invoice_Date"],
+        "Line_Items": line_items # line_items are Pydantic objects, need dump?
+        # Validator expects Dict input for **kwargs or Pydantic objects directly? 
+        # InvoiceExtraction expects Line_Items to be list of RawLineItem (which they are) or dicts.
+        # Pydantic handles both.
+    }
     
-    return extraction_model.model_dump()
+    # 5. Agent 5: Validation
+    validator = ValidatorAgent()
+    validated_data = validator.validate(raw_data)
+    
+    return validated_data
