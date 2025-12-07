@@ -194,7 +194,15 @@ class GeminiExtractorAgent:
             # We want it to match our InvoiceExtraction schema structure roughly
             # Note: We ask for "line_items" as a list.
             prompt = """
-            Extract the data from this invoice image into a valid JSON object.
+            Extract the invoice data into a strict JSON object.
+            
+            CRITICAL INSTRUCTION:
+            This invoice may have chaotic or misaligned columns (e.g. "Qty" and "Rate" might be close or swapped).
+            You must intelligently parse the table rows to correctly identify:
+            - Product Description (Full Name)
+            - Quantity (Look for numbers with units like 'strips', 'tabs', or just integers)
+            - Rate (Unit Price)
+            - Net Amount (Total for the line)
             
             The JSON must have the following keys:
             - "Supplier_Name": String (e.g. "Emm Vee Traders")
@@ -210,7 +218,7 @@ class GeminiExtractorAgent:
                 - "Raw_Discount_Percentage": Number (e.g. 10 for 10%, else null)
                 - "Raw_GST_Percentage": Number (e.g. 12 for 12%, else null)
             
-            Return ONLY the JSON. No markdown formatting.
+            Return ONLY the raw JSON string. No markdown formatting or code blocks.
             """
             
             response = model.generate_content([sample_file, prompt])
