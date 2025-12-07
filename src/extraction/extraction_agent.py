@@ -336,31 +336,35 @@ class ConsensusEngine:
         final_data = {}
         fields = RawLineItem.model_fields.keys()
         
-        # 1. Base Strategy: Trust Gemini
+        # 1. Base Strategy: Trust Gemini, but VERIFY.
         # If Gemini has a valid value, use it.
-        # If Gemini is missing/null, look at heuristics.
+        # If Gemini is missing/null/zero (where invalid), AGGRESSIVELY look at heuristics.
         
+        # Helper to check validity
+        def is_valid_val(field, val):
+            if val is None or val == "": return False
+            if field in ["Raw_Quantity", "Stated_Net_Amount", "Raw_Rate_Column_1"]:
+                 if isinstance(val, (int, float)) and val <= 0: return False
+            return True
+
         for field in fields:
             val = gemini_item.get(field)
             
-            # Validation: Is val 'good'?
-            is_valid = val is not None and val != ""
-            # Assuming 0 is valid for numbers? Maybe not for Quantity/Amount.
-            if field in ["Raw_Quantity", "Stated_Net_Amount"] and val == 0:
-                is_valid = False
-                
-            if is_valid:
+            if is_valid_val(field, val):
                 final_data[field] = val
             else:
-                # Fallback to heuristics
-                found = False
+                # Conditional Fallback: Field invalid in Gemini -> Check Heuristics
+                found_val = None
                 for p in heuristic_partials:
-                    if p.get(field) is not None:
-                        final_data[field] = p[field]
-                        found = True
-                        break # Take first heuristic match
+                    h_val = p.get(field)
+                    if is_valid_val(field, h_val):
+                        found_val = h_val
+                        break # Take first VALID heuristic match
                 
-                if not found:
+                if found_val is not None:
+                     logger.info(f"Consensus: Swapped invalid Gemini {field}={val} with Heuristic {found_val}")
+                     final_data[field] = found_val
+                else:
                     # Defaults
                     if field == "Original_Product_Description": final_data[field] = "Unknown Product"
                     elif field == "Raw_Quantity": final_data[field] = 0
@@ -378,28 +382,42 @@ class ValidatorAgent:
             model = InvoiceExtraction(**extraction_data)
             
             # 2. Financial Sanity Checks (Business Logic)
+            valid_items = []
             for item in model.Line_Items:
-                # Sanity: Quantity must be positive (parsing might result in 0 or negative)
+                # Rule: Zero Value Check (Skip empty rows)
+                if (item.Raw_Quantity == 0 or item.Raw_Quantity is None) and (item.Stated_Net_Amount == 0.0 or item.Stated_Net_Amount is None):
+                     logger.warning(f"Validator: Skipping empty line item {item.Original_Product_Description}")
+                     continue
+
+                # Sanity: Quantity must be positive 
                 if isinstance(item.Raw_Quantity, (int, float)) and item.Raw_Quantity <= 0:
                      logger.warning(f"Validation Warning: Non-positive quantity for {item.Original_Product_Description}")
                 
-                # Sanity: Net Amount plausible? (if Rate and Qty available)
-                # Just a loose check if both are numeric
-                if (isinstance(item.Raw_Quantity, (int, float)) and 
-                    isinstance(item.Raw_Rate_Column_1, (int, float)) and 
-                    isinstance(item.Stated_Net_Amount, (int, float))):
+                # Sanity: Net Amount Plausibility (Tight Check)
+                if (isinstance(item.Raw_Quantity, (int, float)) and item.Raw_Quantity > 0 and
+                    isinstance(item.Raw_Rate_Column_1, (int, float)) and item.Raw_Rate_Column_1 > 0 and
+                    isinstance(item.Stated_Net_Amount, (int, float)) and item.Stated_Net_Amount > 0):
                     
-                    expected = item.Raw_Quantity * item.Raw_Rate_Column_1
-                    if item.Stated_Net_Amount > expected * 2: # Very loose check (allows for tax/errors)
-                        logger.warning(f"Validation Warning: Net Amount {item.Stated_Net_Amount} seems high compared to Qty * Rate {expected}")
-
-            logger.info("Validation Successful")
+                    base_expected = item.Raw_Quantity * item.Raw_Rate_Column_1
+                    # Allow for Tax (5-28%) and small errors.
+                    # Max expected = Base * 1.28 (28% GST)
+                    # Min expected = Base (0% GST)
+                    # We allow 50% deviation from Base for severe outliers.
+                    
+                    deviation = abs(item.Stated_Net_Amount - base_expected)
+                    percent_dev = (deviation / base_expected) * 100
+                    
+                    if percent_dev > 50:
+                        logger.warning(f"Validation Alert: Net Amount {item.Stated_Net_Amount} deviates {percent_dev:.1f}% from expected {base_expected} (Qty {item.Raw_Quantity} * Rate {item.Raw_Rate_Column_1})")
+                
+                valid_items.append(item)
+            
+            model.Line_Items = valid_items # Update model with filtered list
+            logger.info(f"Validation Successful. {len(valid_items)} line items retained.")
             return model.model_dump()
             
         except Exception as e:
             logger.error(f"Validation Failed: {e}")
-            # In a real system, might return None or raise Error. 
-            # Returning None signals failure to downstream.
             return None
 
 def extract_invoice_data(invoice_image_path: str) -> Optional[Dict[str, Any]]:
@@ -497,8 +515,25 @@ def extract_invoice_data(invoice_image_path: str) -> Optional[Dict[str, Any]]:
             desc = g_item.get("Original_Product_Description", "")
             matches = []
             if desc:
-                # Simple containment match
-                matches = [h for h in heuristic_items if h.get("Original_Product_Description") and (h["Original_Product_Description"] in desc or desc in h["Original_Product_Description"])]
+                desc_lower = desc.lower()
+                # Enhanced Fuzzy Match:
+                # 1. Direct containment (heuristic in Gemini or vice versa)
+                # 2. Token overlap (if abbreviations used)
+                for h in heuristic_items:
+                    h_desc = h.get("Original_Product_Description", "").lower()
+                    if not h_desc: continue
+                    
+                    # Containment
+                    if h_desc in desc_lower or desc_lower in h_desc:
+                         matches.append(h)
+                         continue
+                    
+                    # Token Set Overlap (Simple Jaccard-ish)
+                    h_tokens = set(h_desc.split())
+                    g_tokens = set(desc_lower.split())
+                    common = h_tokens.intersection(g_tokens)
+                    if len(common) >= 2: # At least 2 words match (e.g. "Dolo" "650")
+                         matches.append(h)
             
             final_item = consensus.resolve(g_item, matches)
             line_items.append(final_item)
