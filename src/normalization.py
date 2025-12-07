@@ -134,7 +134,9 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
         "Calculated_Cost_Price_Per_Unit": cp_per_unit,
         "Discount_Amount_Currency": discount_amount,
         "Calculated_Taxable_Value": taxable_value,
+        "Calculated_Tax_Amount": tax_amount,
         "Net_Line_Amount": final_net_amount,
+        "Raw_GST_Percentage": gst_percent,
     }
 
 def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, Any]:

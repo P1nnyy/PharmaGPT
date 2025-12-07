@@ -24,41 +24,50 @@ class QuantityDescriptionAgent:
     """Agent 2: Specialized for Description and Quantity."""
     def extract(self, row_text: str) -> Dict[str, Any]:
         result = {}
-        # Simple extraction heuristics
-        # 1. Product Description: Look for common pharma terms or just take the longest string part
-        # For now, simplistic splitting by loose columns (spaces > 2)
+        # 1. Product Description
+        # Heuristic: Split by double spaces, filter out short noise or dates
         parts = re.split(r'\s{2,}', row_text.strip())
-        
-        # Assumption: Description is often the first or second long string. 
-        # Refinement: Exclude parts that look like Batch, Date, or just Numbers.
+        desc_parts = []
         for part in parts:
-            # Filter out pure numbers, dates (YYYY-MM-DD), or short codes
-            is_noise = re.match(r'^[\d\s\%\.\-\/]+$', part) or len(part) < 4 or "batch" in part.lower()
-            if not is_noise and "strip" not in part.lower():
-                result["Original_Product_Description"] = part
-                break
+             # Heuristic: Description is usually long, contains letters, not just d/m/y or numbers
+             if len(part) > 3 and not re.match(r'^[\d\s\%\.\-\/]+$', part) and "batch" not in part.lower():
+                 desc_parts.append(part)
         
-        # 2. Quantity: 
-        # Strategy: Prioritize explicit unit markers.
-        # Regex for quantity pattern with units
-        unit_regex = r'\b(\d+(\.\d+)?)\s*(strips?|tabs?|caps?|box|nos|x\d+)\b'
+        if desc_parts:
+            # Assume first valid text block is Description
+            result["Original_Product_Description"] = desc_parts[0]
+        
+        # 2. Quantity - Hardened Logic
+        # Priority 1: Explicit Unit Markers (e.g. "10 strips", "50 tabs", "1x15")
+        # Added 'pcs', 'box', 'vials', 'amp' and 'x' notation
+        unit_regex = r'\b(\d+)\s*(strips?|tabs?|caps?|box|nos|pcs|vials|amp|x\s*\d+)\b'
         qty_match = re.search(unit_regex, row_text, re.IGNORECASE)
         
         if qty_match:
-            result["Raw_Quantity"] = qty_match.group(1)
+             result["Raw_Quantity"] = int(qty_match.group(1))
         else:
-            # Fallback: extensive search for isolated small integers (likely Quantity)
-            # Avoid numbers that look like rates (contain decimal points)
-            # Look for explicit integer boundaries
-            int_matches = re.findall(r'\b(\d{1,4})\b', row_text)
-            # Filter out years? 2024, 2025.
-            candidates = [int(x) for x in int_matches if int(x) < 500 and int(x) not in [2024, 2025]]
+            # Priority 2: Standalone Integers, strictly filtering out Dosage numbers
+            # Strategy: Look for integers < 100 which are likely quantities.
+            # Avoid likely dosages: 100, 250, 500, 650, 1000 UNLESS they have units (caught above)
+            # Find all independent integers
+            int_matches = re.finditer(r'(?<!\.)\b(\d+)\b(?!\.)', row_text)
+            candidates = []
+            
+            for m in int_matches:
+                val = int(m.group(1))
+                # Heuristic: Dosage is usually large (>=100)
+                # Quantity is usually small (<100)
+                # Exception: 100 tablets. But if no unit, assume 100 is dosage or rate.
+                if 0 < val < 100: 
+                    candidates.append(val)
+            
             if candidates:
-                # If we have candidates, which one is Quantity?
-                # Usually it's disjoint from the very end (Amount).
-                # Very naive: pick the first plausible integer that isn't at the very start (IndexNo).
-                if len(candidates) > 0:
-                    result["Raw_Quantity"] = candidates[0]
+                # If multiple small ints, Quantity is usually NOT the first number (Index) 
+                # but could be anywhere. 
+                # Simplification: Take the largest candidate? Or first?
+                # Usually Quantity is the largest small integer? (e.g. Index 1, Qty 10)
+                # Let's take the first one found that is > 0?
+                result["Raw_Quantity"] = candidates[0]
         
         return result
 
@@ -66,40 +75,32 @@ class RateAmountAgent:
     """Agent 3: Specialized for Rates and Net Amount."""
     def extract(self, row_text: str) -> Dict[str, Any]:
         result = {}
-        # Find all float-like numbers with position
-        # We need independent matches to judge position
-        matches = list(re.finditer(r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b', row_text))
+        # Strategy: Strict spatial search for Financials
+        # 1. Net Amount is LAST columns.
+        # 2. Rate is preceding Amount.
+        
+        # Regex for currency-like float: 1,234.00 or 1234.00 (Must have decimal .XX)
+        # This reduces noise from dates/integers.
+        float_regex = r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b'
+        matches = list(re.finditer(float_regex, row_text))
         
         if not matches:
-             matches = list(re.finditer(r'\b\d+\.\d{2}\b', row_text))
+             # Fallback: looser float (just .d+)
+             matches = list(re.finditer(r'\b\d+\.\d+\b', row_text))
         
         if matches:
-            # matches is a list of match objects.
-            # Logic: 
-            # 1. Net Amount is likely the LAST number (Far Right).
-            # 2. Rate is likely in the MIDDLE.
-            
-            # Sort by start position just in case
             matches.sort(key=lambda m: m.start())
             
-            # Amount Candidate: The very last float found
+            # 1. Stated_Net_Amount: Must be the last one, and ideally near end of string
+            # We trust the last float found is the Net Amount.
+            min_matches = 1
             amount_match = matches[-1]
             result["Stated_Net_Amount"] = float(amount_match.group().replace(',', ''))
             
-            # Rate Candidate: 
-            # If we have multiple numbers, Rate is likely before Amount.
-            # But usually after Quantity? 
-            # Let's take the number simply immediately preceding Amount as the primary candidate?
-            # Or better: The number closest to the "visual middle"?
-            # Let's try: Preceding Amount.
-            if len(matches) > 1:
-                # Exclude the Amount match
-                remaining = matches[:-1]
-                # Take the last of the remaining (which is the one just before Amount)
-                # This corresponds to standard invoice layout: ... Qty Rate Amount
-                if remaining:
-                    rate_match = remaining[-1]
-                    result["Raw_Rate_Column_1"] = float(rate_match.group().replace(',', ''))
+            # 2. Rate: The number immediately preceding the Net Amount
+            if len(matches) >= 2:
+                rate_match = matches[-2]
+                result["Raw_Rate_Column_1"] = float(rate_match.group().replace(',', ''))
                 
         return result
 
@@ -239,17 +240,19 @@ class GeminiExtractorAgent:
             
             CRITICAL BUSINESS LOGIC AND SPATIAL AWARENESS:
             1. **Financial Context (Rate)**: 
-               - Identify the "Rate" column used for calculation. Distinguish it from MRP or PTR if possible.
-               - **IMPORTANT**: If the rate is per dozen or pack (e.g., "Rate/Doz"), extract this value into 'Raw_Rate_Column_1'.
+               - Identify the "Rate" column used for calculation. 
+               - **IMPORTANT**: Look for column headers like "RATE/DOZ", "PTR", or just "Rate". 
+               - **PRIORITY**: If a "RATE/DOZ" or "PTR" column exists, extract THAT value into 'Raw_Rate_Column_1' instead of MRP.
             
-            2. **Net Amount Localization**:
-               - The 'Stated_Net_Amount' is almost always in the **FAR-RIGHT column** of the table.
-               - Do NOT confuse it with MRP or Gross Value. It is the final total for that line item.
+            2. **Strict Net Amount Localization**:
+               - The 'Stated_Net_Amount' **MUST** come from the **FAR-RIGHT column** of the line item table.
+               - **WARNING**: Do NOT just pick the largest number. If the largest number is MRP or Gross Value in a middle column, IGNORE IT. Only extract the final line total from the far right.
             
             3. **Quantity vs Dosage**:
                - **Strictly separate** Dosage (e.g. "650" in "Dolo 650") from Quantity.
-               - Look for the dedicated 'Quantity' column.
-               - Quantity often has units like "strips", "tabs", "box", or is a small integer (1-100).
+               - Extract Quantity **ONLY** from the dedicated 'Quantity' column using spatial awareness.
+               - Quantity often has units like "strips", "tabs", "box", "nos", or is a small integer (e.g., 1, 5, 10).
+               - **NEVER** extract the dosage number (like 650, 500) as the Quantity.
             
             4. **Tax/GST**:
                - Extract 'Raw_GST_Percentage' explicitly (e.g. 5, 12, 18) if available in a column.
@@ -262,7 +265,7 @@ class GeminiExtractorAgent:
                 - "Original_Product_Description": String (the full name, e.g. "Dolo 650mg Tablet")
                 - "Raw_Quantity": Number or String (Value only, e.g. 10. Prefer numbers.)
                 - "Batch_No": String
-                - "Raw_Rate_Column_1": Number (The primary unit price/rate.)
+                - "Raw_Rate_Column_1": Number (The primary unit price/rate. Prioritize PTR/Rate-per-Doz.)
                 - "Raw_Rate_Column_2": Number (Secondary rate if exists, else null)
                 - "Stated_Net_Amount": Number (The total amount from the FAR-RIGHT column)
                 - "Raw_Discount_Percentage": Number (e.g. 10 for 10%, else null)
@@ -344,7 +347,13 @@ class ConsensusEngine:
         def is_valid_val(field, val):
             if val is None or val == "": return False
             if field in ["Raw_Quantity", "Stated_Net_Amount", "Raw_Rate_Column_1"]:
-                 if isinstance(val, (int, float)) and val <= 0: return False
+                 try:
+                     # Handle strings that look like numbers (aggressive)
+                     f_val = float(val)
+                     if f_val <= 0: return False
+                 except (ValueError, TypeError):
+                     # Not a number
+                     return False
             return True
 
         for field in fields:
@@ -407,8 +416,9 @@ class ValidatorAgent:
                     deviation = abs(item.Stated_Net_Amount - base_expected)
                     percent_dev = (deviation / base_expected) * 100
                     
+                    # Strict Check: If deviation is > 50%, it's likely a catastrophic error (rate/qty swap, or wrong column)
                     if percent_dev > 50:
-                        logger.warning(f"Validation Alert: Net Amount {item.Stated_Net_Amount} deviates {percent_dev:.1f}% from expected {base_expected} (Qty {item.Raw_Quantity} * Rate {item.Raw_Rate_Column_1})")
+                        logger.warning(f"Validation Alert: SEVERE Net Amount Discrepancy. Net {item.Stated_Net_Amount} deviates {percent_dev:.1f}% from expected {base_expected} (Qty {item.Raw_Quantity} * Rate {item.Raw_Rate_Column_1}). This line item may be corrupted.")
                 
                 valid_items.append(item)
             

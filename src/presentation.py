@@ -28,12 +28,6 @@ def format_invoice_for_display(normalized_items: List[Dict[str, Any]]) -> List[D
             "Qty": str(item.get("Standard_Quantity", "")),
             "Cost Price (Per Unit)": format_currency(item.get("Calculated_Cost_Price_Per_Unit", 0.0)),
             "Discount (₹)": format_currency(item.get("Discount_Amount_Currency", 0.0)),
-            # Start Note: calculate_financials returns a dict with normalized fields + raw inputs could be passed through.
-            # Ideally normalized_items should have tax rate. 
-            # In calculate_financials we used Raw_GST_Percentage. We should ensure it's available.
-            # For now assuming it is passed in the dict or we need to standardize it.
-            # Checking calculate_financials return: it returns specific calc fields.
-            # We need to ensure we have access to GST % here. Assuming the input dict aggregates everything.
             "Tax Rate (%)": f"{item.get('Raw_GST_Percentage', 0)}%", 
             "Net Amount (Line Total)": format_currency(item.get("Net_Line_Amount", 0.0))
         }
