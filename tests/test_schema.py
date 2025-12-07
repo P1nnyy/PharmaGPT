@@ -4,7 +4,23 @@ import os
 # Add the project root to the python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.schemas import RawLineItem, InvoiceExtraction
+from src.schemas import RawLineItem, InvoiceExtraction, NormalizedLineItem
+
+def test_normalized_line_item():
+    print("\nTesting NormalizedLineItem...")
+    try:
+        item = NormalizedLineItem(
+            Standard_Item_Name="Standard Product",
+            Pack_Size_Description="1x10 strip",
+            Standard_Quantity=10.0,
+            Calculated_Cost_Price_Per_Unit=9.5,
+            Discount_Amount_Currency=0.5,
+            Calculated_Taxable_Value=95.0,
+            Net_Line_Amount=100.0
+        )
+        print("NormalizedLineItem valid:", item)
+    except Exception as e:
+        print("NormalizedLineItem validation failed:", e)
 
 def test_raw_line_item():
     print("Testing RawLineItem...")
@@ -45,3 +61,4 @@ def test_invoice_extraction():
 if __name__ == "__main__":
     test_raw_line_item()
     test_invoice_extraction()
+    test_normalized_line_item()
