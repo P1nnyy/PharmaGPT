@@ -2,6 +2,10 @@ import sys
 import os
 import unittest
 from neo4j import GraphDatabase
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
