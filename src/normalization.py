@@ -3,10 +3,38 @@ from typing import Union, Tuple, Dict, Any
 from src.schemas import RawLineItem
 
 PRODUCT_MAPPING = {
+    # Antibiotics
     "Product A": ("Standard Product A", "10 strips"),
     "Product B": ("Standard Product B", "1x1"),
-    "Dolo 650": ("Dolo 650mg Tablet", "15 tabs"),
     "Augmentin 625": ("Augmentin 625 Duo", "10 tabs"),
+    "Augmentin Duo": ("Augmentin 625 Duo", "10 tabs"),
+    "Amoxyclav 625": ("Augmentin 625 Duo", "10 tabs"),
+    "Azithral 500": ("Azithral 500mg Tablet", "5 tabs"),
+    "Cipcal 500": ("Cipcal 500mg Window", "10 tabs"),
+    
+    # Pain & Fever
+    "Dolo 650": ("Dolo 650mg Tablet", "15 tabs"),
+    "Dolo": ("Dolo 650mg Tablet", "15 tabs"),
+    "Crocin 650": ("Crocin 650mg Advance", "15 tabs"),
+    "Calpol 500": ("Calpol 500mg Tablet", "15 tabs"),
+    "Combiflam": ("Combiflam Tablet", "20 tabs"),
+    
+    # Gastric
+    "Pan 40": ("Pan 40mg Tablet", "15 tabs"),
+    "Pan D": ("Pan D Capsule", "15 caps"),
+    "Rantac 150": ("Rantac 150mg Tablet", "30 tabs"),
+    "Omez": ("Omez 20mg Capsule", "20 caps"),
+    
+    # Vitamins
+    "Becosules": ("Becosules Capsule", "20 caps"),
+    "Limcee": ("Limcee 500mg Tablet", "15 tabs"),
+    "Shelcal 500": ("Shelcal 500mg Tablet", "15 tabs"),
+    
+    # Chronic
+    "Telma 40": ("Telma 40mg Tablet", "15 tabs"),
+    "Telma H": ("Telma H Tablet", "15 tabs"),
+    "Amlong 5": ("Amlong 5mg Tablet", "15 tabs"),
+    "Glycomet 500": ("Glycomet 500mg Tablet", "10 tabs"),
 }
 
 def parse_float(value: Union[str, float, None]) -> float:

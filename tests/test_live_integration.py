@@ -15,9 +15,19 @@ from src.persistence import ingest_invoice
 from src.normalization import normalize_line_item
 
 # Neo4j Config
-NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
+# Neo4j Config
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+# Hardening: Ensure credentials are present
+if not all([NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD]):
+    # Allow defaults only if explicitly allowed (e.g. for local dev if needed, but per request we want to strictly manage this)
+    # However, to be nice to the CI/local environment, if .env exists we expect them. 
+    # If they are missing, we should probably warn or fail. 
+    # For now, let's print a warning but not crash at import time, allowing skipTest to handle it.
+    print("WARNING: Neo4j environment variables are missing. Tests using DB will be skipped.")
+
 
 class TestLiveIntegration(unittest.TestCase):
     
