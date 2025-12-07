@@ -118,7 +118,7 @@ async def get_report(request: Request, invoice_no: str):
     MATCH (i:Invoice {invoice_number: $invoice_no})
     OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
     OPTIONAL MATCH (l)-[:REFERENCES]->(p:Product)
-    RETURN i, collect({line: l, product: p}) as items
+    RETURN i, collect({line: l, product: p, raw_desc: l.raw_description, stated_net: l.stated_net_amount}) as items
     """
     
     with driver.session() as session:
@@ -136,7 +136,17 @@ async def get_report(request: Request, invoice_no: str):
     for item in items:
         line_data = dict(item["line"]) if item["line"] else {}
         product_data = dict(item["product"]) if item["product"] else {}
-        line_items.append({**line_data, "product_name": product_data.get("name", "Unknown")})
+        
+        # Safe access for optional raw fields
+        raw_desc = item.get("raw_desc", "N/A")
+        stated_net = item.get("stated_net", 0.0)
+        
+        line_items.append({
+            **line_data, 
+            "product_name": product_data.get("name", "Unknown"),
+            "raw_product_name": raw_desc,
+            "stated_net_amount": stated_net
+        })
 
     return templates.TemplateResponse("report.html", {
         "request": request,

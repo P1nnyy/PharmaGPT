@@ -46,27 +46,31 @@ class QuantityDescriptionAgent:
         if qty_match:
              result["Raw_Quantity"] = int(qty_match.group(1))
         else:
-            # Priority 2: Standalone Integers, strictly filtering out Dosage numbers
-            # Strategy: Look for integers < 100 which are likely quantities.
-            # Avoid likely dosages: 100, 250, 500, 650, 1000 UNLESS they have units (caught above)
-            # Find all independent integers
-            int_matches = re.finditer(r'(?<!\.)\b(\d+)\b(?!\.)', row_text)
+            # Priority 2: Right-Biased Search (Overhaul)
+            # Problem: "Dolo 650" -> 650 is picked as Qty.
+            # Solution: Quantity is visually towards the right (near Rate/Amount). 
+            # Description is on the left.
+            
+            # Split text into two halves
+            mid_point = len(row_text) // 2
+            right_half = row_text[mid_point:]
+            
+            # Search for small integers ONLY in the right half
+            # Strict filter: < 100 to avoid Rates/Amounts usually
+            int_matches = re.finditer(r'(?<!\.)\b(\d+)\b(?!\.)', right_half)
             candidates = []
             
             for m in int_matches:
                 val = int(m.group(1))
-                # Heuristic: Dosage is usually large (>=100)
-                # Quantity is usually small (<100)
-                # Exception: 100 tablets. But if no unit, assume 100 is dosage or rate.
-                if 0 < val < 100: 
+                # Strict: Must be small integer (1-99)
+                if 0 < val < 100:
                     candidates.append(val)
             
             if candidates:
-                # If multiple small ints, Quantity is usually NOT the first number (Index) 
-                # but could be anywhere. 
-                # Simplification: Take the largest candidate? Or first?
-                # Usually Quantity is the largest small integer? (e.g. Index 1, Qty 10)
-                # Let's take the first one found that is > 0?
+                # If valid candidates found in right half, take the first one?
+                # Or the one closest to the end? 
+                # Usually Qty comes before Rate. Rate is near end.
+                # So Qty might be the *first* number in the right half.
                 result["Raw_Quantity"] = candidates[0]
         
         return result
@@ -75,33 +79,52 @@ class RateAmountAgent:
     """Agent 3: Specialized for Rates and Net Amount."""
     def extract(self, row_text: str) -> Dict[str, Any]:
         result = {}
-        # Strategy: Strict spatial search for Financials
-        # 1. Net Amount is LAST columns.
-        # 2. Rate is preceding Amount.
+        # Strategy: Tail-End Net Amount Localization (Overhaul)
+        # We only look for the Net Amount in the absolute last part of the string.
         
-        # Regex for currency-like float: 1,234.00 or 1234.00 (Must have decimal .XX)
-        # This reduces noise from dates/integers.
-        float_regex = r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b'
-        matches = list(re.finditer(float_regex, row_text))
+        # 1. Define "Tail End" : Last 20 chars? Or split by spaces and take last token?
+        # Safe bet: Last 25% of string?
+        # Better: Regex anchored to end, or just search in slice.
         
-        if not matches:
-             # Fallback: looser float (just .d+)
-             matches = list(re.finditer(r'\b\d+\.\d+\b', row_text))
-        
-        if matches:
-            matches.sort(key=lambda m: m.start())
+        target_zone_len = 25
+        if len(row_text) > target_zone_len:
+            tail_text = row_text[-target_zone_len:]
+        else:
+            tail_text = row_text
             
-            # 1. Stated_Net_Amount: Must be the last one, and ideally near end of string
-            # We trust the last float found is the Net Amount.
-            min_matches = 1
-            amount_match = matches[-1]
+        # Regex for currency-like float in tail
+        float_regex = r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b'
+        tail_matches = list(re.finditer(float_regex, tail_text))
+        
+        if tail_matches:
+            # Trust the LAST match in the TAIL zone.
+            amount_match = tail_matches[-1]
             result["Stated_Net_Amount"] = float(amount_match.group().replace(',', ''))
             
-            # 2. Rate: The number immediately preceding the Net Amount
-            if len(matches) >= 2:
-                rate_match = matches[-2]
-                result["Raw_Rate_Column_1"] = float(rate_match.group().replace(',', ''))
-                
+            # 2. Rate: Found relative to the GLOBAL string position of the Amount match?
+            # actually, simpler: Find all floats in the WHOLE string, identify which one is the Amount (by value matching), 
+            # then pick the one before it.
+            
+            all_matches = list(re.finditer(float_regex, row_text))
+            
+            # Locate our identified Amount in the full list
+            # (Matching by start index relative to full string)
+            # Offset of tail logic:
+            offset = len(row_text) - len(tail_text)
+            abs_start = offset + amount_match.start()
+            
+            # Find which match in all_matches corresponds to this
+            rate_candidate = None
+            for i, m in enumerate(all_matches):
+                if m.start() == abs_start or abs(m.start() - abs_start) < 2: # Tolerance
+                    # This is our Amount. Rate is the one before it.
+                    if i > 0:
+                        rate_candidate = all_matches[i-1]
+                    break
+            
+            if rate_candidate:
+                 result["Raw_Rate_Column_1"] = float(rate_candidate.group().replace(',', ''))
+                 
         return result
 
 class PercentageAgent:
@@ -428,7 +451,29 @@ class ValidatorAgent:
             
         except Exception as e:
             logger.error(f"Validation Failed: {e}")
-            return None
+
+
+def _find_heuristic_match(gemini_item: Dict[str, Any], heuristic_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Links a Gemini item to a Heuristic item using Financial Linking.
+    Criterion: Stated_Net_Amount must match within ±1.00 tolerance.
+    """
+    g_net = gemini_item.get("Stated_Net_Amount")
+    
+    # If Gemini didn't find a net amount, we can't link reliably by financials.
+    # Return all? Or None?
+    # If we return None, consensus has no fallback.
+    # If we return all, consensus might pick wrong data.
+    if g_net is None or g_net == 0:
+        return []
+    
+    matches = []
+    for h in heuristic_items:
+        h_net = h.get("Stated_Net_Amount")
+        if h_net and abs(h_net - g_net) <= 1.0:
+            matches.append(h)
+            
+    return matches
 
 def extract_invoice_data(invoice_image_path: str) -> Optional[Dict[str, Any]]:
     """
@@ -497,17 +542,8 @@ def extract_invoice_data(invoice_image_path: str) -> Optional[Dict[str, Any]]:
     if len(gemini_line_items) > 0:
         # Strategy: Iterate Gemini Items. 
         # For each, validation is implicitly done by Consensus (checking for non-nulls).
-        # Fallback: If a field is missing, can we look at the raw text? 
-        # Without matching rows, it's guessing. 
-        # So we will pass "empty" heuristics to Consensus unless we can match?
-        # 
-        # WAIT. The prompt says "Repurpose... heuristics to act as Validator... serve as backup".
-        # 
-        # Let's simple-match heuristics:
-        # We run heuristics on ALL rows. We get a pool of "potential items".
-        # For a Gemini item, if it needs a value, we check if any Heuristic Item looks "similar" (e.g. same Description) and has the missing value.
         
-        # 1. Run Heuristics on all rows to build a "Knowledge Base"
+        # 1. Run Heuristics on all rows to build a "Knowledge Base" (Backup Candidates)
         heuristic_items = []
         for row in row_texts:
             if len(row) < 5: continue
@@ -520,30 +556,8 @@ def extract_invoice_data(invoice_image_path: str) -> Optional[Dict[str, Any]]:
             
         # 2. Resolve each Gemini Item
         for g_item in gemini_line_items:
-            # Find matching heuristic context?
-            # Match by Description (fuzzy) or Amount?
-            desc = g_item.get("Original_Product_Description", "")
-            matches = []
-            if desc:
-                desc_lower = desc.lower()
-                # Enhanced Fuzzy Match:
-                # 1. Direct containment (heuristic in Gemini or vice versa)
-                # 2. Token overlap (if abbreviations used)
-                for h in heuristic_items:
-                    h_desc = h.get("Original_Product_Description", "").lower()
-                    if not h_desc: continue
-                    
-                    # Containment
-                    if h_desc in desc_lower or desc_lower in h_desc:
-                         matches.append(h)
-                         continue
-                    
-                    # Token Set Overlap (Simple Jaccard-ish)
-                    h_tokens = set(h_desc.split())
-                    g_tokens = set(desc_lower.split())
-                    common = h_tokens.intersection(g_tokens)
-                    if len(common) >= 2: # At least 2 words match (e.g. "Dolo" "650")
-                         matches.append(h)
+            # Overhaul: Financial Linking (Match by Stated_Net_Amount)
+            matches = _find_heuristic_match(g_item, heuristic_items)
             
             final_item = consensus.resolve(g_item, matches)
             line_items.append(final_item)

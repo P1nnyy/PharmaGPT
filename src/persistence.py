@@ -23,9 +23,9 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
         # Using a transaction for atomicity
         session.write_transaction(_create_invoice_tx, invoice_data, grand_total)
         
-        # 2. Process Line Items
-        for item in normalized_items:
-            session.write_transaction(_create_line_item_tx, invoice_data.Invoice_No, item)
+    # 2. Process Line Items
+        for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
+            session.write_transaction(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item)
 
 def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
     query = """
@@ -44,7 +44,7 @@ def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
            invoice_date=invoice_data.Invoice_Date,
            grand_total=grand_total)
 
-def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any]):
+def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: Any):
     query = """
     MATCH (i:Invoice {invoice_number: $invoice_no})
     
@@ -58,7 +58,9 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any]):
         cost_price: $cost_price,
         discount_amount: $discount_amount,
         taxable_value: $taxable_value,
-        net_amount: $net_amount
+        net_amount: $net_amount,
+        raw_description: $raw_desc,
+        stated_net_amount: $stated_net
     })
     
     // Create Relationships
@@ -74,4 +76,6 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any]):
            cost_price=item.get("Calculated_Cost_Price_Per_Unit"),
            discount_amount=item.get("Discount_Amount_Currency"),
            taxable_value=item.get("Calculated_Taxable_Value"),
-           net_amount=item.get("Net_Line_Amount"))
+           net_amount=item.get("Net_Line_Amount"),
+           raw_desc=raw_item.Original_Product_Description,
+           stated_net=float(raw_item.Stated_Net_Amount) if raw_item.Stated_Net_Amount is not None else 0.0)
