@@ -27,11 +27,18 @@ GEMINI_API_KEY=your_gemini_vision_api_key
 ```
 (*Note: Without `GEMINI_API_KEY`, the system falls back to mock data.*)
 
-### 4. Run the API Server
+### 4.To run the full backend:
 ```bash
 python src/api/server.py
 ```
-The API will start at `http://0.0.0.0:8000`.
+The extraction logic is sophisticated:
+1.  **Contextual Financial Identification**: Distinguishes "Rate/Doz" from simple Unit Rate.
+2.  **Net Amount Localization**: Spatially aware of the far-right column for totals.
+3.  **Strict Quantity/Dosage Separation**: Avoids confusing "650" (mg) with 650 (qty).
+4.  **GST Extraction**: Explicitly parsing tax percentages.
+5.  **Multi-Agent Redundancy**: If Gemini misses a field, Heuristic Agents (e.g., regex-based) fill the gaps.
+
+Access the API at `http://0.0.0.0:8000/docs`.
 
 ## API Usage
 

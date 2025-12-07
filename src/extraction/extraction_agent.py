@@ -30,21 +30,35 @@ class QuantityDescriptionAgent:
         parts = re.split(r'\s{2,}', row_text.strip())
         
         # Assumption: Description is often the first or second long string. 
-        # AVOID: "10 strips" or "batch001" being mistaken as desc.
+        # Refinement: Exclude parts that look like Batch, Date, or just Numbers.
         for part in parts:
-            if len(part) > 5 and not re.match(r'^[\d\s\%\.\-]+$', part) and "strip" not in part.lower():
+            # Filter out pure numbers, dates (YYYY-MM-DD), or short codes
+            is_noise = re.match(r'^[\d\s\%\.\-\/]+$', part) or len(part) < 4 or "batch" in part.lower()
+            if not is_noise and "strip" not in part.lower():
                 result["Original_Product_Description"] = part
                 break
         
         # 2. Quantity: 
-        # Strategy: 
-        # - Look for numbers followed by units (strips, tabs, box)
-        # - Or look for isolated integers < 1000 that are NOT in the Description or Amount columns.
+        # Strategy: Prioritize explicit unit markers.
+        # Regex for quantity pattern with units
+        unit_regex = r'\b(\d+(\.\d+)?)\s*(strips?|tabs?|caps?|box|nos|x\d+)\b'
+        qty_match = re.search(unit_regex, row_text, re.IGNORECASE)
         
-        # Priority 1: Explicit Unit
-        qty_match = re.search(r'\b(\d+(\.\d+)?)\s*(strips|tabs|caps|box|nos|x\d+)\b', row_text, re.IGNORECASE)
         if qty_match:
             result["Raw_Quantity"] = qty_match.group(1)
+        else:
+            # Fallback: extensive search for isolated small integers (likely Quantity)
+            # Avoid numbers that look like rates (contain decimal points)
+            # Look for explicit integer boundaries
+            int_matches = re.findall(r'\b(\d{1,4})\b', row_text)
+            # Filter out years? 2024, 2025.
+            candidates = [int(x) for x in int_matches if int(x) < 500 and int(x) not in [2024, 2025]]
+            if candidates:
+                # If we have candidates, which one is Quantity?
+                # Usually it's disjoint from the very end (Amount).
+                # Very naive: pick the first plausible integer that isn't at the very start (IndexNo).
+                if len(candidates) > 0:
+                    result["Raw_Quantity"] = candidates[0]
         
         return result
 
@@ -52,36 +66,40 @@ class RateAmountAgent:
     """Agent 3: Specialized for Rates and Net Amount."""
     def extract(self, row_text: str) -> Dict[str, Any]:
         result = {}
-        # Find all float-like numbers
-        # Valid amount: e.g. 100.00, 1,050.00
-        numbers = [float(x.replace(',','')) for x in re.findall(r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b', row_text)]
+        # Find all float-like numbers with position
+        # We need independent matches to judge position
+        matches = list(re.finditer(r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b', row_text))
         
-        if not numbers:
-             # Fallback: looser float search
-             numbers = [float(x) for x in re.findall(r'\b\d+\.\d{2}\b', row_text)]
+        if not matches:
+             matches = list(re.finditer(r'\b\d+\.\d{2}\b', row_text))
         
-        if numbers:
-            # Heuristic: Net Amount is typically in the rightmost column (Last number)
-            # CAUTION: Sometimes there are trailing percentages or page numbers.
-            # But usually Amount is the biggest number AND on the right.
+        if matches:
+            # matches is a list of match objects.
+            # Logic: 
+            # 1. Net Amount is likely the LAST number (Far Right).
+            # 2. Rate is likely in the MIDDLE.
             
-            # Sort by position in text? Re.findall loses position.
-            # Let's trust "Largest Number" combined with "Last or Second Last" logic implicitly.
-            # Actually, "Largest Number" is still a decent decent base heuristic for Amount, 
-            # UNLESS there is MRP which is higher (rare for Net Amount, but possible).
-            # BETTER: The Amount is usually the last valid float on the line representing a monetary value.
+            # Sort by start position just in case
+            matches.sort(key=lambda m: m.start())
             
-            # Let's take the LAST number as the Amount candidate first?
-            # Or Max? 
-            # Reverting to Max for safety but flagging it.
-            result["Stated_Net_Amount"] = max(numbers)
+            # Amount Candidate: The very last float found
+            amount_match = matches[-1]
+            result["Stated_Net_Amount"] = float(amount_match.group().replace(',', ''))
             
-            # Heuristic: Rate is usually present and smaller than Amount.
-            remaining = [n for n in numbers if n != result["Stated_Net_Amount"]]
-            if remaining:
-                # Rate is likely the first or second monetary value.
-                # If we have Quantity, Expected Rate ~ Amount / Qty.
-                result["Raw_Rate_Column_1"] = remaining[0] 
+            # Rate Candidate: 
+            # If we have multiple numbers, Rate is likely before Amount.
+            # But usually after Quantity? 
+            # Let's take the number simply immediately preceding Amount as the primary candidate?
+            # Or better: The number closest to the "visual middle"?
+            # Let's try: Preceding Amount.
+            if len(matches) > 1:
+                # Exclude the Amount match
+                remaining = matches[:-1]
+                # Take the last of the remaining (which is the one just before Amount)
+                # This corresponds to standard invoice layout: ... Qty Rate Amount
+                if remaining:
+                    rate_match = remaining[-1]
+                    result["Raw_Rate_Column_1"] = float(rate_match.group().replace(',', ''))
                 
         return result
 
@@ -219,17 +237,22 @@ class GeminiExtractorAgent:
             prompt = """
             Extract the invoice data into a strict JSON object.
             
-            CRITICAL BUSINESS LOGIC:
-            1. **Quantity vs Dosage**: Do NOT confuse dosage numbers (e.g., "650" in "Dolo 650") with Quantity. 
-               - Look for the 'Quantity' column specifically.
-               - Quantity often has units like "strips", "tabs", "box", or is a small integer (1-100) separate from the name.
+            CRITICAL BUSINESS LOGIC AND SPATIAL AWARENESS:
+            1. **Financial Context (Rate)**: 
+               - Identify the "Rate" column used for calculation. Distinguish it from MRP or PTR if possible.
+               - **IMPORTANT**: If the rate is per dozen or pack (e.g., "Rate/Doz"), extract this value into 'Raw_Rate_Column_1'.
             
-            2. **Rate Handling**:
-               - Identify if the rate is per item or per pack/dozen.
-               - If you see "Rate/Doz" or similar, note the value in 'Raw_Rate_Column_1'.
+            2. **Net Amount Localization**:
+               - The 'Stated_Net_Amount' is almost always in the **FAR-RIGHT column** of the table.
+               - Do NOT confuse it with MRP or Gross Value. It is the final total for that line item.
             
-            3. **Tax/GST**:
-               - Extract 'Raw_GST_Percentage' explicitly (e.g. 5, 12, 18).
+            3. **Quantity vs Dosage**:
+               - **Strictly separate** Dosage (e.g. "650" in "Dolo 650") from Quantity.
+               - Look for the dedicated 'Quantity' column.
+               - Quantity often has units like "strips", "tabs", "box", or is a small integer (1-100).
+            
+            4. **Tax/GST**:
+               - Extract 'Raw_GST_Percentage' explicitly (e.g. 5, 12, 18) if available in a column.
             
             The JSON must have the following keys:
             - "Supplier_Name": String (e.g. "Emm Vee Traders")
@@ -239,9 +262,9 @@ class GeminiExtractorAgent:
                 - "Original_Product_Description": String (the full name, e.g. "Dolo 650mg Tablet")
                 - "Raw_Quantity": Number or String (Value only, e.g. 10. Prefer numbers.)
                 - "Batch_No": String
-                - "Raw_Rate_Column_1": Number (The primary rate. Check for Rate/Doz indicators.)
+                - "Raw_Rate_Column_1": Number (The primary unit price/rate.)
                 - "Raw_Rate_Column_2": Number (Secondary rate if exists, else null)
-                - "Stated_Net_Amount": Number (The total amount line total)
+                - "Stated_Net_Amount": Number (The total amount from the FAR-RIGHT column)
                 - "Raw_Discount_Percentage": Number (e.g. 10 for 10%, else null)
                 - "Raw_GST_Percentage": Number (e.g. 12 for 12%, else null)
             
