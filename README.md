@@ -17,7 +17,33 @@ So, I built this thing to take that chaos and turn it into clean, structured dat
 ## How to run this bad boy
 
 ### 1. The Full Stack (Extraction + API)
-Make sure you have your `.env` file set up with your Neo4j credentials first!
+Make sure you have your### 3. Configure Environment
+Create a `.env` file in the project root:
+```bash
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_password
+GEMINI_API_KEY=your_gemini_vision_api_key
+```
+(*Note: Without `GEMINI_API_KEY`, the system falls back to mock data.*)
+
+### 4. Run the API Server
+```bash
+python src/api/server.py
+```
+The API will start at `http://0.0.0.0:8000`.
+
+## API Usage
+
+### POST /process-invoice
+Upload an invoice image (JPEG/PNG) to extract data.
+**Request:** `multipart/form-data` with key `file`.
+
+**Response:** JSON object containing `status` and `normalized_data`.
+
+### GET /report/{invoice_no}
+View a human-readable HTML report of the processed invoice.
+`.env` file set up with your Neo4j credentials first!
 
 ```bash
 # Install the goods

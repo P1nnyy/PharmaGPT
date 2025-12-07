@@ -1,10 +1,24 @@
 import logging
 import re
+import os
+import json
 from typing import Dict, Any, List, Optional
 from src.schemas import InvoiceExtraction, RawLineItem
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Configure Gemini
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+genai = None
+# Only attempt to import if we have a key (prevents crashes in test envs with broken deps)
+if GEMINI_API_KEY:
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+    except Exception as e:
+        logger.warning(f"Failed to import google.generativeai: {e}. Gemini Vision features will be unavailable.")
+        genai = None
 
 class QuantityDescriptionAgent:
     """Agent 2: Specialized for Description and Quantity."""
@@ -111,10 +125,51 @@ class ConsensusEngine:
 
         return RawLineItem(**final_data)
 
-# ... imports ...
-import json
+def _mock_ocr(image_path: str) -> Dict[str, Any]:
+    """
+    Simulates OCR process returning Header Text and List of Line Item Rows.
+    Structure: {"header": str, "rows": List[str]}
+    """
+    if "emm_vee" in image_path.lower():
+        return {
+            "header": "INVOICE HEADER\nEmm Vee Traders\nLic No: 12345",
+            "rows": [
+                "Dolo 650     10 strips     Batch001     100.00     1050.00",
+                "Augmentin 625   5 strips   Batch002     200.00     1050.00   5%"
+            ]
+        }
+    return {
+        "header": "Generic Invoice Data...",
+        "rows": []
+    }
 
-# ... existing code ...
+def get_raw_text_from_vision(image_path: str) -> Dict[str, Any]:
+    """
+    Uses Gemini Vision to get raw text (header + rows).
+    Falls back to mock OCR if key is missing or validation fails.
+    """
+    if not GEMINI_API_KEY or genai is None:
+        logger.warning("No Gemini Key or module. Using Mock OCR.")
+        return _mock_ocr(image_path)
+        
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        myfile = genai.upload_file(image_path, display_name="InvoiceRaw")
+        # Prompt for raw text extraction
+        prompt = "Extract all text from this invoice. Return the raw text exactly as it appears, line by line."
+        response = model.generate_content([myfile, prompt])
+        text = response.text
+        
+        # Simple processing: First few lines header, rest rows
+        lines = [l for l in text.split('\n') if l.strip()]
+        
+        return {
+            "header": "\n".join(lines[:5]) if lines else "",
+            "rows": lines[5:] if len(lines) > 5 else lines
+        }
+    except Exception as e:
+        logger.error(f"Gemini Vision Raw Text failed: {e}")
+        return _mock_ocr(image_path)
 
 class GeminiExtractorAgent:
     """
@@ -124,8 +179,11 @@ class GeminiExtractorAgent:
         """
         Asks Gemini to extract the full invoice as a structured JSON object.
         """
-        if not GEMINI_API_KEY:
-            logger.warning("GEMINI_API_KEY not set. Cannot use GeminiExtractorAgent.")
+        if not GEMINI_API_KEY or genai is None:
+            if not GEMINI_API_KEY:
+                logger.warning("GEMINI_API_KEY not set. Cannot use GeminiExtractorAgent.")
+            if genai is None:
+                 logger.warning("google.generativeai module not available.")
             return {}
             
         try:
@@ -253,6 +311,38 @@ class ConsensusEngine:
                     else: final_data[field] = None
 
         return RawLineItem(**final_data)
+
+class ValidatorAgent:
+    """Agent 5: Validator and Pydantic Check"""
+    def validate(self, extraction_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            # 1. Pydantic Validation (Structural & Type Check)
+            model = InvoiceExtraction(**extraction_data)
+            
+            # 2. Financial Sanity Checks (Business Logic)
+            for item in model.Line_Items:
+                # Sanity: Quantity must be positive (parsing might result in 0 or negative)
+                if isinstance(item.Raw_Quantity, (int, float)) and item.Raw_Quantity <= 0:
+                     logger.warning(f"Validation Warning: Non-positive quantity for {item.Original_Product_Description}")
+                
+                # Sanity: Net Amount plausible? (if Rate and Qty available)
+                # Just a loose check if both are numeric
+                if (isinstance(item.Raw_Quantity, (int, float)) and 
+                    isinstance(item.Raw_Rate_Column_1, (int, float)) and 
+                    isinstance(item.Stated_Net_Amount, (int, float))):
+                    
+                    expected = item.Raw_Quantity * item.Raw_Rate_Column_1
+                    if item.Stated_Net_Amount > expected * 2: # Very loose check (allows for tax/errors)
+                        logger.warning(f"Validation Warning: Net Amount {item.Stated_Net_Amount} seems high compared to Qty * Rate {expected}")
+
+            logger.info("Validation Successful")
+            return model.model_dump()
+            
+        except Exception as e:
+            logger.error(f"Validation Failed: {e}")
+            # In a real system, might return None or raise Error. 
+            # Returning None signals failure to downstream.
+            return None
 
 def extract_invoice_data(invoice_image_path: str) -> Optional[Dict[str, Any]]:
     """
