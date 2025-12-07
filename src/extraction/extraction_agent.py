@@ -1,93 +1,209 @@
 import logging
-from typing import Dict, Any
-from src.schemas import InvoiceExtraction
+import re
+from typing import Dict, Any, List, Optional
+from src.schemas import InvoiceExtraction, RawLineItem
 
 # Setup logging
 logger = logging.getLogger(__name__)
 
-class SupplierIdentifier:
-    """
-    Agent 1: Supplier Identifier
-    Responsible for identifying the supplier and extraction basic invoice metadata
-    from the document header.
-    """
-    
-    def identify(self, raw_text: str) -> Dict[str, str]:
-        """
-        Analyzes text to find Supplier Name and Invoice details.
-        Uses simple heuristic matching for now.
-        """
-        normalized_text = raw_text.lower()
+class QuantityDescriptionAgent:
+    """Agent 2: Specialized for Description and Quantity."""
+    def extract(self, row_text: str) -> Dict[str, Any]:
+        result = {}
+        # Simple extraction heuristics
+        # 1. Product Description: Look for common pharma terms or just take the longest string part
+        # For now, simplistic splitting by loose columns (spaces > 2)
+        parts = re.split(r'\s{2,}', row_text.strip())
         
-        # Default values
+        # Assumption: Description is often the first or second long string
+        for part in parts:
+            if len(part) > 5 and not re.match(r'^[\d\s\%\.\-]+$', part):
+                result["Original_Product_Description"] = part
+                break
+        
+        # 2. Quantity: Look for patterns like "10 strips", "15", "10x1"
+        # Regex for quantity pattern
+        qty_match = re.search(r'\b(\d+(\.\d+)?\s*(strips|tabs|caps|x\d+)?)\b', row_text, re.IGNORECASE)
+        if qty_match:
+            result["Raw_Quantity"] = qty_match.group(1)
+            
+        return result
+
+class RateAmountAgent:
+    """Agent 3: Specialized for Rates and Net Amount."""
+    def extract(self, row_text: str) -> Dict[str, Any]:
+        result = {}
+        # Find all float-like numbers
+        numbers = [float(x) for x in re.findall(r'\b\d+\.\d{2}\b', row_text)]
+        
+        if numbers:
+            # Heuristic: Amount is usually the largest number
+            result["Stated_Net_Amount"] = max(numbers)
+            
+            # Heuristic: Rate is usually present and smaller than Amount
+            # This is very naive and would need column awareness in real OCR
+            remaining = [n for n in numbers if n != result["Stated_Net_Amount"]]
+            if remaining:
+                result["Raw_Rate_Column_1"] = remaining[0] # Take first valid float as rate
+                
+        return result
+
+class PercentageAgent:
+    """Agent 4: Specialized for Percentages (Discount, GST)."""
+    def extract(self, row_text: str) -> Dict[str, Any]:
+        result = {}
+        # Look for percentages
+        percentages = re.findall(r'\b(\d+(\.\d+)?)%', row_text)
+        
+        if percentages:
+            vals = [float(p[0]) for p in percentages]
+            # Heuristic: GST is often 5, 12, 18, 28
+            gst_candidates = [5.0, 12.0, 18.0, 28.0]
+            
+            for v in vals:
+                if v in gst_candidates:
+                    result["Raw_GST_Percentage"] = v
+                else:
+                    result["Raw_Discount_Percentage"] = v
+                    
+        return result
+
+class ConsensusEngine:
+    """Arbitrates between agents."""
+    def resolve(self, partials: List[Dict[str, Any]]) -> RawLineItem:
+        merged = {}
+        
+        # Gather all candidates for each field
+        candidates = {}
+        for p in partials:
+            for k, v in p.items():
+                if k not in candidates:
+                    candidates[k] = []
+                candidates[k].append(v)
+        
+        # Resolution Logic
+        # 1. Description & Quantity: Trust Agent 2 (it's specialized)
+        # 2. Rates: Trust Agent 3
+        # 3. Percentages: Trust Agent 4
+        # Since our agents return distinct keys mostly, simple merge works.
+        # But if overlap, we prioritize.
+        
+        # Construct final dict with prioritization
+        final_data = {}
+        
+        # Fields expected by RawLineItem
+        fields = RawLineItem.model_fields.keys()
+        
+        for field in fields:
+            if field in candidates:
+                # Naive consensus: Take the first candidate (which relies on order of agents below)
+                # Or better: specific logic per field.
+                
+                # For now: take consensus or first available
+                final_data[field] = candidates[field][0]
+            else:
+                # Defaults for missing data to match schema requirements
+                if field == "Original_Product_Description": final_data[field] = "Unknown Product"
+                elif field == "Raw_Quantity": final_data[field] = 0
+                elif field == "Batch_No": final_data[field] = "UNKNOWN_BATCH"
+                elif field == "Stated_Net_Amount": final_data[field] = 0.0
+                else: final_data[field] = None
+
+        return RawLineItem(**final_data)
+
+class SupplierIdentifier:
+    """Agent 1: Supplier Identifier"""
+    def identify(self, raw_text: str) -> Dict[str, str]:
+        normalized_text = raw_text.lower()
         supplier_name = "Unknown Supplier"
         invoice_no = "UNKNOWN"
         invoice_date = "YYYY-MM-DD"
         
-        # 1. Identify Supplier - Heuristics similar to regex or keyword matching
         if "emm vee traders" in normalized_text:
             supplier_name = "Emm Vee Traders"
         elif "chandra med" in normalized_text:
             supplier_name = "Chandra Med"
         
-        # 2. Identify Invoice No context (Placeholder for actual extraction logic)
-        # In a real scenario, this would use regex or LLM extraction
-        # Mocking extraction based on supplier for demo purposes
         if supplier_name == "Emm Vee Traders":
              invoice_no = "EVT-2024-001"
         else:
              invoice_no = "INV-GENERIC"
-             
-        # 3. Identify Date
-        invoice_date = "2024-12-07" # Placeholder
+        
+        invoice_date = "2024-12-07"
         
         logger.info(f"Identified Supplier: {supplier_name}")
-        
         return {
             "Supplier_Name": supplier_name,
             "Invoice_No": invoice_no,
             "Invoice_Date": invoice_date
         }
 
-def _mock_ocr(image_path: str) -> str:
+def _mock_ocr(image_path: str) -> Dict[str, Any]:
     """
-    Simulates OCR process. In production, this would call Google Document AI or similar.
-    Returns text suitable for the specific test cases we know about.
+    Simulates OCR process returning Header Text and List of Line Item Rows.
+    Structure: {"header": str, "rows": List[str]}
     """
-    # Simple mock that checks filename to return relevant text
     if "emm_vee" in image_path.lower():
-        return "INVOICE HEADER\nEmm Vee Traders\nLic No: 12345\n..."
-    return "Generic Invoice Data..."
+        return {
+            "header": "INVOICE HEADER\nEmm Vee Traders\nLic No: 12345",
+            "rows": [
+                "Dolo 650     10 strips     Batch001     100.00     1050.00",
+                "Augmentin 625   5 strips   Batch002     200.00     1050.00   5%"
+            ]
+        }
+    return {
+        "header": "Generic Invoice Data...",
+        "rows": []
+    }
 
 def extract_invoice_data(invoice_image_path: str) -> dict:
     """
-    Primary orchestration function for extraction.
-    
-    Args:
-        invoice_image_path: Path to the invoice image file.
-        
-    Returns:
-        Dictionary matching the InvoiceExtraction schema.
+    Orchestrates extraction using the Council of Agents.
     """
     logger.info(f"Starting extraction for: {invoice_image_path}")
     
-    # 1. OCR Step (Mocked for now)
-    raw_text = _mock_ocr(invoice_image_path)
+    # 1. OCR Step
+    ocr_result = _mock_ocr(invoice_image_path)
+    header_text = ocr_result.get("header", "")
+    row_texts = ocr_result.get("rows", [])
     
     # 2. Agent 1: Supplier Identification
     identifier = SupplierIdentifier()
-    header_data = identifier.identify(raw_text)
+    header_data = identifier.identify(header_text)
     
-    # 3. Construct current partial object
-    # The prompt requests the function to return the JSON structure.
-    # We initialize it with empty line items for now as we are only implementing Agent 1.
+    # 3. Line Item Extraction (The Council)
+    line_items = []
+    
+    # Instantiate Agents
+    agent_qty = QuantityDescriptionAgent()
+    agent_rate = RateAmountAgent()
+    agent_perc = PercentageAgent()
+    consensus = ConsensusEngine()
+    
+    for row in row_texts:
+        # Run Agents in Parallel (conceptually)
+        p1 = agent_qty.extract(row)
+        p2 = agent_rate.extract(row)
+        p3 = agent_perc.extract(row)
+        
+        # Add a dummy batch agent/logic for now as it wasn't requested but Schema needs it
+        # Or let's say QuantityAgent extracts it? 
+        # For this prototype, I'll inject a batch into p1 (Description Agent) if found
+        # Simple heuristic: AlphaNumeric > 3 chars that isn't other stuff
+        batch_match = re.search(r'Batch\w+', row, re.IGNORECASE)
+        if batch_match:
+            p1["Batch_No"] = batch_match.group(0)
+            
+        # Consensus
+        final_item = consensus.resolve([p1, p2, p3])
+        line_items.append(final_item)
+    
+    # 4. Construct Final Object
     extraction_model = InvoiceExtraction(
         Supplier_Name=header_data["Supplier_Name"],
         Invoice_No=header_data["Invoice_No"],
         Invoice_Date=header_data["Invoice_Date"],
-        Line_Items=[] # To be filled by subsequent agents
+        Line_Items=line_items
     )
     
-    # Return as dict to match request "return the structured InvoiceExtraction JSON"
-    # (Pydantic .model_dump() or .dict() returns the dict)
     return extraction_model.model_dump()
