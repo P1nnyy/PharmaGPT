@@ -55,10 +55,23 @@ class GeminiOCR:
                 mime_type = "image/webp"
 
             prompt = """
-            Extract all text from this invoice image line by line.
-            Do not summarize. 
-            Output the result as a simple list of strings, where each string represents a line of text from the image.
-            Maintain the spatial structure as much as possible (e.g. columns on the same line should be in the same string).
+            Extract the main product table from this invoice image.
+            
+            1. **Table Boundaries**: 
+               - Start extracting from the header row (typically "Particulars", "S.No.", "Description", "Product").
+               - Stop strictly before the summary rows ("Total", "GST Summary") or any separate tables for "Free Product Qty".
+            
+            2. **Column Selection & Logic**:
+               - **Description**: Extract the full product description.
+               - **Batch**: Extract the Batch Number column.
+               - **Quantity**: Extract the value strictly from the column labeled 'Qty' or 'Pack Size'. **IGNORE** columns labeled 'Free', 'Scheme', or 'Code'.
+               - **Rate**: Extract the Rate/PTR.
+               - **Amount**: Extract the Taxable or Net Amount.
+
+            3. **Output Format**:
+               - Output each row of the table as a single line of text.
+               - Do not output summaries, headers, or footers.
+               - Maintain the spatial arrangement of the columns in the text line (e.g., "1. Dolo 650   BatchX   10   25.00").
             """
             
             response = self.model.generate_content(
@@ -82,8 +95,37 @@ class GeminiOCR:
 class BatchAgent:
     def extract(self, row_text: str) -> Dict[str, Any]:
         result = {}
-        # TODO: Implement batch number extraction logic
-        # For now, this is a placeholder to satisfy the structural requirement.
+        # Search for short, strong alphanumeric strings (3-10 chars)
+        # Regex: \b[A-Z0-9-]{3,10}\b
+        # We use findall to get all candidates, then filter.
+        candidates = re.findall(r'\b([A-Z0-9-]{3,10})\b', row_text.strip())
+        
+        best_candidate = None
+        
+        for cand in candidates:
+            # Filter pure numbers (likely quantities/strengths like "650", "625")
+            if re.match(r'^\d+$', cand):
+                continue
+            
+            # Filter common headers or noise
+            if cand in ["RATE", "QTY", "DATE", "MRP", "NET", "HSN"]:
+                continue
+
+            # Prioritize mixed alphanumeric (has letter AND digit)
+            # If we find a mixed one, it's a very strong candidate.
+            if re.search(r'[A-Z]', cand) and re.search(r'\d', cand):
+                best_candidate = cand
+                break
+            
+            # Fallback: specific uppercase codes (like "BATCH") are unlikely due to length filter 3-10
+            # but if we have "ABC" and "X123", we prefer "X123".
+            # If we haven't found a mixed one yet, keep this as tentative (if it's not noise)
+            if not best_candidate:
+                best_candidate = cand
+
+        if best_candidate:
+             result["Batch_No"] = best_candidate
+                 
         return result
 
 
@@ -203,6 +245,7 @@ def extract_invoice_data(image_path: str) -> Dict[str, Any]:
     agent_qty = QuantityDescriptionAgent()
     agent_rate = RateAmountAgent()
     agent_perc = PercentageAgent()
+    agent_batch = BatchAgent()
     
     line_items = []
     
@@ -213,9 +256,10 @@ def extract_invoice_data(image_path: str) -> Dict[str, Any]:
         p1 = agent_qty.extract(row)
         p2 = agent_rate.extract(row)
         p3 = agent_perc.extract(row)
+        p4 = agent_batch.extract(row)
         
         # Merge Heuristics
-        combined_item = {**p1, **p2, **p3}
+        combined_item = {**p1, **p2, **p3, **p4}
         
         # 3. Filtering Criteria
         # Must have a Net Amount to be considered a valid line item 
