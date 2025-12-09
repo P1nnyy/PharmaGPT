@@ -20,9 +20,9 @@ from src.extraction.extraction_agent import extract_invoice_data
 
 load_dotenv()
 
-# Basic validation that GEMINI_API_KEY exists (optional but good practice)
-if not os.getenv("GEMINI_API_KEY"):
-    print("WARNING: GEMINI_API_KEY not found in environment variables.")
+# Basic validation that API Key exists (optional but good practice)
+if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+    print("WARNING: GEMINI_API_KEY or GOOGLE_API_KEY not found in environment variables.")
 
 app = FastAPI(title="Invoice Extractor API")
 
