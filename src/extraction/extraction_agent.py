@@ -9,68 +9,74 @@ from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
+import google.generativeai as genai
+from google.api_core import exceptions as google_exceptions
+
 # Configure API Key (Support both variable names)
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
-class GoogleVisionOCR:
+class GeminiOCR:
     """
-    OCR Engine using Google Cloud Vision REST API.
-    Does not require google-cloud-vision library.
+    OCR Engine using Gemini 1.5 Flash.
     """
     def __init__(self, api_key: str):
         self.api_key = api_key
-        # API Endpoint
-        self.url = f"https://vision.googleapis.com/v1/images:annotate?key={self.api_key}"
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-2.5-flash')
+        else:
+            self.model = None
 
     def extract_text(self, image_path: str) -> List[str]:
         """
-        Sends image to GCV and returns a list of text rows.
+        Sends image to Gemini and returns a list of text rows.
         """
-        if not self.api_key:
-            logger.warning("No API Key provided for GoogleVisionOCR.")
+        if not self.model:
+            logger.warning("No API Key provided for GeminiOCR.")
             return []
 
         try:
-            with open(image_path, "rb") as img_file:
-                content = base64.b64encode(img_file.read()).decode("utf-8")
-
-            payload = {
-                "requests": [
-                    {
-                        "image": {"content": content},
-                        "features": [{"type": "TEXT_DETECTION"}]
-                    }
-                ]
-            }
+            # Upload the file
+            # Note: For efficiency in production, we might want to pass bytes directly if supported 
+            # or manage file uploads better. giving local path works for now with genai.upload_file 
+            # (which uploads to Google File API) OR we can pass the image data directly to generate_content 
+            # if we read it. 'gemini-1.5-flash' supports image inputs.
             
-            headers = {"Content-Type": "application/json"}
-            response = requests.post(self.url, json=payload, headers=headers)
+            # Using PIL image or just raw bytes/mime type is often easier than managing File API lifecycle for single requests.
+            # Let's read file as bytes and pass to generate_content.
             
-            if response.status_code != 200:
-                logger.error(f"GCV Error {response.status_code}: {response.text}")
-                return []
+            with open(image_path, "rb") as f:
+                image_data = f.read()
                 
-            data = response.json()
-            
-            # GCV Response Logic
-            # "fullTextAnnotation" usually has the best block layout with newlines.
-            if "responses" in data and data["responses"]:
-                resp = data["responses"][0]
-                if "fullTextAnnotation" in resp:
-                    full_text = resp["fullTextAnnotation"]["text"]
-                    # Split by newline is the most standard way to get "rows" from GCV text block
-                    rows = [r.strip() for r in full_text.split('\n') if r.strip()]
-                    return rows
-                elif "textAnnotations" in resp:
-                     # Fallback: textAnnotations[0] is the whole image text
-                     full_text = resp["textAnnotations"][0]["description"]
-                     rows = [r.strip() for r in full_text.split('\n') if r.strip()]
-                     return rows
+            mime_type = "image/jpeg" 
+            if image_path.lower().endswith(".png"):
+                mime_type = "image/png"
+            elif image_path.lower().endswith(".webp"):
+                mime_type = "image/webp"
 
+            prompt = """
+            Extract all text from this invoice image line by line.
+            Do not summarize. 
+            Output the result as a simple list of strings, where each string represents a line of text from the image.
+            Maintain the spatial structure as much as possible (e.g. columns on the same line should be in the same string).
+            """
+            
+            response = self.model.generate_content(
+                [
+                    {"mime_type": mime_type, "data": image_data},
+                    prompt
+                ]
+            )
+            
+            if response.text:
+                # Naive split by newline
+                rows = [r.strip() for r in response.text.split('\n') if r.strip()]
+                return rows
+            
             return []
 
         except Exception as e:
-            logger.error(f"GoogleVisionOCR Failed: {e}")
+            logger.error(f"GeminiOCR Failed: {e}")
             return []
 
 class QuantityDescriptionAgent:
@@ -175,14 +181,14 @@ def extract_invoice_data(image_path: str) -> Dict[str, Any]:
     Pipeline: GCV OCR (REST) -> Heuristic Agents -> Aggregation.
     """
     # 1. OCR Step
-    ocr_engine = GoogleVisionOCR(API_KEY)
+    ocr_engine = GeminiOCR(API_KEY)
     
-    # Try GCV
+    # Try Gemini
     row_texts = ocr_engine.extract_text(image_path)
     
-    # Fallback to Mock if GCV fails (returns empty)
+    # Fallback to Mock if Gemini fails (returns empty)
     if not row_texts:
-         logger.warning("GCV returned no text or failed. Using Mock OCR.")
+         logger.warning("Gemini returned no text or failed. Using Mock OCR.")
          row_texts = _mock_ocr()
 
     # 2. Processing
