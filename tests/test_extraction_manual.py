@@ -7,25 +7,7 @@ load_dotenv()
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.extraction.extraction_agent import extract_invoice_data, BatchAgent
-
-def test_batch_extraction():
-    # Simulated Row with special chars ("BATCH/X99")
-    # BatchAgent regex [A-Z0-9-] does NOT include `/`.
-    # Therefore "BATCH/X99" is split into "BATCH" and "X99".
-    # Logic: Prioritize mixed alphanumeric ("X99" has letters+digits). "BATCH" is pure letters.
-    # Expected: "X99"
-    row_with_batch = "Dolo 650mg Tablet BATCH/X99 10 strips 25.00 250.00"
-    
-    agent = BatchAgent()
-    result = agent.extract(row_with_batch)
-    
-    print(f"Batch Agent Input: {row_with_batch}")
-    print(f"Batch Agent Result: {result}")
-    
-    assert result.get("Batch_No") == "X99"
-
-
+from src.extraction.extraction_agent import extract_invoice_data
 
 def test_extraction_basic():
     # Test with a mock image path that triggers "Emm Vee Traders" logic
@@ -56,5 +38,4 @@ def test_extraction_basic():
 
 
 if __name__ == "__main__":
-    test_batch_extraction()
     test_extraction_basic()

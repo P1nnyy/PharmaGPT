@@ -15,36 +15,30 @@ from google.api_core import exceptions as google_exceptions
 # Configure API Key (Support both variable names)
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
-class GeminiOCR:
+class GeminiExtractorAgent:
     """
-    OCR Engine using Gemini 1.5 Flash.
+    OCR Engine using Gemini 2.5 Flash with Structured JSON Output.
     """
     def __init__(self, api_key: str):
         self.api_key = api_key
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            self.model = genai.GenerativeModel(
+                'gemini-2.5-flash',
+                generation_config={"response_mime_type": "application/json"}
+            )
         else:
             self.model = None
 
-    def extract_text(self, image_path: str) -> List[str]:
+    def extract_structured(self, image_path: str) -> Dict[str, Any]:
         """
-        Sends image to Gemini and returns a list of text rows.
+        Sends image to Gemini and returns structured JSON (InvoiceExtraction).
         """
         if not self.model:
-            logger.warning("No API Key provided for GeminiOCR.")
-            return []
+            logger.warning("No API Key provided for GeminiExtractorAgent.")
+            return {}
 
         try:
-            # Upload the file
-            # Note: For efficiency in production, we might want to pass bytes directly if supported 
-            # or manage file uploads better. giving local path works for now with genai.upload_file 
-            # (which uploads to Google File API) OR we can pass the image data directly to generate_content 
-            # if we read it. 'gemini-1.5-flash' supports image inputs.
-            
-            # Using PIL image or just raw bytes/mime type is often easier than managing File API lifecycle for single requests.
-            # Let's read file as bytes and pass to generate_content.
-            
             with open(image_path, "rb") as f:
                 image_data = f.read()
                 
@@ -55,23 +49,41 @@ class GeminiOCR:
                 mime_type = "image/webp"
 
             prompt = """
-            Extract the main product table from this invoice image.
+            Extract the invoice data into a structured JSON format.
             
-            1. **Table Boundaries**: 
-               - Start extracting from the header row (typically "Particulars", "S.No.", "Description", "Product").
-               - Stop strictly before the summary rows ("Total", "GST Summary") or any separate tables for "Free Product Qty".
-            
-            2. **Column Selection & Logic**:
-               - **Description**: Extract the full product description.
-               - **Batch**: Extract the Batch Number column.
-               - **Quantity**: Extract the value strictly from the column labeled 'Qty' or 'Pack Size'. **IGNORE** columns labeled 'Free', 'Scheme', or 'Code'.
-               - **Rate**: Extract the Rate/PTR.
-               - **Amount**: Extract the Taxable or Net Amount.
+            Return an object with correctly typed fields matching this schema:
+            {
+                "Supplier_Name": "string",
+                "Invoice_No": "string",
+                "Invoice_Date": "string",
+                "Line_Items": [
+                    {
+                        "Original_Product_Description": "string",
+                        "Raw_Quantity": "float",
+                        "Batch_No": "string",
+                        "Raw_Rate_Column_1": "float",
+                        "Raw_Rate_Column_2": "float or null",
+                        "Raw_Discount_Percentage": "float or null",
+                        "Raw_GST_Percentage": "float or null",
+                        "Stated_Net_Amount": "float"
+                    }
+                ]
+            }
 
-            3. **Output Format**:
-               - Output each row of the table as a single line of text.
-               - Do not output summaries, headers, or footers.
-               - Maintain the spatial arrangement of the columns in the text line (e.g., "1. Dolo 650   BatchX   10   25.00").
+            STRICT INSTRUCTIONS:
+            
+            1. **Primary Table Boundaries (Exclusion of Noise)**:
+               - The line items to be extracted must originate ONLY from the main product table.
+               - This table starts with the header 'S. Code' and ends immediately before the horizontal total line labeled 'Total' and the subsequent section titled 'Free Product Qty' and 'Credit Note Number'.
+               - **Constraint**: Ignore and DO NOT extract any data from the financial summary boxes (CGST/SGST breakdowns), the separate 'Free Product Qty' table, and the final 'NET PAYABLE' line.
+            
+            2. **Details & Column Mapping**:
+               - **Original_Product_Description**: Extract only the text content found in the 'Particulars' column. The extraction MUST STOP before the first numeric value that represents Quantity, Rate, or Scheme Code within that row. 
+                 - **Constraint**: DO NOT include the S.No., Qty, Rate, Discount, or Scheme Code numbers in the Original_Product_Description field. Ensure this field contains only the descriptive product text.
+               - **Batch_No**: Extract the Batch Number.
+               - **Raw_Quantity**: Use the integer value strictly from the column labeled 'Qty' or 'Pack Size'.
+               - **Raw_Rate_Column_1**: Use the float value from the column labeled 'Rate'. This is the unit rate.
+               - **Stated_Net_Amount**: Use the float value from the final column labeled 'Net Amt' or 'Net Payable' on the far right of the table.
             """
             
             response = self.model.generate_content(
@@ -82,124 +94,17 @@ class GeminiOCR:
             )
             
             if response.text:
-                # Naive split by newline
-                rows = [r.strip() for r in response.text.split('\n') if r.strip()]
-                return rows
+                try:
+                    return json.loads(response.text)
+                except json.JSONDecodeError:
+                    logger.error("Failed to parse Gemini JSON output")
+                    return {}
             
-            return []
+            return {}
 
         except Exception as e:
-            logger.error(f"GeminiOCR Failed: {e}")
-            return []
-
-class BatchAgent:
-    def extract(self, row_text: str) -> Dict[str, Any]:
-        result = {}
-        # Search for short, strong alphanumeric strings (3-10 chars)
-        # Regex: \b[A-Z0-9-]{3,10}\b
-        # We use findall to get all candidates, then filter.
-        candidates = re.findall(r'\b([A-Z0-9-]{3,10})\b', row_text.strip())
-        
-        best_candidate = None
-        
-        for cand in candidates:
-            # Filter pure numbers (likely quantities/strengths like "650", "625")
-            if re.match(r'^\d+$', cand):
-                continue
-            
-            # Filter common headers or noise
-            if cand in ["RATE", "QTY", "DATE", "MRP", "NET", "HSN"]:
-                continue
-
-            # Prioritize mixed alphanumeric (has letter AND digit)
-            # If we find a mixed one, it's a very strong candidate.
-            if re.search(r'[A-Z]', cand) and re.search(r'\d', cand):
-                best_candidate = cand
-                break
-            
-            # Fallback: specific uppercase codes (like "BATCH") are unlikely due to length filter 3-10
-            # but if we have "ABC" and "X123", we prefer "X123".
-            # If we haven't found a mixed one yet, keep this as tentative (if it's not noise)
-            if not best_candidate:
-                best_candidate = cand
-
-        if best_candidate:
-             result["Batch_No"] = best_candidate
-                 
-        return result
-
-
-class QuantityDescriptionAgent:
-    def extract(self, row_text: str) -> Dict[str, Any]:
-        result = {}
-        # 1. Product Description: Heuristic split
-        # Simple Logic: Split by double spaces. Lengthy part is Description.
-        parts = re.split(r'\s{2,}', row_text.strip())
-        
-        for part in parts:
-            # Filter out pure numbers, dates, short codes
-            is_noise = re.match(r'^[\d\s\%\.\-\/]+$', part) or len(part) < 4 or "batch" in part.lower()
-            if not is_noise and "strip" not in part.lower():
-                result["Original_Product_Description"] = part
-                break
-        
-        # 2. Quantity (Right-Biased Search)
-        # Prioritize explicit unit markers
-        unit_regex = r'\b(\d+(\.\d+)?)\s*(strips?|tabs?|caps?|box|nos|x\d+)\b'
-        qty_match = re.search(unit_regex, row_text, re.IGNORECASE)
-        
-        if qty_match:
-            result["Raw_Quantity"] = qty_match.group(1)
-        else:
-            # Fallback: Search for small integers (<100) only in the RIGHT HALF
-            # Identifies isolated "10" or "5" without units.
-            midpoint = len(row_text) // 2
-            right_half = row_text[midpoint:]
-            
-            int_matches = re.finditer(r'\b(\d{1,4})\b', right_half)
-            candidates = []
-            for m in int_matches:
-                val = int(m.group(1))
-                if val < 100:
-                    candidates.append(val)
-            
-            if candidates:
-                result["Raw_Quantity"] = candidates[-1] # Rightmost small integer
-
-        return result
-
-class RateAmountAgent:
-    def extract(self, row_text: str) -> Dict[str, Any]:
-        result = {}
-        
-        # Stated_Net_Amount: Text often ends with the Total Amount.
-        # Look for float in the LAST 25 chars.
-        tail_end = row_text[-25:]
-        amount_matches = re.findall(r'(\d+\.\d{2})', tail_end)
-        
-        if amount_matches:
-            result["Stated_Net_Amount"] = float(amount_matches[-1])
-            
-            # Find Rate relative to Net Amount
-            # Locate position of matches[-1] in row
-            net_amt_str = amount_matches[-1]
-            idx = row_text.rfind(net_amt_str)
-            if idx > 0:
-                preceding = row_text[:idx]
-                rate_matches = re.findall(r'(\d+\.\d{2})', preceding)
-                if rate_matches:
-                    result["Raw_Rate_Column_1"] = float(rate_matches[-1])
-
-        return result
-
-class PercentageAgent:
-    def extract(self, row_text: str) -> Dict[str, Any]:
-        result = {}
-        # GST Heuristic
-        matches = re.findall(r'\b(5|12|18|28)\b', row_text)
-        if matches:
-            result["Raw_GST_Percentage"] = float(max(matches, key=lambda x: int(x)))
-        return result
+            logger.error(f"GeminiExtractorAgent Failed: {e}")
+            return {}
 
 class ValidatorAgent:
     @staticmethod
@@ -217,71 +122,45 @@ class ValidatorAgent:
             if abs(expected - net) > (expected * 0.5):
                 logger.error(f"SEVERE VALIDATION FAILURE: {item.get('Original_Product_Description')} - Expected {expected}, Got {net}")
 
-def _mock_ocr() -> List[str]:
+def _mock_ocr() -> Dict[str, Any]:
     """Fallback Mock Data for Verification"""
-    return [
-        "SL PRODUCT DESCRIPTION          BATCH   QTY    RATE     AMOUNT",
-        "1  Dolo 650mg Tablet            X123    10 strips   25.00    250.00",
-        "2  Augmentin 625 Duo            Y456    5 strips    80.00    400.00"
-    ]
+    return {
+        "Supplier_Name": "Detected Supplier", 
+        "Invoice_No": "INV-MOCK", 
+        "Invoice_Date": "2024-01-01",
+        "Line_Items": [
+            {
+                "Original_Product_Description": "Dolo 650mg Tablet", 
+                "Raw_Quantity": 10, 
+                "Batch_No": "X123", 
+                "Raw_Rate_Column_1": 25.00, 
+                "Stated_Net_Amount": 250.00
+            }
+        ]
+    }
 
 def extract_invoice_data(image_path: str) -> Dict[str, Any]:
     """
     Main extraction entry point.
-    Pipeline: GCV OCR (REST) -> Heuristic Agents -> Aggregation.
+    Pipeline: Gemini JSON Extraction
     """
-    # 1. OCR Step
-    ocr_engine = GeminiOCR(API_KEY)
+    extractor = GeminiExtractorAgent(API_KEY)
     
     # Try Gemini
-    row_texts = ocr_engine.extract_text(image_path)
+    data = extractor.extract_structured(image_path)
     
-    # Fallback to Mock if Gemini fails (returns empty)
-    if not row_texts:
-         logger.warning("Gemini returned no text or failed. Using Mock OCR.")
-         row_texts = _mock_ocr()
+    # Fallback
+    if not data or not data.get("Line_Items"):
+         logger.warning("Gemini returned empty or invalid data. Using Mock.")
+         return _mock_ocr()
 
-    # 2. Processing
-    agent_qty = QuantityDescriptionAgent()
-    agent_rate = RateAmountAgent()
-    agent_perc = PercentageAgent()
-    agent_batch = BatchAgent()
+    # Validate/Clean
+    cleaned_items = []
+    for item in data.get("Line_Items", []):
+         if item.get("Batch_No") is None:
+             item["Batch_No"] = ""
+         ValidatorAgent.validate(item)
+         cleaned_items.append(item)
     
-    line_items = []
-    
-    for row in row_texts:
-        # Skip short headers/noise
-        if len(row) < 10: continue
-        
-        p1 = agent_qty.extract(row)
-        p2 = agent_rate.extract(row)
-        p3 = agent_perc.extract(row)
-        p4 = agent_batch.extract(row)
-        
-        # Merge Heuristics
-        combined_item = {**p1, **p2, **p3, **p4}
-        
-        # 3. Filtering Criteria
-        # Must have a Net Amount to be considered a valid line item 
-        # (This avoids capturing headers or footer text as items)
-        if combined_item.get("Stated_Net_Amount"):
-            final_item = {
-                "Original_Product_Description": combined_item.get("Original_Product_Description", "Unknown"),
-                "Raw_Quantity": combined_item.get("Raw_Quantity"),
-                "Batch_No": combined_item.get("Batch_No", ""),
-                "Raw_Rate_Column_1": combined_item.get("Raw_Rate_Column_1"),
-                "Raw_Rate_Column_2": None,
-                "Stated_Net_Amount": combined_item.get("Stated_Net_Amount"),
-                "Raw_Discount_Percentage": None,
-                "Raw_GST_Percentage": combined_item.get("Raw_GST_Percentage"),
-            }
-            
-            ValidatorAgent.validate(final_item)
-            line_items.append(final_item)
-
-    return {
-        "Supplier_Name": "Detected Supplier", 
-        "Invoice_No": "INV-" + str(len(line_items)), 
-        "Invoice_Date": "2024-01-01",
-        "Line_Items": line_items
-    }
+    data["Line_Items"] = cleaned_items
+    return data
