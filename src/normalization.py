@@ -111,16 +111,16 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     gross_value = qty * cp_per_unit
     
     # 4. Calculate Discount Amount
-    discount_amount = gross_value * (discount_percent / 100.0)
+    discount_amount = round(gross_value * (discount_percent / 100.0), 2)
     
     # 5. Calculate Taxable Value
-    taxable_value = gross_value - discount_amount
+    taxable_value = round(gross_value - discount_amount, 2)
     
     # 6. Calculate Tax Amount
-    tax_amount = taxable_value * (gst_percent / 100.0)
+    tax_amount = round(taxable_value * (gst_percent / 100.0), 2)
     
     # 7. Calculate Total Amount
-    calculated_net = taxable_value + tax_amount
+    calculated_net = round(taxable_value + tax_amount, 2)
     
     # 8. Reconciliation
     diff = abs(calculated_net - stated_net_amount)
@@ -131,7 +131,7 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     
     return {
         "Standard_Quantity": qty,
-        "Calculated_Cost_Price_Per_Unit": cp_per_unit,
+        "Calculated_Cost_Price_Per_Unit": round(cp_per_unit, 2),
         "Discount_Amount_Currency": discount_amount,
         "Calculated_Taxable_Value": taxable_value,
         "Calculated_Tax_Amount": tax_amount,

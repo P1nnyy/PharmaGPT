@@ -75,21 +75,22 @@ class GeminiExtractorAgent:
 
             STRICT INSTRUCTIONS:
             
-            1. **Primary Table Identification ("First Table" Rule)**:
-               - Identify the FIRST logical table structure that contains the Mandatory Header Cluster. This table is the ONLY valid source of data.
-               - **Mandatory Header Cluster**: The valid table MUST contain columns semantically equivalent to 'Particulars', 'Qty' (Quantity/Nos), 'Rate' (Unit Price), and 'Net Amt' (Total/Value).
+            1. **Primary Table Identification (Structural Priority)**:
+               - Identify the FIRST logical table structure that contains the MAXIMUM NUMBER of distinct columns (approximately 10 or more headers, including 'Scheme Code' and 'Free'). This large structure is the ONLY valid source of data.
+               - **Constraint**: IGNORE any subsequent tables that contain fewer than 8 columns (e.g., promotional or summary tables).
                
             2. **Termination (Stop Logic)**:
                - The extraction must STOP IMMEDIATELY when the row contains a 'Total' summation, a 'Grand Total', or the structure shifts to a tax summary.
                - **Constraint**: Ignore and DO NOT extract any data from the financial summary boxes (CGST/SGST breakdowns), the separate 'Free Product Qty' table, and the final 'NET PAYABLE' line.
             
             3. **SEMANTIC VERIFICATION (PRODUCT NAME ANCHORING)**:
-               - To confirm extraction from the correct table, validate content against known pharmaceutical patterns.
-               - **Anchor Entities**: The table MUST contain names similar to DEBISTAT or DIACARE.
-               - **Verification Check**: If the 'Original_Product_Description' for a row contains a label (e.g., 'CGST', 'Round Off', 'Freight', or non-pharmaceutical names) -> This signals the end of the Primary Table. DISCARD the row and STOP extraction immediately.
+               - **Contextual Hint**: The table is expected to contain names similar to DEBISTAT or DIACARE.
+               - **Verification**: Use these names to confirm you have located the correct pharmaceutical product table. Do not strictly discard rows solely because they do not match these specific names, but use them to differentiate the main table from unrelated text. 
+               - **Stop Signal**: If the 'Original_Product_Description' closely matches a financial label like 'CGST Output', 'Round Off', or 'Freight', STOP extraction immediately.
             
-            4. **Financial Disambiguation (The 'Qty' Rule)**:
-               - **The 'Qty' Rule**: A valid transaction row MUST have a specific Quantity. If a row contains a 'Rate' (monetary or percentage) but NO 'Qty' (e.g., a simple percentage tax line), it is a Tax/Summary row. IGNORE IT.
+            4. **Financial Disambiguation & GST**:
+               - **The 'Qty' Rule**: A valid transaction row MUST have a specific Quantity. If a row contains a 'Rate' but NO 'Qty', it is a Tax/Summary row. IGNORE IT.
+               - **GST Extraction**: Locate the final tax percentage for the item, which may be labeled 'GST %' or derived from the header. Use this figure for Raw_GST_Percentage. Do not default to 0.0 unless the tax is explicitly stated as 0%.
             
             5. **Details & Column Mapping**:
                - **Original_Product_Description**: Extract only the text content found in the 'Particulars' column. The extraction MUST STOP before the first numeric value that represents Quantity, Rate, or Scheme Code within that row. 
