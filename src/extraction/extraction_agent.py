@@ -25,7 +25,10 @@ class GeminiExtractorAgent:
             genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel(
                 'gemini-2.5-flash',
-                generation_config={"response_mime_type": "application/json"}
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.0
+                }
             )
         else:
             self.model = None
@@ -72,12 +75,23 @@ class GeminiExtractorAgent:
 
             STRICT INSTRUCTIONS:
             
-            1. **Primary Table Boundaries (Exclusion of Noise)**:
-               - The line items to be extracted must originate ONLY from the main product table.
-               - This table starts with the header 'S. Code' and ends immediately before the horizontal total line labeled 'Total' and the subsequent section titled 'Free Product Qty' and 'Credit Note Number'.
+            1. **Primary Table Identification ("First Table" Rule)**:
+               - Identify the FIRST logical table structure that contains the Mandatory Header Cluster. This table is the ONLY valid source of data.
+               - **Mandatory Header Cluster**: The valid table MUST contain columns semantically equivalent to 'Particulars', 'Qty' (Quantity/Nos), 'Rate' (Unit Price), and 'Net Amt' (Total/Value).
+               
+            2. **Termination (Stop Logic)**:
+               - The extraction must STOP IMMEDIATELY when the row contains a 'Total' summation, a 'Grand Total', or the structure shifts to a tax summary.
                - **Constraint**: Ignore and DO NOT extract any data from the financial summary boxes (CGST/SGST breakdowns), the separate 'Free Product Qty' table, and the final 'NET PAYABLE' line.
             
-            2. **Details & Column Mapping**:
+            3. **SEMANTIC VERIFICATION (PRODUCT NAME ANCHORING)**:
+               - To confirm extraction from the correct table, validate content against known pharmaceutical patterns.
+               - **Anchor Entities**: The table MUST contain names similar to DEBISTAT or DIACARE.
+               - **Verification Check**: If the 'Original_Product_Description' for a row contains a label (e.g., 'CGST', 'Round Off', 'Freight', or non-pharmaceutical names) -> This signals the end of the Primary Table. DISCARD the row and STOP extraction immediately.
+            
+            4. **Financial Disambiguation (The 'Qty' Rule)**:
+               - **The 'Qty' Rule**: A valid transaction row MUST have a specific Quantity. If a row contains a 'Rate' (monetary or percentage) but NO 'Qty' (e.g., a simple percentage tax line), it is a Tax/Summary row. IGNORE IT.
+            
+            5. **Details & Column Mapping**:
                - **Original_Product_Description**: Extract only the text content found in the 'Particulars' column. The extraction MUST STOP before the first numeric value that represents Quantity, Rate, or Scheme Code within that row. 
                  - **Constraint**: DO NOT include the S.No., Qty, Rate, Discount, or Scheme Code numbers in the Original_Product_Description field. Ensure this field contains only the descriptive product text.
                - **Batch_No**: Extract the Batch Number.
