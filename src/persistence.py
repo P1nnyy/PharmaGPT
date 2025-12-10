@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 from src.schemas import InvoiceExtraction, NormalizedLineItem
+from src.normalization import parse_float
 
 def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]]):
     """
@@ -58,6 +59,7 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
         cost_price: $cost_price,
         discount_amount: $discount_amount,
         taxable_value: $taxable_value,
+        calculated_tax_amount: $tax_amount,
         net_amount: $net_amount,
         raw_description: $raw_desc,
         stated_net_amount: $stated_net
@@ -76,6 +78,7 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            cost_price=item.get("Calculated_Cost_Price_Per_Unit"),
            discount_amount=item.get("Discount_Amount_Currency"),
            taxable_value=item.get("Calculated_Taxable_Value"),
+           tax_amount=item.get("Calculated_Tax_Amount"),
            net_amount=item.get("Net_Line_Amount"),
            raw_desc=raw_item.Original_Product_Description,
-           stated_net=float(raw_item.Stated_Net_Amount) if raw_item.Stated_Net_Amount is not None else 0.0)
+           stated_net=parse_float(raw_item.Stated_Net_Amount))

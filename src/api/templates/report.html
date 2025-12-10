@@ -81,7 +81,7 @@
                 <td>{{ item.quantity }}</td>
                 <td>{{ item.cost_price }}</td>
                 <td>{{ item.taxable_value }}</td>
-                <td>{{ (item.net_amount - item.taxable_value) | round(2) }}</td>
+                <td>{{ item.calculated_tax_amount }}</td>
                 <td>{{ item.net_amount }}</td>
                 <td style="color: #666; font-style: italic;">{{ item.stated_net_amount }}</td> <!-- Audit Data -->
             </tr>

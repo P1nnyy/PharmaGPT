@@ -145,7 +145,8 @@ async def get_report(request: Request, invoice_no: str):
             **line_data, 
             "product_name": product_data.get("name", "Unknown"),
             "raw_product_name": raw_desc,
-            "stated_net_amount": stated_net
+            "stated_net_amount": stated_net,
+            "calculated_tax_amount": line_data.get("calculated_tax_amount", 0.0)
         })
 
     return templates.TemplateResponse("report.html", {
