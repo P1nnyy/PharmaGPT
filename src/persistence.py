@@ -61,6 +61,7 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
         taxable_value: $taxable_value,
         calculated_tax_amount: $tax_amount,
         net_amount: $net_amount,
+        batch_no: $batch_no,
         raw_description: $raw_desc,
         stated_net_amount: $stated_net
     })
@@ -80,5 +81,6 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            taxable_value=item.get("Calculated_Taxable_Value"),
            tax_amount=item.get("Calculated_Tax_Amount"),
            net_amount=item.get("Net_Line_Amount"),
+           batch_no=raw_item.Batch_No,
            raw_desc=raw_item.Original_Product_Description,
            stated_net=parse_float(raw_item.Stated_Net_Amount))

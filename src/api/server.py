@@ -118,7 +118,7 @@ async def get_report(request: Request, invoice_no: str):
     MATCH (i:Invoice {invoice_number: $invoice_no})
     OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
     OPTIONAL MATCH (l)-[:REFERENCES]->(p:Product)
-    RETURN i, collect({line: l, product: p, raw_desc: l.raw_description, stated_net: l.stated_net_amount}) as items
+    RETURN i, collect({line: l, product: p, raw_desc: l.raw_description, stated_net: l.stated_net_amount, batch_no: l.batch_no}) as items
     """
     
     with driver.session() as session:
@@ -140,13 +140,15 @@ async def get_report(request: Request, invoice_no: str):
         # Safe access for optional raw fields
         raw_desc = item.get("raw_desc", "N/A")
         stated_net = item.get("stated_net", 0.0)
+        batch_no = item.get("batch_no", "")
         
         line_items.append({
             **line_data, 
             "product_name": product_data.get("name", "Unknown"),
             "raw_product_name": raw_desc,
             "stated_net_amount": stated_net,
-            "calculated_tax_amount": line_data.get("calculated_tax_amount", 0.0)
+            "calculated_tax_amount": line_data.get("calculated_tax_amount", 0.0),
+            "batch_no": batch_no
         })
 
     return templates.TemplateResponse("report.html", {
