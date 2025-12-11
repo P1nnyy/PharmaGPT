@@ -75,9 +75,9 @@ class GeminiExtractorAgent:
 
             STRICT INSTRUCTIONS:
             
-            1. **Primary Table Identification (Structural Priority)**:
-               - Identify the FIRST logical table structure that contains the MAXIMUM NUMBER of distinct columns (approximately 10 or more headers, including 'Scheme Code' and 'Free'). This large structure is the ONLY valid source of data.
-               - **Constraint**: IGNORE any subsequent tables that contain fewer than 8 columns (e.g., promotional or summary tables).
+            1. **Primary Table Identification ("First Table" Rule with Structural Override)**:
+               - Identify the FIRST logical table structure that contains the Mandatory Header Cluster. This table must have a LARGE NUMBER OF COLUMNS (10 or more), including fields like 'Scheme Code,' 'Taxable Amt,' and 'Net Amt.' This structure is the ONLY valid source of data. 
+               - **Constraint**: IGNORE any subsequent, smaller tables (e.g., promotional or summary tables).
                
             2. **Termination (Stop Logic)**:
                - The extraction must STOP IMMEDIATELY when the row contains a 'Total' summation, a 'Grand Total', or the structure shifts to a tax summary.
