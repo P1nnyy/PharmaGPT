@@ -1,0 +1,18 @@
+global_column_aliases:
+  Batch_No:
+    - "Batch No"
+    - "Batch"
+    - "Lot No"
+    - "Pcode"
+    - "Product Batch No"
+  Quantity:
+    - "Qty"
+    - "Quantity"
+    - "Nos"
+    - "Pack"
+    - "Strips"
+  Rate:
+    - "Rate"
+    - "Unit Price"
+    - "PTR"
+    - "MRP"

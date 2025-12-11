@@ -1,0 +1,103 @@
+products:
+  - known_name: "Standard Product A"
+    standard_pack: "10 strips"
+    synonyms:
+      - "Product A"
+
+  - known_name: "Standard Product B"
+    standard_pack: "1x1"
+    synonyms:
+      - "Product B"
+
+  - known_name: "Augmentin 625 Duo"
+    standard_pack: "10 tabs"
+    synonyms:
+      - "Augmentin 625"
+      - "Augmentin Duo"
+      - "Amoxyclav 625"
+
+  - known_name: "Azithral 500mg Tablet"
+    standard_pack: "5 tabs"
+    synonyms:
+      - "Azithral 500"
+
+  - known_name: "Cipcal 500mg Window"
+    standard_pack: "10 tabs"
+    synonyms:
+      - "Cipcal 500"
+
+  - known_name: "Dolo 650mg Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Dolo 650"
+      - "Dolo"
+
+  - known_name: "Crocin 650mg Advance"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Crocin 650"
+
+  - known_name: "Calpol 500mg Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Calpol 500"
+
+  - known_name: "Combiflam Tablet"
+    standard_pack: "20 tabs"
+    synonyms:
+      - "Combiflam"
+
+  - known_name: "Pan 40mg Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Pan 40"
+
+  - known_name: "Pan D Capsule"
+    standard_pack: "15 caps"
+    synonyms:
+      - "Pan D"
+
+  - known_name: "Rantac 150mg Tablet"
+    standard_pack: "30 tabs"
+    synonyms:
+      - "Rantac 150"
+
+  - known_name: "Omez 20mg Capsule"
+    standard_pack: "20 caps"
+    synonyms:
+      - "Omez"
+
+  - known_name: "Becosules Capsule"
+    standard_pack: "20 caps"
+    synonyms:
+      - "Becosules"
+
+  - known_name: "Limcee 500mg Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Limcee"
+
+  - known_name: "Shelcal 500mg Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Shelcal 500"
+
+  - known_name: "Telma 40mg Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Telma 40"
+
+  - known_name: "Telma H Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Telma H"
+
+  - known_name: "Amlong 5mg Tablet"
+    standard_pack: "15 tabs"
+    synonyms:
+      - "Amlong 5"
+
+  - known_name: "Glycomet 500mg Tablet"
+    standard_pack: "10 tabs"
+    synonyms:
+      - "Glycomet 500"
