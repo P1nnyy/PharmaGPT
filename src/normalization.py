@@ -160,10 +160,20 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
     # 2. Get Standard Product Details
     std_name, pack_size = standardize_product(raw_item.Original_Product_Description)
     
-    # 3. Merge them
+    # 3. Clean Batch Number
+    batch_no = raw_item.Batch_No
+    if batch_no is None or not batch_no.strip():
+        batch_no = "UNKNOWN"
+    else:
+        # Remove common OCR noise prefixes
+        batch_no = re.sub(r'^(OTSI |MICR |MHN- )', '', batch_no)
+        # Remove numeric prefixes with pipes (e.g. "215 | ")
+        batch_no = re.sub(r'^\d+\s*\|\s*', '', batch_no)
+
+    # 4. Merge them
     return {
         **financials,
         "Standard_Item_Name": std_name,
         "Pack_Size_Description": pack_size,
-        "Batch_No": raw_item.Batch_No
+        "Batch_No": batch_no
     }

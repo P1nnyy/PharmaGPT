@@ -12,7 +12,8 @@ global_column_aliases:
     - "Pack"
     - "Strips"
   Rate:
+    - "Rate/Doz"
     - "Rate"
     - "Unit Price"
     - "PTR"
-    - "MRP"
+    

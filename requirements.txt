@@ -9,3 +9,4 @@ pytest
 google-generativeai
 python-multipart
 importlib-metadata
+PyYAML
