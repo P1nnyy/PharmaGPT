@@ -50,6 +50,15 @@ def parse_float(value: Union[str, float, None]) -> float:
     # Remove common currency symbols and whitespace
     cleaned_value = str(value).replace(',', '').strip()
     # Extract the first valid number found (handling potential text around it)
+    if "+" in cleaned_value:
+        try:
+            parts = cleaned_value.split('+')
+            # Extract numbers from parts and sum them
+            total = sum(float(re.search(r'\d+(\.\d+)?', p).group()) for p in parts if re.search(r'\d+', p))
+            return total
+        except:
+            pass # Fallback to standard regex if math fails
+    
     match = re.search(r'-?\d+(\.\d+)?', cleaned_value)
     if match:
         return float(match.group())

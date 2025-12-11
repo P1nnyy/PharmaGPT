@@ -8,7 +8,7 @@ class RawLineItem(BaseModel):
     """
     Original_Product_Description: str = Field(..., description="The product description exactly as it appears on the invoice.")
     Raw_Quantity: Union[str, float] = Field(..., description="Quantity extracted, kept flexible to handle formats like '10 strips' or numeric values.")
-    Batch_No: str = Field(..., description="Batch number of the product.")
+    Batch_No: Optional[str] = Field(None, description="Batch number. May be null if not found.")
     Raw_Rate_Column_1: Union[str, float, None] = Field(None, description="Primary rate column (e.g., Rate, Rate/Doz, PTR).")
     Raw_Rate_Column_2: Union[str, float, None] = Field(None, description="Secondary rate column (e.g., MRP) if present.")
     Raw_Discount_Percentage: Union[str, float, None] = Field(None, description="Discount percentage applied to the item.")
