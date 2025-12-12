@@ -27,3 +27,15 @@ vendors:
   "emm vee traders":
     calculation_rules:
       rate_divisor: 12.0
+  "c m associates":
+    calculation_rules: {}
+  "sood medicos":
+    calculation_rules: {}
+  "rakesh & co":
+    calculation_rules: {}
+  "abrol pharma":
+    calculation_rules: {}
+  "atul agencies":
+    calculation_rules: {}
+  "abka medicos":
+    calculation_rules: {}

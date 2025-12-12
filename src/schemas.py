@@ -12,6 +12,7 @@ class RawLineItem(BaseModel):
     Raw_Rate_Column_1: Union[str, float, None] = Field(None, description="Primary rate column (e.g., Rate, Rate/Doz, PTR).")
     Raw_Rate_Column_2: Union[str, float, None] = Field(None, description="Secondary rate column (e.g., MRP) if present.")
     Raw_Discount_Percentage: Union[str, float, None] = Field(None, description="Discount percentage applied to the item.")
+    Raw_Discount_Amount: Union[str, float, None] = Field(None, description="Absolute discount amount in currency, not percentage.")
     Raw_GST_Percentage: Union[str, float, None] = Field(None, description="GST percentage applied to the item.")
     Raw_HSN_Code: Optional[str] = Field(None, description="HSN/SAC code extracted from the invoice.")
     Stated_Net_Amount: Union[str, float] = Field(..., description="The final amount for this line item as stated on the invoice.")

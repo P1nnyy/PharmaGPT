@@ -103,6 +103,7 @@ class GeminiExtractorAgent:
                         "Raw_Rate_Column_1": "float",
                         "Raw_Rate_Column_2": "float or null",
                         "Raw_Discount_Percentage": "float or null",
+                        "Raw_Discount_Amount": "float or null",
                         "Raw_GST_Percentage": "float or null",
                         "Stated_Net_Amount": "float"
                     }}
@@ -141,6 +142,13 @@ class GeminiExtractorAgent:
                - **Raw_Rate_Column_1**: Identify the specific column labeled 'Rate', 'Billing Rate', 'PTR', or 'PTS'. 
                    - **CRITICAL EXCLUSION**: You must strictly IGNORE any column labeled 'MRP' or 'Maximum Retail Price'. 
                    - **Logic Check**: The Billing Rate is usually lower than the MRP. If two rate-like columns exist, prefer the lower value (which is the billing rate) over the higher value (which is the MRP).
+               - **Discount Logic**: 
+                   - Check column headers for 'Disc' or 'Dis'. 
+                   - If the values are small (e.g., 5.00) and the header implies amount (or no % symbol is present), map to `Raw_Discount_Amount`. 
+                   - If '%' is present, map to `Raw_Discount_Percentage`.
+               - **Free Quantity Logic**: 
+                   - If separate columns exist for 'Qty' and 'Free' (or 'Sch'), extract ONLY the 'Billed' or 'Paid' quantity into `Raw_Quantity`. 
+                   - Do NOT add the Free quantity to the Raw_Quantity.
                - **Stated_Net_Amount**: Use the float value from the final column labeled 'Net Amt' or 'Net Payable' on the far right of the table.
             """
             

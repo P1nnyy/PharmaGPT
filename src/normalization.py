@@ -131,6 +131,7 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     """
     Calculates financial figures including Cost Price, Discount Amount, Taxable Value, and Net Amount.
     Returns a dictionary corresponding to normalized fields.
+    Now includes 'Discovery Mode' to identify potential vendor-specific rule deviations.
     """
     
     # 1. Calculate Cost Price (CP)
@@ -138,15 +139,25 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     
     # 2. Parse Quantities and Percents
     qty = parse_float(raw_item.Raw_Quantity)
-    discount_percent = parse_float(raw_item.Raw_Discount_Percentage)
-    gst_percent = parse_float(raw_item.Raw_GST_Percentage)
     stated_net_amount = parse_float(raw_item.Stated_Net_Amount)
     
-    # 3. Calculate Gross Value
+    # Discounts
+    raw_disc_amount = parse_float(raw_item.Raw_Discount_Amount) if raw_item.Raw_Discount_Amount else 0.0
+    discount_percent = parse_float(raw_item.Raw_Discount_Percentage)
+    
+    # Tax
+    gst_percent = parse_float(raw_item.Raw_GST_Percentage)
+
+    # 3. Calculate Gross Value (Baseline)
     gross_value = qty * cp_per_unit
     
-    # 4. Calculate Discount Amount
-    discount_amount = round(gross_value * (discount_percent / 100.0), 2)
+    # 4. Calculate Discount Amount (Branching Logic)
+    if raw_disc_amount > 0:
+        discount_amount = raw_disc_amount
+    elif discount_percent > 0:
+        discount_amount = round(gross_value * (discount_percent / 100.0), 2)
+    else:
+        discount_amount = 0.0
     
     # 5. Calculate Taxable Value
     taxable_value = round(gross_value - discount_amount, 2)
@@ -154,16 +165,44 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     # 6. Calculate Tax Amount
     tax_amount = round(taxable_value * (gst_percent / 100.0), 2)
     
-    # 7. Calculate Total Amount
+    # 7. Calculate Total Amount (Baseline Net)
     calculated_net = round(taxable_value + tax_amount, 2)
     
-    # 8. Reconciliation
+    # 8. Reconciliation & Discovery Mode
     diff = abs(calculated_net - stated_net_amount)
     final_net_amount = calculated_net
     
-    if diff <= 0.05:
-        final_net_amount = stated_net_amount
-    
+    if diff <= 5.0:
+        # Acceptable variance
+        if diff <= 0.05:
+            final_net_amount = stated_net_amount
+    else:
+        # --- DISCOVERY MODE TRIGGERED ---
+        # The numbers don't add up. Let's try to reverse-engineer why.
+        print(f"Discovery Mode Triggered for {supplier_name} - Item: {raw_item.Original_Product_Description} (Calc: {calculated_net}, Stated: {stated_net_amount})")
+        
+        # Hypothesis 1: Vendor uses 'Rate per Dozen'
+        # If true, our calculated net is roughly 12x higher than stated.
+        rate_doz_net = calculated_net / 12.0
+        if abs(rate_doz_net - stated_net_amount) < 1.0:
+            print(f"SUGGESTION: Vendor {supplier_name} likely uses 'Rate per Dozen'. Add 'rate_divisor: 12.0' to vendor_rules.yaml.")
+            final_net_amount = stated_net_amount # Trust the stated amount for now
+            
+        # Hypothesis 2: Vendor lists 'Total Amount' in the Rate column
+        # If true, our calculated net is roughly 'qty' times higher than stated (since we did qty * rate, but rate was already total).
+        # Check: (Calc / Qty) ~= Stated
+        elif qty > 0 and abs((calculated_net / qty) - stated_net_amount) < 5.0: # Variance allowed for tax differences
+             print(f"SUGGESTION: Vendor {supplier_name} likely lists 'Total Amount' in the Rate column.")
+             final_net_amount = stated_net_amount
+
+        # Hypothesis 3: Vendor lists 'Taxable Value' (Excluding Tax) in the Amount column
+        # Check: Calculated Taxable Value ~= Stated Net Amount
+        elif abs(taxable_value - stated_net_amount) <= 1.0:
+            print(f"SUGGESTION: Vendor {supplier_name} lists 'Taxable Value' in the Amount column. Add 'amount_excludes_tax: true' to vendor_rules.yaml.")
+            # If this is true, then the STATED amount is NOT the final Net Amount.
+            # Our CALCULATED Net Amount (which includes tax) is the correct one to store.
+            final_net_amount = calculated_net
+
     return {
         "Standard_Quantity": qty,
         "Calculated_Cost_Price_Per_Unit": round(cp_per_unit, 2),
@@ -212,25 +251,7 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
     
     # Priority B: Use OCR with "Chapter Expansion"
     elif clean_ocr_hsn:
-        # Fix for Jeevan Medicos: "30" (Pharma) -> "3004" (Medicaments)
-        if clean_ocr_hsn == "30":
-            final_hsn = "3004"
-        
-        # Fix for Cosmetics/Toothpaste: "33" -> "3306" (Oral Hygiene)
-        elif clean_ocr_hsn == "33":
-            final_hsn = "3306"
-            
-        # Fix for Soaps: "34" -> "3401" (Soaps)
-        elif clean_ocr_hsn == "34":
-            final_hsn = "3401"
-            
-        # Fix for Toothbrushes: "96" -> "9603" (Brushes)
-        elif clean_ocr_hsn == "96":
-            final_hsn = "9603"
-            
-        # Default: Trust the OCR if it looks like a full code
-        else:
-            final_hsn = clean_ocr_hsn
+        final_hsn = clean_ocr_hsn
 
     # 5. Merge them
     return {
