@@ -65,8 +65,7 @@ def parse_float(value: Union[str, float, None]) -> float:
     if not cleaned_value:
         return 0.0
         
-    if cleaned_value[0].isalpha():
-        return 0.0
+
 
     # Extract the first valid number found (handling potential text around it)
     if "+" in cleaned_value:

@@ -24,6 +24,7 @@ class InvoiceExtraction(BaseModel):
     Invoice_No: str = Field(..., description="Unique identifier for the invoice.")
     Invoice_Date: str = Field(..., description="Date of the invoice.")
     Line_Items: List[RawLineItem] = Field(default_factory=list, description="List of line items extracted from the invoice tables.")
+    Stated_Grand_Total: Union[str, float, None] = Field(None, description="The Total Amount Payable or Grand Total as stated on the invoice.")
 
 class NormalizedLineItem(BaseModel):
     """

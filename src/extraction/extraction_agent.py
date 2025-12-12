@@ -106,18 +106,19 @@ class GeminiExtractorAgent:
                         "Raw_GST_Percentage": "float or null",
                         "Stated_Net_Amount": "float"
                     }}
-                ]
+                ],
+                "Stated_Grand_Total": "float or null"
             }}
 
             STRICT INSTRUCTIONS:
             
             1. **Primary Table Identification**:
                {locking_instruction or "- Identify the FIRST logical table structure that contains the MAXIMUM NUMBER of distinct columns (10+)."}
-               - IGNORE any subsequent, smaller tables (e.g., promotional or summary tables).
+               - Treat the entire document as a single continuous surface, ignoring distinct visual changes caused by shadows, lighting glares, or folds.
                
             2. **Termination (Stop Logic)**:
-               - The extraction must STOP IMMEDIATELY when the row contains a 'Total' summation, a 'Grand Total', or the structure shifts to a tax summary.
-               - **Constraint**: Ignore and DO NOT extract any data from the financial summary boxes (CGST/SGST breakdowns), the separate 'Free Product Qty' table, and the final 'NET PAYABLE' line.
+               - The extraction must STOP ONLY when the structure definitively shifts to non-product data (e.g., Bank Details, Terms & Conditions).
+               - **Nuance**: Do NOT stop immediately upon seeing a 'Total' or 'Carried Forward' label if there are still valid product rows (with Qty and Rate) visually adjacent to it. Differentiate between a 'Page Total' inside the table and the final 'Grand Total' footer.
                - **Explicit Ignore List**: Tax Breakdowns, HSN Summaries, Dispatch Summaries.
             
             3. **SEMANTIC VERIFICATION (PRODUCT NAME ANCHORING)**:
@@ -126,6 +127,7 @@ class GeminiExtractorAgent:
             
             4. **Financial Disambiguation & GST**:
                - **The 'Qty' Rule**: A valid transaction row MUST have a specific Quantity. If a row contains a 'Rate' but NO 'Qty', it is a Tax/Summary row. IGNORE IT.
+               - **Shadow Rule**: Force read rows located in shadowed or dark areas of the image if they align vertically with the columns of the main table.
                - **GST Extraction**: Locate the final tax percentage for the item, which may be labeled 'GST %' or derived from the header. Use this figure for Raw_GST_Percentage.
             
             5. **Details & Column Mapping**:
@@ -149,7 +151,14 @@ class GeminiExtractorAgent:
             
             if response.text:
                 try:
-                    return json.loads(response.text)
+                    txt = response.text.strip()
+                    if txt.lower().startswith("```json"):
+                        txt = txt[7:]
+                    elif txt.startswith("```"):
+                        txt = txt[3:]
+                    if txt.endswith("```"):
+                        txt = txt[:-3]
+                    return json.loads(txt.strip())
                 except json.JSONDecodeError:
                     logger.error("Failed to parse Gemini JSON output")
                     return {}
@@ -214,9 +223,9 @@ def extract_invoice_data(image_path: str) -> Dict[str, Any]:
     raw_data = extractor.extract_structured(image_path, structure_map=structure_map)
     
     if not raw_data or not raw_data.get("Line_Items"):
-         print("Gemini Extractor returned empty. Falling back to Mock.")
-         logger.warning("Gemini Extractor returned empty. Falling back to Mock.")
-         return _mock_ocr()
+         print("Gemini Extractor returned empty. Returning None to trigger 400 error.")
+         logger.warning("Gemini Extractor returned empty. Returning None to trigger 400 error.")
+         return None
     
     # --- Step 4: Auditor Agent (Verification & Cleaning) ---
     print("Initializing Agent 3: Auditor")
