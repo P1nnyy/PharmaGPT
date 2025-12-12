@@ -6,7 +6,7 @@ import unittest
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.schemas import RawLineItem
-from src.normalization import calculate_cost_price
+from src.normalization import calculate_cost_price, parse_float
 
 class TestNormalization(unittest.TestCase):
     
@@ -61,6 +61,19 @@ class TestNormalization(unittest.TestCase):
         # Emm Vee: 240 / 12 = 20
         cp = calculate_cost_price(item, "Emm Vee Traders")
         self.assertAlmostEqual(cp, 20.0)
+
+    def test_parse_float_safety(self):
+        """Test strictness of parse_float to avoid extracting from descriptions"""
+        # Should return 0.0 for text-heavy strings
+        self.assertEqual(parse_float("Dolo 650"), 0.0)
+        self.assertEqual(parse_float("Batch 2024"), 0.0)
+        
+        # Valid Formats should pass
+        self.assertEqual(parse_float("10"), 10.0)
+        self.assertEqual(parse_float("10.50"), 10.5)
+        self.assertEqual(parse_float("1,000.00"), 1000.0)
+        self.assertEqual(parse_float("Rs. 500"), 500.0)
+        self.assertEqual(parse_float("500.00 INR"), 500.0)
 
 if __name__ == '__main__':
     unittest.main()

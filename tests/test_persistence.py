@@ -21,18 +21,23 @@ class TestPersistence(unittest.TestCase):
         
         mock_driver.session.return_value.__enter__.return_value = mock_session
         
-        # Mock write_transaction to just call the function passed to it
+        # Mock execute_write to just call the function passed to it
         def side_effect(func, *args, **kwargs):
             return func(mock_tx, *args, **kwargs)
         
-        mock_session.write_transaction.side_effect = side_effect
+        mock_session.execute_write.side_effect = side_effect
         
         # 2. Prepare Data
         invoice_data = InvoiceExtraction(
             Supplier_Name="Test Supplier",
             Invoice_No="INV-001",
             Invoice_Date="2024-01-01",
-            Line_Items=[]
+            Line_Items=[RawLineItem(
+                Original_Product_Description="Test Product",
+                Raw_Quantity="5",
+                Stated_Net_Amount="52.5",
+                Batch_No="B1" 
+            )]
         )
         normalized_items = [
             {
@@ -53,7 +58,7 @@ class TestPersistence(unittest.TestCase):
         # 4. Verify Driver Calls
         # Check transaction calls
         # We expect 2 writes: 1 for invoice, 1 for line item
-        self.assertEqual(mock_session.write_transaction.call_count, 2)
+        self.assertEqual(mock_session.execute_write.call_count, 2)
         
         # Verify Invoice Query
         # We can't easily inspect the exact query string matching due to whitespace, 

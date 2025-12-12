@@ -2,40 +2,33 @@ import re
 from typing import Union, Tuple, Dict, Any
 from src.schemas import RawLineItem
 
-PRODUCT_MAPPING = {
-    # Antibiotics
-    "Product A": ("Standard Product A", "10 strips"),
-    "Product B": ("Standard Product B", "1x1"),
-    "Augmentin 625": ("Augmentin 625 Duo", "10 tabs"),
-    "Augmentin Duo": ("Augmentin 625 Duo", "10 tabs"),
-    "Amoxyclav 625": ("Augmentin 625 Duo", "10 tabs"),
-    "Azithral 500": ("Azithral 500mg Tablet", "5 tabs"),
-    "Cipcal 500": ("Cipcal 500mg Window", "10 tabs"),
+from src.utils.config_loader import load_product_catalog, load_vendor_rules
+
+def load_and_transform_catalog() -> Dict[str, Tuple[str, str]]:
+    """
+    Loads the product catalog from YAML and transforms it into a dictionary
+    mapping known names and synonyms to (Standard Name, Pack Size).
+    """
+    catalog_list = load_product_catalog()
+    mapping = {}
     
-    # Pain & Fever
-    "Dolo 650": ("Dolo 650mg Tablet", "15 tabs"),
-    "Dolo": ("Dolo 650mg Tablet", "15 tabs"),
-    "Crocin 650": ("Crocin 650mg Advance", "15 tabs"),
-    "Calpol 500": ("Calpol 500mg Tablet", "15 tabs"),
-    "Combiflam": ("Combiflam Tablet", "20 tabs"),
-    
-    # Gastric
-    "Pan 40": ("Pan 40mg Tablet", "15 tabs"),
-    "Pan D": ("Pan D Capsule", "15 caps"),
-    "Rantac 150": ("Rantac 150mg Tablet", "30 tabs"),
-    "Omez": ("Omez 20mg Capsule", "20 caps"),
-    
-    # Vitamins
-    "Becosules": ("Becosules Capsule", "20 caps"),
-    "Limcee": ("Limcee 500mg Tablet", "15 tabs"),
-    "Shelcal 500": ("Shelcal 500mg Tablet", "15 tabs"),
-    
-    # Chronic
-    "Telma 40": ("Telma 40mg Tablet", "15 tabs"),
-    "Telma H": ("Telma H Tablet", "15 tabs"),
-    "Amlong 5": ("Amlong 5mg Tablet", "15 tabs"),
-    "Glycomet 500": ("Glycomet 500mg Tablet", "10 tabs"),
-}
+    for item in catalog_list:
+        known_name = item.get("known_name")
+        pack_size = item.get("standard_pack")
+        
+        # Self-mapping
+        if known_name:
+            mapping[known_name] = (known_name, pack_size)
+            
+        # Synonym mapping
+        for synonym in item.get("synonyms", []):
+            mapping[synonym] = (known_name, pack_size)
+            
+    return mapping
+
+# Load mappings and rules at module level
+PRODUCT_MAPPING = load_and_transform_catalog()
+VENDOR_RULES = load_vendor_rules()
 
 def parse_float(value: Union[str, float, None]) -> float:
     """
@@ -48,7 +41,30 @@ def parse_float(value: Union[str, float, None]) -> float:
         return float(value)
     
     # Remove common currency symbols and whitespace
-    cleaned_value = str(value).replace(',', '').strip()
+    # Also ignore "Rs", "Rs.", "INR", "$"
+    cleaned_value = str(value).strip().lower()
+    cleaned_value = re.sub(r'(?:rs\.?|inr|\$|€|£)', '', cleaned_value).strip()
+    # Remove commas
+    cleaned_value = cleaned_value.replace(',', '')
+
+    # Check for presence of alphabetic characters (indicating text description)
+    # But allow "kg", "g", "ml" ? User said "fail if the string is primarily text description".
+    # Dolo 650 -> "d o l o 6 5 0". Has letters.
+    # 10 kg -> "1 0 k g". Has letters.
+    # If we strictly fail on ANY letters, we might lose units.
+    # But often OCR puts "10kg" in quantity column?
+    # Let's try: if match is found, check if the remaining string has too many letters.
+    # Or simpler: if it STARTS with a letter?
+    # "Dolo 650" starts with D.
+    # "Batch 2024" starts with B.
+    # "10 kg" starts with 1.
+    
+    if not cleaned_value:
+        return 0.0
+        
+    if cleaned_value[0].isalpha():
+        return 0.0
+
     # Extract the first valid number found (handling potential text around it)
     if "+" in cleaned_value:
         try:
@@ -84,9 +100,17 @@ def calculate_cost_price(raw_item: RawLineItem, supplier_name: str) -> float:
     # 3. Handle Supplier Specific Logic
     normalized_supplier = supplier_name.lower()
     
-    if "emm vee traders" in normalized_supplier:
-        # Rate is per Dozen
-        return raw_rate / 12.0
+    # Dynamic Vendor Logic
+    vendors = VENDOR_RULES.get("vendors", {})
+    
+    for vendor_key, rules in vendors.items():
+        if vendor_key in normalized_supplier:
+            calc_rules = rules.get("calculation_rules", {})
+            
+            # Check for Rate Divisor
+            rate_divisor = calc_rules.get("rate_divisor")
+            if rate_divisor:
+                return raw_rate / float(rate_divisor)
     
     # Default: Standard Rate (Rate per pack/strip)
     return raw_rate

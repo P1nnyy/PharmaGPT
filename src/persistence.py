@@ -22,11 +22,11 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
     with driver.session() as session:
         # 1. Merge Invoice
         # Using a transaction for atomicity
-        session.write_transaction(_create_invoice_tx, invoice_data, grand_total)
+        session.execute_write(_create_invoice_tx, invoice_data, grand_total)
         
     # 2. Process Line Items
         for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
-            session.write_transaction(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item)
+            session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item)
 
 def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
     query = """
@@ -81,6 +81,6 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            taxable_value=item.get("Calculated_Taxable_Value"),
            tax_amount=item.get("Calculated_Tax_Amount"),
            net_amount=item.get("Net_Line_Amount"),
-           batch_no=raw_item.Batch_No,
+           batch_no=item.get("Batch_No"),
            raw_desc=raw_item.Original_Product_Description,
            stated_net=parse_float(raw_item.Stated_Net_Amount))

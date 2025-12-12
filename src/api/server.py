@@ -10,8 +10,7 @@ from neo4j import GraphDatabase
 from dotenv import load_dotenv
 import uvicorn
 
-# Ensure src is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item
@@ -43,7 +42,7 @@ def startup_event():
         driver.verify_connectivity()
         print("Connected to Neo4j.")
     except Exception as e:
-        print(f"Failed to connect to Neo4j: {e}")
+        print(f"Failed to connect to Neo4j: {e} - Application will start in partial mode (No DB)")
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -56,12 +55,7 @@ async def process_invoice(file: UploadFile = File(...)):
     Receives an invoice image file, runs Gemini Vision OCR, extraction agents,
     normalization, and ingests it into Neo4j.
     """
-    if not driver:
-        # In production, we might want to handle this better, but strict fail for now
-        # raise HTTPException(status_code=503, detail="Database connection unavailable")
-        pass # Allow extraction to proceed even if DB is down? No, ingestion requires it. 
-        # But for testing extraction in isolation, we might loosen this. 
-        # The prompt implies "ingest_invoice" is part of the flow.
+
         
     try:
         # 1. Save uploaded file to temp
@@ -89,15 +83,30 @@ async def process_invoice(file: UploadFile = File(...)):
                 norm_item = normalize_line_item(raw_item, invoice_obj.Supplier_Name)
                 normalized_items.append(norm_item)
             
+
             # 4. Ingest into Neo4j (if driver available)
             if driver:
-                ingest_invoice(driver, invoice_obj, normalized_items)
-            
-            return {
-                "status": "success",
-                "message": f"Invoice {invoice_obj.Invoice_No} processed successfully.",
-                "normalized_data": normalized_items
-            }
+                try:
+                    ingest_invoice(driver, invoice_obj, normalized_items)
+                    return {
+                        "status": "success",
+                        "message": f"Invoice {invoice_obj.Invoice_No} processed successfully.",
+                        "normalized_data": normalized_items
+                    }
+                except Exception as db_err:
+                    print(f"Database ingestion failed: {db_err}")
+                    return {
+                        "status": "partial_success", 
+                        "message": "Extraction successful, but database ingestion failed.",
+                        "normalized_data": normalized_items,
+                        "error": str(db_err)
+                    }
+            else:
+                 return {
+                    "status": "partial_success", 
+                    "message": "Extraction successful, but database unavailable.",
+                    "normalized_data": normalized_items
+                }
             
         finally:
             # Cleanup temp file
