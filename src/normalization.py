@@ -2,7 +2,10 @@ import re
 from typing import Union, Tuple, Dict, Any
 from src.schemas import RawLineItem
 
-from src.utils.config_loader import load_product_catalog, load_vendor_rules
+from src.utils.config_loader import load_product_catalog, load_vendor_rules, load_hsn_master
+
+# Load the CSV map once when the module starts
+BULK_HSN_MAP = load_hsn_master()
 
 def load_and_transform_catalog() -> Dict[str, Tuple[str, str]]:
     """
@@ -194,11 +197,41 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         # Remove numeric prefixes with pipes (e.g. "215 | ")
         batch_no = re.sub(r'^\d+\s*\|\s*', '', batch_no)
         
-    # 4. Clean HSN Code
-    hsn_code = raw_item.Raw_HSN_Code
-    if hsn_code:
-         # Remove any characters that are not digits or dots
-         hsn_code = re.sub(r'[^\d.]', '', str(hsn_code))
+    # 4. Clean & Enrich HSN Code
+    raw_hsn = raw_item.Raw_HSN_Code
+    
+    # Basic cleaning: Remove letters/spaces (e.g. "3004 90" -> "300490")
+    clean_ocr_hsn = re.sub(r'[^\d.]', '', str(raw_hsn)) if raw_hsn else None
+    final_hsn = None
+
+    # Priority A: Check Bulk CSV (The "Emergency Match")
+    # We look up the product description in your Master CSV
+    lookup_key = raw_item.Original_Product_Description.strip().lower()
+    
+    if lookup_key in BULK_HSN_MAP:
+        final_hsn = BULK_HSN_MAP[lookup_key]
+    
+    # Priority B: Use OCR with "Chapter Expansion"
+    elif clean_ocr_hsn:
+        # Fix for Jeevan Medicos: "30" (Pharma) -> "3004" (Medicaments)
+        if clean_ocr_hsn == "30":
+            final_hsn = "3004"
+        
+        # Fix for Cosmetics/Toothpaste: "33" -> "3306" (Oral Hygiene)
+        elif clean_ocr_hsn == "33":
+            final_hsn = "3306"
+            
+        # Fix for Soaps: "34" -> "3401" (Soaps)
+        elif clean_ocr_hsn == "34":
+            final_hsn = "3401"
+            
+        # Fix for Toothbrushes: "96" -> "9603" (Brushes)
+        elif clean_ocr_hsn == "96":
+            final_hsn = "9603"
+            
+        # Default: Trust the OCR if it looks like a full code
+        else:
+            final_hsn = clean_ocr_hsn
 
     # 5. Merge them
     return {
@@ -206,5 +239,5 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         "Standard_Item_Name": std_name,
         "Pack_Size_Description": pack_size,
         "Batch_No": batch_no,
-        "HSN_Code": hsn_code
+        "HSN_Code": final_hsn
     }
