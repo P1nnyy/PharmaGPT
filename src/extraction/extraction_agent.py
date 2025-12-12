@@ -28,7 +28,7 @@ class GeminiExtractorAgent:
         if self.api_key:
             genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel(
-                'gemini-2.5-flash',
+                'gemini-2.0-flash',
                 generation_config={
                     "response_mime_type": "application/json",
                     "temperature": 0.0
