@@ -13,6 +13,7 @@ class RawLineItem(BaseModel):
     Raw_Rate_Column_2: Union[str, float, None] = Field(None, description="Secondary rate column (e.g., MRP) if present.")
     Raw_Discount_Percentage: Union[str, float, None] = Field(None, description="Discount percentage applied to the item.")
     Raw_GST_Percentage: Union[str, float, None] = Field(None, description="GST percentage applied to the item.")
+    Raw_HSN_Code: Optional[str] = Field(None, description="HSN/SAC code extracted from the invoice.")
     Stated_Net_Amount: Union[str, float] = Field(..., description="The final amount for this line item as stated on the invoice.")
 
 class InvoiceExtraction(BaseModel):
@@ -36,3 +37,4 @@ class NormalizedLineItem(BaseModel):
     Discount_Amount_Currency: float = Field(..., description="Discount amount converted from percentage to monetary value.")
     Calculated_Taxable_Value: float = Field(..., description="The taxable value of the line item.")
     Net_Line_Amount: float = Field(..., description="Total final cost of the line item.")
+    HSN_Code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")

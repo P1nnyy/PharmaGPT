@@ -48,7 +48,9 @@ class TestPersistence(unittest.TestCase):
                 "Discount_Amount_Currency": 0.0,
                 "Calculated_Taxable_Value": 50.0,
                 "Net_Line_Amount": 52.5,  # Grand total = 52.5
-                "Raw_GST_Percentage": 5
+                "Raw_GST_Percentage": 5,
+                "Batch_No": "B1",
+                "HSN_Code": "3004"
             }
         ]
         
@@ -77,6 +79,7 @@ class TestPersistence(unittest.TestCase):
         item_call_kwargs = run_calls[1].kwargs
         self.assertEqual(item_call_kwargs['standard_item_name'], "Product A")
         self.assertEqual(item_call_kwargs['net_amount'], 52.5)
+        self.assertEqual(item_call_kwargs['hsn_code'], "3004")
 
 if __name__ == '__main__':
     unittest.main()

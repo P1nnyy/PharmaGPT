@@ -62,6 +62,21 @@ class TestNormalization(unittest.TestCase):
         cp = calculate_cost_price(item, "Emm Vee Traders")
         self.assertAlmostEqual(cp, 20.0)
 
+    def test_hsn_transport(self):
+        """Test that Raw_HSN_Code is transported to normalized output"""
+        from src.normalization import normalize_line_item
+        from src.schemas import RawLineItem
+        
+        item = RawLineItem(
+            Original_Product_Description="Test Item",
+            Raw_Quantity=1,
+            Stated_Net_Amount="100.00",
+            Raw_HSN_Code="3004"
+        )
+        
+        normalized = normalize_line_item(item, "Test Supplier")
+        self.assertEqual(normalized.get("HSN_Code"), "3004")
+
     def test_parse_float_safety(self):
         """Test strictness of parse_float to avoid extracting from descriptions"""
         # Should return 0.0 for text-heavy strings

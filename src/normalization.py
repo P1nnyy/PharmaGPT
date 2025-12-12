@@ -199,5 +199,6 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         **financials,
         "Standard_Item_Name": std_name,
         "Pack_Size_Description": pack_size,
-        "Batch_No": batch_no
+        "Batch_No": batch_no,
+        "HSN_Code": raw_item.Raw_HSN_Code
     }

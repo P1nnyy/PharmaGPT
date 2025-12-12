@@ -16,6 +16,12 @@ global_column_aliases:
     - "Rate"
     - "Unit Price"
     - "PTR"
+  HSN_Code:
+    - "HSN"
+    - "HSN Code"
+    - "H.S.N"
+    - "HSN/SAC"
+    - "HSN CODE PACK"
 
 vendors:
   "emm vee traders":

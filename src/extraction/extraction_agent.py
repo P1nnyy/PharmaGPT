@@ -99,6 +99,7 @@ class GeminiExtractorAgent:
                         "Original_Product_Description": "string",
                         "Raw_Quantity": "float",
                         "Batch_No": "string",
+                        "Raw_HSN_Code": "string",
                         "Raw_Rate_Column_1": "float",
                         "Raw_Rate_Column_2": "float or null",
                         "Raw_Discount_Percentage": "float or null",
@@ -130,6 +131,10 @@ class GeminiExtractorAgent:
             5. **Details & Column Mapping**:
                - **Original_Product_Description**: Extract only the text content found in the 'Particulars' column.
                - **Batch_No**: {batch_instruction}
+               - **Raw_HSN_Code**: Extract from columns labeled 'HSN', 'HSN Code', or 'HSN CODE PACK'.
+                   - **CRITICAL**: If the column header is 'HSN CODE PACK' or contains both HSN and Pack Size (e.g., '30045039 2 ML' or '30049099 10 S'), you must extract ONLY the numeric HSN code (e.g., '30045039') into Raw_HSN_Code. 
+                   - The remaining text ('2 ML', '10 S') is the pack size and should be used to verify Original_Product_Description.
+                   - Keep formatting with dots if present (e.g., '3306.10.20'), otherwise keep as pure digits.
                - **Raw_Quantity**: Use the integer value strictly from the column labeled 'Qty' or 'Pack Size'.
                - **Raw_Rate_Column_1**: Use the float value from the column labeled 'Rate'.
                - **Stated_Net_Amount**: Use the float value from the final column labeled 'Net Amt' or 'Net Payable' on the far right of the table.

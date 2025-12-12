@@ -16,7 +16,8 @@ def test_normalized_line_item():
             Calculated_Cost_Price_Per_Unit=9.5,
             Discount_Amount_Currency=0.5,
             Calculated_Taxable_Value=95.0,
-            Net_Line_Amount=100.0
+            Net_Line_Amount=100.0,
+            HSN_Code="300490"
         )
         print("NormalizedLineItem valid:", item)
     except Exception as e:
@@ -32,6 +33,7 @@ def test_raw_line_item():
             Raw_Rate_Column_1=100.0,
             Raw_Rate_Column_2="150.0",
             Raw_Discount_Percentage=10,
+            Raw_HSN_Code="3004.90.10",
             Stated_Net_Amount=900.0
         )
         print("RawLineItem valid:", item)
