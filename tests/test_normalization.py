@@ -77,6 +77,25 @@ class TestNormalization(unittest.TestCase):
         normalized = normalize_line_item(item, "Test Supplier")
         self.assertEqual(normalized.get("HSN_Code"), "3004")
 
+        # Test Cleaning
+        item_dirty = RawLineItem(
+            Original_Product_Description="Test Item",
+            Raw_Quantity=1,
+            Stated_Net_Amount="100.00",
+            Raw_HSN_Code="3004 5090" # Contains spaces
+        )
+        normalized_dirty = normalize_line_item(item_dirty, "Test Supplier")
+        self.assertEqual(normalized_dirty.get("HSN_Code"), "30045090")
+        
+        item_merged = RawLineItem(
+            Original_Product_Description="Test Item",
+            Raw_Quantity=1,
+            Stated_Net_Amount="100.00",
+            Raw_HSN_Code="HSN 3004.10" # Contains text
+        ) 
+        normalized_merged = normalize_line_item(item_merged, "Test Supplier")
+        self.assertEqual(normalized_merged.get("HSN_Code"), "3004.10")
+
     def test_parse_float_safety(self):
         """Test strictness of parse_float to avoid extracting from descriptions"""
         # Should return 0.0 for text-heavy strings

@@ -23,6 +23,7 @@ def format_invoice_for_display(normalized_items: List[Dict[str, Any]]) -> List[D
     for idx, item in enumerate(normalized_items):
         row = {
             "Sr No.": str(idx + 1),
+            "HSN Code": item.get("HSN_Code", ""),
             "Item Name": item.get("Standard_Item_Name", ""),
             "Pack Size": item.get("Pack_Size_Description", ""),
             "Qty": str(item.get("Standard_Quantity", "")),

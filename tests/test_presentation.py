@@ -19,7 +19,8 @@ class TestPresentation(unittest.TestCase):
                 "Calculated_Cost_Price_Per_Unit": 12.50,
                 "Discount_Amount_Currency": 2.50,
                 "Net_Line_Amount": 100.00,
-                "Raw_GST_Percentage": 12 
+                "Raw_GST_Percentage": 12,
+                "HSN_Code": "3004"
             },
             {
                 "Standard_Item_Name": "Product B",
@@ -39,6 +40,7 @@ class TestPresentation(unittest.TestCase):
         # Check Row 1
         row1 = display[0]
         self.assertEqual(row1["Sr No."], "1")
+        self.assertEqual(row1["HSN Code"], "3004")
         self.assertEqual(row1["Item Name"], "Product A")
         self.assertEqual(row1["Cost Price (Per Unit)"], "₹ 12.50")
         self.assertEqual(row1["Discount (₹)"], "₹ 2.50")

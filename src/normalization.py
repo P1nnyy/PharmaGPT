@@ -193,12 +193,18 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         batch_no = re.sub(r'^(OTSI |MICR |MHN- )', '', batch_no)
         # Remove numeric prefixes with pipes (e.g. "215 | ")
         batch_no = re.sub(r'^\d+\s*\|\s*', '', batch_no)
+        
+    # 4. Clean HSN Code
+    hsn_code = raw_item.Raw_HSN_Code
+    if hsn_code:
+         # Remove any characters that are not digits or dots
+         hsn_code = re.sub(r'[^\d.]', '', str(hsn_code))
 
-    # 4. Merge them
+    # 5. Merge them
     return {
         **financials,
         "Standard_Item_Name": std_name,
         "Pack_Size_Description": pack_size,
         "Batch_No": batch_no,
-        "HSN_Code": raw_item.Raw_HSN_Code
+        "HSN_Code": hsn_code
     }
