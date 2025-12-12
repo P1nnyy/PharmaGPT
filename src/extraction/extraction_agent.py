@@ -138,7 +138,9 @@ class GeminiExtractorAgent:
                    - The remaining text ('2 ML', '10 S') is the pack size and should be used to verify Original_Product_Description.
                    - Keep formatting with dots if present (e.g., '3306.10.20'), otherwise keep as pure digits.
                - **Raw_Quantity**: Use the integer value strictly from the column labeled 'Qty' or 'Pack Size'.
-               - **Raw_Rate_Column_1**: Use the float value from the column labeled 'Rate'.
+               - **Raw_Rate_Column_1**: Identify the specific column labeled 'Rate', 'Billing Rate', 'PTR', or 'PTS'. 
+                   - **CRITICAL EXCLUSION**: You must strictly IGNORE any column labeled 'MRP' or 'Maximum Retail Price'. 
+                   - **Logic Check**: The Billing Rate is usually lower than the MRP. If two rate-like columns exist, prefer the lower value (which is the billing rate) over the higher value (which is the MRP).
                - **Stated_Net_Amount**: Use the float value from the final column labeled 'Net Amt' or 'Net Payable' on the far right of the table.
             """
             
@@ -160,7 +162,7 @@ class GeminiExtractorAgent:
                         txt = txt[:-3]
                     return json.loads(txt.strip())
                 except json.JSONDecodeError:
-                    logger.error("Failed to parse Gemini JSON output")
+                    logger.error(f"Failed to parse Gemini JSON output. Raw text: {txt}")
                     return {}
             
             return {}

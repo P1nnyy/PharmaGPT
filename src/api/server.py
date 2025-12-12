@@ -3,12 +3,16 @@ import tempfile
 import sys
 import os
 from typing import List, Dict, Any
+from dotenv import load_dotenv
+
+# Load env vars BEFORE imports that might use them
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from neo4j import GraphDatabase
-from dotenv import load_dotenv
 from pydantic import BaseModel
 import uvicorn
 
@@ -16,8 +20,6 @@ from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item
 from src.persistence import ingest_invoice
 from src.extraction.extraction_agent import extract_invoice_data
-
-load_dotenv()
 
 # Basic validation that API Key exists (optional but good practice)
 if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
@@ -79,7 +81,7 @@ async def analyze_invoice(file: UploadFile = File(...)):
     """
     tmp_path = None
     try:
-        # 1. Save uploaded file to temp
+        # Scope 1: File Save
         print(f"Received file: {file.filename}")
         suffix = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ".tmp"
         
@@ -88,62 +90,66 @@ async def analyze_invoice(file: UploadFile = File(...)):
             tmp_path = tmp.name
         print(f"Saved temp file to: {tmp_path}")
         
-        try:
-            # 2. Extract Data using Gemini Vision + Agents
-            # Note: File is closed here, preventing Windows Permission Denied errors
-            print("Starting extraction...")
-            extracted_data = extract_invoice_data(tmp_path)
-            print("Extraction completed.")
-            
-            if extracted_data is None:
-                raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
-            
-            # 3. Normalize Line Items
-            # Hydrate into Pydantic model
-            invoice_obj = InvoiceExtraction(**extracted_data)
-            
-            normalized_items = []
-            for raw_item in invoice_obj.Line_Items:
-                norm_item = normalize_line_item(raw_item, invoice_obj.Supplier_Name)
-                normalized_items.append(norm_item)
-            
-            # 4. Financial Integrity Check
-            validation_flags = []
-            
-            # Calculate sum of line items from extracted/normalized data
-            calculated_total = sum(item.Net_Line_Amount for item in normalized_items)
-            stated_total = extracted_data.get("Stated_Grand_Total")
-            
-            if stated_total:
-                try:
-                     stated_val = float(stated_total)
-                     # Allow for small rounding differences (e.g. +/- 5.00 for rounding off)
-                     if abs(calculated_total - stated_val) > 5.0:
-                         validation_flags.append(
-                             f"Critical Mismatch: Calculated Total ({calculated_total:.2f}) != Stated Total ({stated_val:.2f}). Rows might be missing!"
-                         )
-                except ValueError:
-                     pass # Stated total might be non-numeric, ignore check
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=f"File save failed: {str(e)}")
 
-            # Return data for Review (No DB persistence yet)
-            return {
-                "status": "review_needed",
-                "message": "Analysis complete. Please review and confirm.",
-                "invoice_data": extracted_data, # Return raw extraction as dict
-                "normalized_items": normalized_items,
-                "validation_flags": validation_flags
-            }
-
-        finally:
-            # Cleanup temp file
-            if tmp_path and os.path.exists(tmp_path):
-                os.remove(tmp_path)
+    # Scope 2: Extraction (Outside the with block)
+    try:
+        # 2. Extract Data using Gemini Vision + Agents
+        print("Starting extraction...")
+        extracted_data = extract_invoice_data(tmp_path)
+        print("Extraction completed.")
         
+        if extracted_data is None:
+            raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
+        
+        # 3. Normalize Line Items
+        # Hydrate into Pydantic model
+        invoice_obj = InvoiceExtraction(**extracted_data)
+        
+        normalized_items = []
+        for raw_item in invoice_obj.Line_Items:
+            norm_item = normalize_line_item(raw_item, invoice_obj.Supplier_Name)
+            normalized_items.append(norm_item)
+        
+        # 4. Financial Integrity Check
+        validation_flags = []
+        
+        # Calculate sum of line items from extracted/normalized data
+        calculated_total = sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
+        stated_total = extracted_data.get("Stated_Grand_Total")
+        
+        if stated_total:
+            try:
+                    stated_val = float(stated_total)
+                    # Allow for small rounding differences (e.g. +/- 5.00 for rounding off)
+                    if abs(calculated_total - stated_val) > 5.0:
+                        validation_flags.append(
+                            f"Critical Mismatch: Calculated Total ({calculated_total:.2f}) != Stated Total ({stated_val:.2f}). Rows might be missing!"
+                        )
+            except ValueError:
+                    pass # Stated total might be non-numeric, ignore check
+
+        # Return data for Review (No DB persistence yet)
+        return {
+            "status": "review_needed",
+            "message": "Analysis complete. Please review and confirm.",
+            "invoice_data": extracted_data, # Return raw extraction as dict
+            "normalized_items": normalized_items,
+            "validation_flags": validation_flags
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         # Log the full error for debugging
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Cleanup temp file
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 @app.post("/confirm-invoice", response_model=Dict[str, Any])
