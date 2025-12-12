@@ -200,23 +200,29 @@ def extract_invoice_data(image_path: str) -> Dict[str, Any]:
     """
     
     # --- Step 1: Scout Agent (Structure Discovery) ---
+    print("Initializing Agent 1: Scout")
     logger.info("Initializing Agent 1: Scout")
     scout = ScoutAgent(API_KEY)
     structure_map = scout.scan(image_path)
+    print(f"Scout Result: {structure_map}")
     logger.info(f"Scout Result: {structure_map}")
     
     # --- Step 2 & 3: Extractor Agent (Extraction with Dynamic Context) ---
+    print("Initializing Agent 2: Extractor")
     logger.info("Initializing Agent 2: Extractor")
     extractor = GeminiExtractorAgent(API_KEY)
     raw_data = extractor.extract_structured(image_path, structure_map=structure_map)
     
     if not raw_data or not raw_data.get("Line_Items"):
+         print("Gemini Extractor returned empty. Falling back to Mock.")
          logger.warning("Gemini Extractor returned empty. Falling back to Mock.")
          return _mock_ocr()
     
     # --- Step 4: Auditor Agent (Verification & Cleaning) ---
+    print("Initializing Agent 3: Auditor")
     logger.info("Initializing Agent 3: Auditor")
     auditor = AuditorAgent(API_KEY)
     clean_data = auditor.audit(raw_data)
+    print("Auditor finished.")
     
     return clean_data

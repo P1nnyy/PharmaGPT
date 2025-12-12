@@ -57,17 +57,20 @@ async def process_invoice(file: UploadFile = File(...)):
     normalization, and ingests it into Neo4j.
     """
 
-        
     try:
         # 1. Save uploaded file to temp
+        print(f"Received file: {file.filename}")
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file.filename.split('.')[-1]}") as tmp:
             shutil.copyfileobj(file.file, tmp)
             tmp_path = tmp.name
+        print(f"Saved temp file to: {tmp_path}")
         
         try:
             # 2. Extract Data using Gemini Vision + Agents
             # This calls the updated extraction_agent which invokes Gemini
+            print("Starting extraction...")
             extracted_data = extract_invoice_data(tmp_path)
+            print("Extraction completed.")
             
             if extracted_data is None:
                 raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
