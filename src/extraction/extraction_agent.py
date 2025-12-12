@@ -105,6 +105,10 @@ class GeminiExtractorAgent:
                         "Raw_Discount_Percentage": "float or null",
                         "Raw_Discount_Amount": "float or null",
                         "Raw_GST_Percentage": "float or null",
+                        "Raw_CGST_Percentage": "float or null",
+                        "Raw_SGST_Percentage": "float or null",
+                        "Raw_IGST_Percentage": "float or null",
+                        "Raw_Taxable_Value": "float or null",
                         "Stated_Net_Amount": "float"
                     }}
                 ],
@@ -129,7 +133,11 @@ class GeminiExtractorAgent:
             4. **Financial Disambiguation & GST**:
                - **The 'Qty' Rule**: A valid transaction row MUST have a specific Quantity. If a row contains a 'Rate' but NO 'Qty', it is a Tax/Summary row. IGNORE IT.
                - **Shadow Rule**: Force read rows located in shadowed or dark areas of the image if they align vertically with the columns of the main table.
-               - **GST Extraction**: Locate the final tax percentage for the item, which may be labeled 'GST %' or derived from the header. Use this figure for Raw_GST_Percentage.
+               - **Split Tax & GST Handling**: 
+                   - **Check for Split Taxes**: Look for separate columns labeled 'CGST', 'SGST', or 'IGST'.
+                   - **Negative Constraint**: Do not mentally sum 2.5% + 2.5% to make 5%. Extract exactly what is written in the respective column (e.g., if column says 2.5, extract 2.5).
+                   - **Mapping**: Map strictly to `Raw_CGST_Percentage`, `Raw_SGST_Percentage`, and `Raw_IGST_Percentage`.
+                   - **Combined GST**: If only a single 'GST' column exists, map to `Raw_GST_Percentage`.
             
             5. **Details & Column Mapping**:
                - **Original_Product_Description**: Extract only the text content found in the 'Particulars' column.
@@ -149,7 +157,11 @@ class GeminiExtractorAgent:
                - **Free Quantity Logic**: 
                    - If separate columns exist for 'Qty' and 'Free' (or 'Sch'), extract ONLY the 'Billed' or 'Paid' quantity into `Raw_Quantity`. 
                    - Do NOT add the Free quantity to the Raw_Quantity.
-               - **Stated_Net_Amount**: Use the float value from the final column labeled 'Net Amt' or 'Net Payable' on the far right of the table.
+               - **Financial Disambiguation**:
+                   - **Distinguish Taxable vs Net**: Explicitly differentiate between 'Taxable Value' (Amount BEFORE Tax) and 'Net Amount' (Amount AFTER Tax).
+                   - **Mapping Rule**: Map the column labeled 'Taxable Value', 'Amount', or 'Basic Amt' to `Raw_Taxable_Value`. 
+                   - **Net Amount Rule**: Map the final column labeled 'Net Amt', 'Total', or 'Net Payable' to `Stated_Net_Amount`.
+                   - **Logic Check**: If you see two amount columns at the end, the smaller one is usually Taxable, and the larger one is Net.
             """
             
             response = self.model.generate_content(

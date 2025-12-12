@@ -82,6 +82,31 @@ def parse_float(value: Union[str, float, None]) -> float:
         return float(match.group())
     return 0.0
 
+def get_effective_tax_rate(raw_item: RawLineItem) -> float:
+    """
+    Determines the single effective GST percentage for calculations.
+    Priority:
+    1. Raw_GST_Percentage (if explicitly combined)
+    2. Raw_IGST_Percentage (if interstate)
+    3. Sum of Raw_CGST_Percentage + Raw_SGST_Percentage (if split)
+    """
+    # 1. Check for explicit combined GST
+    gst_val = parse_float(raw_item.Raw_GST_Percentage)
+    if gst_val > 0:
+        return gst_val
+        
+    # 2. Check for IGST
+    igst_val = parse_float(raw_item.Raw_IGST_Percentage)
+    if igst_val > 0:
+        return igst_val
+        
+    # 3. Sum Split Taxes
+    cgst_val = parse_float(raw_item.Raw_CGST_Percentage)
+    sgst_val = parse_float(raw_item.Raw_SGST_Percentage)
+    
+    total_split_tax = cgst_val + sgst_val
+    return total_split_tax
+
 def calculate_cost_price(raw_item: RawLineItem, supplier_name: str) -> float:
     """
     Calculates the Cost Price Per Unit based on supplier-specific rules.
@@ -140,13 +165,14 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     # 2. Parse Quantities and Percents
     qty = parse_float(raw_item.Raw_Quantity)
     stated_net_amount = parse_float(raw_item.Stated_Net_Amount)
+    raw_taxable_value = parse_float(raw_item.Raw_Taxable_Value) # New Field
     
     # Discounts
     raw_disc_amount = parse_float(raw_item.Raw_Discount_Amount) if raw_item.Raw_Discount_Amount else 0.0
     discount_percent = parse_float(raw_item.Raw_Discount_Percentage)
     
-    # Tax
-    gst_percent = parse_float(raw_item.Raw_GST_Percentage)
+    # Tax - Use Effective Rate
+    effective_tax_percent = get_effective_tax_rate(raw_item)
 
     # 3. Calculate Gross Value (Baseline)
     gross_value = qty * cp_per_unit
@@ -159,20 +185,35 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     else:
         discount_amount = 0.0
     
-    # 5. Calculate Taxable Value
-    taxable_value = round(gross_value - discount_amount, 2)
+    # 5. Calculate Taxable Value (Derived)
+    derived_taxable_value = round(gross_value - discount_amount, 2)
     
     # 6. Calculate Tax Amount
-    tax_amount = round(taxable_value * (gst_percent / 100.0), 2)
+    tax_amount = round(derived_taxable_value * (effective_tax_percent / 100.0), 2)
     
-    # 7. Calculate Total Amount (Baseline Net)
-    calculated_net = round(taxable_value + tax_amount, 2)
+    # 7. Calculate Total Amount (Calculated Net)
+    calculated_net = round(derived_taxable_value + tax_amount, 2)
     
     # 8. Reconciliation & Discovery Mode
     diff = abs(calculated_net - stated_net_amount)
     final_net_amount = calculated_net
     
-    if diff <= 5.0:
+    # --- TRIANGULATION CHECK (New Logic) ---
+    # Check if Stated Net Amount is actually the Taxable Value
+    # Condition: 
+    # 1. Stated Net is close to Derived Taxable (within 1.0)
+    # 2. Calculated Net (with tax) is significantly higher than Stated Net (diff > 5.0)
+    # 3. Tax is present (>0)
+    
+    might_be_taxable = abs(stated_net_amount - derived_taxable_value) < 1.0
+    significant_tax_impact = abs(calculated_net - stated_net_amount) > 5.0
+    
+    if might_be_taxable and significant_tax_impact and effective_tax_percent > 0:
+        print(f"Correction Triggered for {supplier_name}: Extracted Net ({stated_net_amount}) matches Taxable Value. Overriding with Calculated Net ({calculated_net}).")
+        # In this specific case, we TRUST our calculation (which adds tax) over the Stated Net (which excluded it)
+        final_net_amount = calculated_net
+        
+    elif diff <= 5.0:
         # Acceptable variance
         if diff <= 0.05:
             final_net_amount = stated_net_amount
@@ -182,35 +223,30 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
         print(f"Discovery Mode Triggered for {supplier_name} - Item: {raw_item.Original_Product_Description} (Calc: {calculated_net}, Stated: {stated_net_amount})")
         
         # Hypothesis 1: Vendor uses 'Rate per Dozen'
-        # If true, our calculated net is roughly 12x higher than stated.
         rate_doz_net = calculated_net / 12.0
         if abs(rate_doz_net - stated_net_amount) < 1.0:
             print(f"SUGGESTION: Vendor {supplier_name} likely uses 'Rate per Dozen'. Add 'rate_divisor: 12.0' to vendor_rules.yaml.")
             final_net_amount = stated_net_amount # Trust the stated amount for now
             
         # Hypothesis 2: Vendor lists 'Total Amount' in the Rate column
-        # If true, our calculated net is roughly 'qty' times higher than stated (since we did qty * rate, but rate was already total).
-        # Check: (Calc / Qty) ~= Stated
-        elif qty > 0 and abs((calculated_net / qty) - stated_net_amount) < 5.0: # Variance allowed for tax differences
+        elif qty > 0 and abs((calculated_net / qty) - stated_net_amount) < 5.0: 
              print(f"SUGGESTION: Vendor {supplier_name} likely lists 'Total Amount' in the Rate column.")
              final_net_amount = stated_net_amount
 
         # Hypothesis 3: Vendor lists 'Taxable Value' (Excluding Tax) in the Amount column
-        # Check: Calculated Taxable Value ~= Stated Net Amount
-        elif abs(taxable_value - stated_net_amount) <= 1.0:
+        # Check: Derived Taxable Value ~= Stated Net Amount (This is now largely handled by Triangulation above, but kept as backup/diagnostic)
+        elif abs(derived_taxable_value - stated_net_amount) <= 1.0:
             print(f"SUGGESTION: Vendor {supplier_name} lists 'Taxable Value' in the Amount column. Add 'amount_excludes_tax: true' to vendor_rules.yaml.")
-            # If this is true, then the STATED amount is NOT the final Net Amount.
-            # Our CALCULATED Net Amount (which includes tax) is the correct one to store.
             final_net_amount = calculated_net
 
     return {
         "Standard_Quantity": qty,
         "Calculated_Cost_Price_Per_Unit": round(cp_per_unit, 2),
         "Discount_Amount_Currency": discount_amount,
-        "Calculated_Taxable_Value": taxable_value,
+        "Calculated_Taxable_Value": derived_taxable_value,
         "Calculated_Tax_Amount": tax_amount,
         "Net_Line_Amount": final_net_amount,
-        "Raw_GST_Percentage": gst_percent,
+        "Raw_GST_Percentage": effective_tax_percent, # Return the EFFECTIVE consolidated rate
     }
 
 def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, Any]:

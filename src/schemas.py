@@ -14,6 +14,10 @@ class RawLineItem(BaseModel):
     Raw_Discount_Percentage: Union[str, float, None] = Field(None, description="Discount percentage applied to the item.")
     Raw_Discount_Amount: Union[str, float, None] = Field(None, description="Absolute discount amount in currency, not percentage.")
     Raw_GST_Percentage: Union[str, float, None] = Field(None, description="GST percentage applied to the item.")
+    Raw_CGST_Percentage: Union[str, float, None] = Field(None, description="Central GST percentage if split (e.g. 6%).")
+    Raw_SGST_Percentage: Union[str, float, None] = Field(None, description="State GST percentage if split (e.g. 6%).")
+    Raw_IGST_Percentage: Union[str, float, None] = Field(None, description="Integrated GST percentage if explicit (e.g. 12%).")
+    Raw_Taxable_Value: Union[str, float, None] = Field(None, description="The value of the line item BEFORE tax. Explicitly captured to prevent confusion with Net Amount.")
     Raw_HSN_Code: Optional[str] = Field(None, description="HSN/SAC code extracted from the invoice.")
     Stated_Net_Amount: Union[str, float] = Field(..., description="The final amount for this line item as stated on the invoice.")
 
