@@ -283,7 +283,7 @@ function App() {
                     <th className="p-3 font-medium border-b border-gray-700 w-20">Qty</th>
                     <th className="p-3 font-medium border-b border-gray-700 w-24">HSN</th>
                     <th className="p-3 font-medium border-b border-gray-700 w-24">Batch</th>
-                    <th className="p-3 font-medium border-b border-gray-700 w-28 text-right">Amount</th>
+                    <th className="p-3 font-medium border-b border-gray-700 w-28 text-right">Net Amount (Inc. Tax)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
@@ -366,8 +366,11 @@ function App() {
                     </td>
                   </tr>
                   <tr className="bg-gray-800 text-lg font-bold border-t-2 border-gray-600">
-                    <td colSpan="4" className="p-3 text-right text-white">Grand Total</td>
-                    <td className="p-3 text-right text-indigo-400 font-mono">
+                    <td colSpan="4" className="p-3 text-right text-white">
+                      Grand Total
+                      <span className="block text-xs font-normal text-gray-400 mt-1">(Subtotal - Discount + Freight)</span>
+                    </td>
+                    <td className="p-3 text-right text-indigo-400 font-mono align-top">
                       {(
                         lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0)
                         - (parseFloat(invoiceData?.Global_Discount_Amount) || 0)

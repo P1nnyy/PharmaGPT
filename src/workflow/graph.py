@@ -26,6 +26,9 @@ def build_graph():
     
     return workflow.compile()
 
+# Global Compilation (Compile once on startup)
+APP = build_graph()
+
 async def run_extraction_pipeline(image_path: str):
     """
     Entry point to run the new graph-based pipeline.
@@ -33,7 +36,7 @@ async def run_extraction_pipeline(image_path: str):
     """
     logger.info(f"Starting Extraction Graph for {image_path}")
     
-    app = build_graph()
+    # APP is already compiled globally
     
     initial_state = {
         "image_path": image_path,
@@ -44,27 +47,8 @@ async def run_extraction_pipeline(image_path: str):
         "error_logs": []
     }
     
-         
-         # Simplest: Make this async and update callers. 
-         # But the user asked for this function signature.
-         
-         # Let's try nest_asyncio logic or simply asyncio.run() assuming no running loop in test.
-         # In FastAPI, uvicorn runs a loop. `asyncio.run` will FAIL.
-         
-         # Better fix: Make `run_extraction_pipeline` ASYNC.
-         # Then update server.py to `await run_extraction_pipeline`.
-         # Update test_math_diagnosis.py to `asyncio.run(run_extraction_pipeline)`.
-         
-         # Wait, I cannot easily change API signature without looking at all files.
-         # Actually, Step 768 shows `analyze_invoice` is async.
-         # `extracted_data = run_extraction_pipeline(tmp_path)` (It was called synchronously).
-         
-         # Strategy: Make `run_extraction_pipeline` ASYNC. Update Server and Test.
-         
-    
-    # Correction: I will make run_extraction_pipeline async.
     # Invoke Graph
-    result_state = await app.ainvoke(initial_state)
+    result_state = await APP.ainvoke(initial_state)
     
     # Extract final output
     final_output = result_state.get("final_output", {})

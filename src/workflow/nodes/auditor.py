@@ -40,6 +40,16 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         signature = (desc, net, batch)
         
         if signature not in unique_items_map:
+            # Noise Filter: Ignore items with 0 Net AND 0 Quantity (or negligible values)
+            try:
+                n_val = float(item.get("Stated_Net_Amount") or 0)
+                q_val = float(item.get("Raw_Quantity") or 0)
+                if n_val == 0.0 and q_val == 0.0:
+                    continue # Skip noise
+            except Exception as e:
+                logger.warning(f"Auditor Filter Error: {e}")
+                pass
+
             unique_items_map[signature] = True
             deduped_line_items.append(item)
             

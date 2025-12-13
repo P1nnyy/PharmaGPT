@@ -26,15 +26,18 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
     try:
         if "table" in zone_type.lower():
             # Scenario A: Table Extraction
+            vendor_context = "Learned Rules: None" # Placeholder for future injection
+
             prompt = f"""
             Target Zone: {description}
+            Context: {vendor_context}
             
             Task: Extract line items from this specific section.
             
             CRITICAL RULES:
-            1. **Split Tax Summation**: If columns 'SGST' and 'CGST' exist separately, you MUST SUM them to populate 'Raw_GST_Percentage' (e.g. 2.5% + 2.5% = 5.0%). Do NOT strictly copy just one.
+            1. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)? If they sum to 24%, this is an error—assume the rate is 12%. Do NOT blind sum.
             2. **Taxable vs Net**: Do not confuse (Qty * Rate) with Net Amount. If a column value equals Qty * Rate, it is 'Raw_Taxable_Value', NOT 'Stated_Net_Amount'. 'Stated_Net_Amount' should be the final amount including tax.
-            3. **Missing Info**: If a field is not visible, use null.
+            3. **Exclusions**: Table worker must IGNORE rows that look like 'Total', 'Subtotal', 'Discount', or 'Freight'. Leave those for the Footer worker.
             
             Return a JSON object with a key 'line_items' containing a list of items.
             Item Schema:

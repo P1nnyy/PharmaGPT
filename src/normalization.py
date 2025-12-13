@@ -239,35 +239,24 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     significant_tax_impact = abs(calculated_net - stated_net_amount) > 5.0
     
     if might_be_taxable and significant_tax_impact and effective_tax_percent > 0:
-        print(f"Correction Triggered for {supplier_name}: Extracted Net ({stated_net_amount}) matches Taxable Value. Overriding with Calculated Net ({calculated_net}).")
-        # In this specific case, we TRUST our calculation (which adds tax) over the Stated Net (which excluded it)
-        final_net_amount = calculated_net
+        # print(f"Correction Triggered for {supplier_name}: Extracted Net ({stated_net_amount}) matches Taxable Value. Overriding with Calculated Net ({calculated_net}).")
+        # TRUST STATED NET BY DEFAULT (To avoid Double Tax issues reported by User)
+        # In modern flow, the Auditor Agent is responsible for this check. 
+        # We disable this algorithmic correction to prevent false positives inflating the bill.
+        final_net_amount = stated_net_amount 
+        # final_net_amount = calculated_net 
+
         
     elif diff <= 5.0:
         # Acceptable variance
         if diff <= 0.05:
             final_net_amount = stated_net_amount
     else:
-        # --- DISCOVERY MODE TRIGGERED ---
-        # The numbers don't add up. Let's try to reverse-engineer why.
-        print(f"Discovery Mode Triggered for {supplier_name} - Item: {raw_item.Original_Product_Description} (Calc: {calculated_net}, Stated: {stated_net_amount})")
-        
-        # Hypothesis 1: Vendor uses 'Rate per Dozen'
-        rate_doz_net = calculated_net / 12.0
-        if abs(rate_doz_net - stated_net_amount) < 1.0:
-            print(f"SUGGESTION: Vendor {supplier_name} likely uses 'Rate per Dozen'. Add 'rate_divisor: 12.0' to vendor_rules.yaml.")
-            final_net_amount = stated_net_amount # Trust the stated amount for now
-            
-        # Hypothesis 2: Vendor lists 'Total Amount' in the Rate column
-        elif qty > 0 and abs((calculated_net / qty) - stated_net_amount) < 5.0: 
-             print(f"SUGGESTION: Vendor {supplier_name} likely lists 'Total Amount' in the Rate column.")
-             final_net_amount = stated_net_amount
+        # Standard Variance Check
+        # If difference is huge, we might flag it, but for now we trust the STATED amount
+        # unless user overrides. The Auditor Agent is responsible for deep checks.
+        pass
 
-        # Hypothesis 3: Vendor lists 'Taxable Value' (Excluding Tax) in the Amount column
-        # Check: Derived Taxable Value ~= Stated Net Amount (This is now largely handled by Triangulation above, but kept as backup/diagnostic)
-        elif abs(derived_taxable_value - stated_net_amount) <= 1.0:
-            print(f"SUGGESTION: Vendor {supplier_name} lists 'Taxable Value' in the Amount column. Add 'amount_excludes_tax: true' to vendor_rules.yaml.")
-            final_net_amount = calculated_net
 
     return {
         "Standard_Quantity": qty,
@@ -278,6 +267,17 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
         "Net_Line_Amount": final_net_amount,
         "Raw_GST_Percentage": effective_tax_percent, # Return the EFFECTIVE consolidated rate
     }
+
+# Initialize Vector Store (Global Singleton)
+try:
+    from src.services.hsn_vector_store import HSNVectorStore
+    # We rely on the implicit persistence path defined in the class
+    GLOBAL_VECTOR_STORE = HSNVectorStore()
+except Exception as e:
+    print(f"Warning: HSN Vector Store unavailable: {e}")
+    GLOBAL_VECTOR_STORE = None
+
+# ... (Existing imports remain at top, this block goes after them or uses global var)
 
 def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, Any]:
     """
@@ -308,16 +308,27 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
     clean_ocr_hsn = re.sub(r'[^\d.]', '', str(raw_hsn)) if raw_hsn else None
     final_hsn = None
 
-    # Priority A: Check Bulk CSV (The "Emergency Match")
+    # Priority A: Check Bulk CSV (The "Emergency Match" - Exact)
     # We look up the product description in your Master CSV
     lookup_key = raw_item.Original_Product_Description.strip().lower()
     
     if lookup_key in BULK_HSN_MAP:
         final_hsn = BULK_HSN_MAP[lookup_key]
-    
-    # Priority B: Use OCR with "Chapter Expansion"
-    elif clean_ocr_hsn:
+        
+    # Priority B: Vector Search (Semantic Fallback)
+    elif GLOBAL_VECTOR_STORE:
+        # Using Description to find best HSN match
+        # Limit 1, default threshold 1.0 (can be tuned in service)
+        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_item.Original_Product_Description)
+        if vector_match:
+             final_hsn = vector_match
+
+    # Priority C: Use OCR with "Chapter Expansion"
+    # Fallback to what was printed if no DB match found
+    if not final_hsn and clean_ocr_hsn:
         final_hsn = clean_ocr_hsn
+    
+    # NOTE: We do NOT touch tax rates based on HSN. Strict compliance.
 
     # 5. Merge them
     return {
