@@ -11,9 +11,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize Gemini
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GOOGLE_API_KEY")
 if not API_KEY:
-    logger.warning("GEMINI_API_KEY not found in environment variables.")
+    logger.warning("GOOGLE_API_KEY not found in environment variables.")
 
 genai.configure(api_key=API_KEY)
 
@@ -29,19 +29,13 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         return {"extraction_plan": [], "error_logs": [f"Image not found: {image_path}"]}
 
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash-exp') # Using 2.0 Flash as requested
+        model = genai.GenerativeModel('gemini-2.0-flash') # Using 2.0 Flash as requested
         
         # Upload file (or load bytes if standard API supports it, but File API is better for vision)
         # Using standard file API for Gemini 2.0
         sample_file = genai.upload_file(path=image_path, display_name="Invoice Surveyor")
         
         prompt = """
-        Analyze the document layout. Do NOT extract line item text yet. 
-        Return a JSON list of 'Zones' identifying where data resides. 
-        
-        Rules:
-        1. Header: The top region containing Supplier Name, Invoice No, Date, and GSTIN.
-        2. Primary Table: The largest grid containing main products.
         3. Secondary Tables: Look explicitly for smaller, separate grids (e.g., 'Free Goods', 'Schemes', 'Cold Chain', 'Schedule H'). These are often widely separated or completely distinct from the main table.
         4. Footer: The bottom region containing 'Grand Total', 'Tax Summaries', and 'Cash Discounts'.
         

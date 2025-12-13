@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { Upload, Check, AlertCircle, Loader2, Save, FileText, Download, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { analyzeInvoice, ingestInvoice } from './services/api';
-import clsx from 'clsx';
+
 
 function App() {
   const [file, setFile] = useState(null);
@@ -152,21 +152,7 @@ function App() {
     XLSX.writeFile(wb, filename);
   };
 
-  // Helper to check if HSN was chemically enhanced
-  const isHsnExpanded = (index) => {
-    if (!invoiceData || !invoiceData.Line_Items || !lineItems[index]) return false;
 
-    // We assume index alignment is preserved (zip)
-    const rawHsn = String(invoiceData.Line_Items[index]?.Raw_HSN_Code || '').replace(/[^\d]/g, '');
-    const finalHsn = String(lineItems[index]?.HSN_Code || '');
-
-    // Highlight if final is longer than raw (expansion took place) AND they share prefix
-    // E.g. Raw "30" -> Final "3004"
-    if (rawHsn && finalHsn.length > rawHsn.length && finalHsn.startsWith(rawHsn)) {
-      return true;
-    }
-    return false;
-  };
 
   return (
     <div className="h-screen w-screen flex bg-gray-900 text-gray-100 overflow-hidden font-sans">
@@ -276,110 +262,141 @@ function App() {
         <div className="flex-1 overflow-auto p-0">
           {lineItems.length > 0 ? (
             <>
-              <table className="w-full text-left text-sm border-collapse">
-                <thead className="bg-gray-800 text-gray-400 sticky top-0 z-0">
-                  <tr>
-                    <th className="p-3 font-medium border-b border-gray-700">Item Name</th>
-                    <th className="p-3 font-medium border-b border-gray-700 w-20">Qty</th>
-                    <th className="p-3 font-medium border-b border-gray-700 w-24">HSN</th>
-                    <th className="p-3 font-medium border-b border-gray-700 w-24">Batch</th>
-                    <th className="p-3 font-medium border-b border-gray-700 w-28 text-right">Net Amount (Inc. Tax)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800">
-                  {lineItems.map((item, idx) => {
-                    const hsnWarn = isHsnExpanded(idx);
-                    return (
-                      <tr key={idx} className="hover:bg-gray-800/50 group transition-colors">
-                        <td className="p-2">
-                          <input
-                            value={item.Standard_Item_Name || ''}
-                            onChange={(e) => handleInputChange(idx, 'Standard_Item_Name', e.target.value)}
-                            className="w-full bg-transparent outline-none focus:text-indigo-400"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            value={item.Standard_Quantity || 0}
-                            onChange={(e) => handleInputChange(idx, 'Standard_Quantity', parseFloat(e.target.value))}
-                            className="w-full bg-transparent outline-none font-mono text-center focus:text-indigo-400"
-                          />
-                        </td>
-                        <td className={clsx("p-2 relative", hsnWarn && "bg-yellow-900/30")}>
-                          <input
-                            value={item.HSN_Code || ''}
-                            onChange={(e) => handleInputChange(idx, 'HSN_Code', e.target.value)}
-                            className={clsx("w-full bg-transparent outline-none font-mono text-center focus:text-indigo-400", hsnWarn && "text-yellow-200 font-bold")}
-                          />
-                          {hsnWarn && (
-                            <span className="absolute top-1 right-1">
-                              <AlertCircle className="w-3 h-3 text-yellow-500" />
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2">
-                          <input
-                            value={item.Batch_No || ''}
-                            onChange={(e) => handleInputChange(idx, 'Batch_No', e.target.value)}
-                            className="w-full bg-transparent outline-none font-mono text-center text-gray-400 focus:text-indigo-400"
-                          />
-                        </td>
-                        <td className="p-2 text-right">
-                          <input
-                            type="number"
-                            value={item.Net_Line_Amount || 0}
-                            onChange={(e) => handleInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
-                            className="w-full bg-transparent outline-none font-mono text-right focus:text-indigo-400"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {/* Summary Section */}
-                  <tr className="bg-gray-800/50 border-t border-gray-700 font-medium">
-                    <td colSpan="4" className="p-3 text-right text-gray-400">Subtotal</td>
-                    <td className="p-3 text-right text-white font-mono">
-                      {lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0).toFixed(2)}
-                    </td>
-                  </tr>
-                  <tr className="bg-gray-800/50">
-                    <td colSpan="4" className="p-3 text-right text-gray-400">Global Discount (-)</td>
-                    <td className="p-3">
-                      <input
-                        type="number"
-                        value={invoiceData?.Global_Discount_Amount || 0}
-                        onChange={(e) => handleHeaderChange('Global_Discount_Amount', parseFloat(e.target.value))}
-                        className="w-full bg-transparent outline-none font-mono text-right text-red-300 focus:text-red-400"
-                      />
-                    </td>
-                  </tr>
-                  <tr className="bg-gray-800/50">
-                    <td colSpan="4" className="p-3 text-right text-gray-400">Freight / Charges (+)</td>
-                    <td className="p-3">
-                      <input
-                        type="number"
-                        value={invoiceData?.Freight_Charges || 0}
-                        onChange={(e) => handleHeaderChange('Freight_Charges', parseFloat(e.target.value))}
-                        className="w-full bg-transparent outline-none font-mono text-right text-green-300 focus:text-green-400"
-                      />
-                    </td>
-                  </tr>
-                  <tr className="bg-gray-800 text-lg font-bold border-t-2 border-gray-600">
-                    <td colSpan="4" className="p-3 text-right text-white">
-                      Grand Total
-                      <span className="block text-xs font-normal text-gray-400 mt-1">(Subtotal - Discount + Freight)</span>
-                    </td>
-                    <td className="p-3 text-right text-indigo-400 font-mono align-top">
-                      {(
-                        lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0)
-                        - (parseFloat(invoiceData?.Global_Discount_Amount) || 0)
-                        + (parseFloat(invoiceData?.Freight_Charges) || 0)
-                      ).toFixed(2)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {/* TABLE HEADERS - Spreadsheet Style */}
+              <div className="sticky top-0 z-10 bg-gray-900 pt-2">
+                <div className="grid grid-cols-12 gap-4 mb-2 text-sm font-bold text-gray-400 border-b border-gray-700 pb-2 px-2">
+                  <div className="col-span-3">Item Name</div>
+                  <div className="col-span-1">Item Type</div>
+                  <div className="col-span-2">Batch No.</div>
+                  <div className="col-span-1 text-center">Quantity</div>
+                  <div className="col-span-2 text-right">Rate (Cost)</div>
+                  <div className="col-span-1 text-right">MRP</div>
+                  <div className="col-span-2 text-right">Total Cost</div>
+                </div>
+              </div>
+
+              {/* TABLE ROWS */}
+              <div className="divide-y divide-gray-800">
+                {lineItems.map((item, idx) => {
+                  // Helper: Calculate Rate dynamically for display
+                  const qty = parseFloat(item.Standard_Quantity) || 1;
+                  const net = parseFloat(item.Net_Line_Amount) || 0;
+                  const displayRate = (net / qty).toFixed(2);
+                  const itemType = item.Pack_Size_Description || "Unit";
+
+                  return (
+                    <div key={idx} className="grid grid-cols-12 gap-4 items-center py-2 hover:bg-gray-800/30 px-2 transition-colors">
+
+                      {/* 1. Item Name */}
+                      <div className="col-span-3">
+                        <input
+                          value={item.Standard_Item_Name || ''}
+                          onChange={(e) => handleInputChange(idx, 'Standard_Item_Name', e.target.value)}
+                          className="w-full bg-transparent outline-none focus:text-indigo-400 font-medium text-gray-200"
+                          placeholder="Item Name"
+                        />
+                      </div>
+
+                      {/* 2. Item Type (Pack Size) */}
+                      <div className="col-span-1 text-xs text-gray-500 uppercase tracking-wide truncate">
+                        {itemType}
+                      </div>
+
+                      {/* 3. Batch No */}
+                      <div className="col-span-2">
+                        <input
+                          value={item.Batch_No || ''}
+                          onChange={(e) => handleInputChange(idx, 'Batch_No', e.target.value)}
+                          className="w-full bg-transparent outline-none font-mono text-gray-400 focus:text-indigo-400"
+                          placeholder="Batch"
+                        />
+                      </div>
+
+                      {/* 4. Quantity */}
+                      <div className="col-span-1">
+                        <input
+                          type="number"
+                          value={item.Standard_Quantity || 0}
+                          onChange={(e) => handleInputChange(idx, 'Standard_Quantity', parseFloat(e.target.value))}
+                          className="w-full bg-transparent outline-none font-mono text-center text-indigo-300 font-bold bg-gray-800/20 rounded focus:bg-gray-700"
+                        />
+                      </div>
+
+                      {/* 5. Rate (Cost Price after taxes) - Read Only Calculation */}
+                      <div className="col-span-2 text-right font-mono text-gray-300">
+                        {displayRate}
+                      </div>
+
+                      {/* 6. MRP */}
+                      <div className="col-span-1 text-right font-mono text-gray-500">
+                        {item.MRP || '-'}
+                      </div>
+
+                      {/* 7. Total Cost (Net Amount) */}
+                      <div className="col-span-2">
+                        <input
+                          type="number"
+                          value={item.Net_Line_Amount || 0}
+                          onChange={(e) => handleInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
+                          className="w-full bg-transparent outline-none font-mono text-right text-green-400 font-bold focus:text-green-300"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary Section (Adapted to Grid) */}
+              <div className="mt-4 border-t border-gray-700">
+                {/* Subtotal */}
+                <div className="grid grid-cols-12 gap-4 items-center py-2 px-2 bg-gray-900/50">
+                  <div className="col-span-10 text-right text-gray-400 font-medium">Subtotal</div>
+                  <div className="col-span-2 text-right text-white font-mono font-bold">
+                    {lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0).toFixed(2)}
+                  </div>
+                </div>
+
+                {/* Global Discount */}
+                <div className="grid grid-cols-12 gap-4 items-center py-2 px-2 hover:bg-gray-800/20">
+                  <div className="col-span-10 text-right text-gray-400 font-medium">Global Discount (-)</div>
+                  <div className="col-span-2">
+                    <input
+                      type="number"
+                      value={invoiceData?.Global_Discount_Amount || 0}
+                      onChange={(e) => handleHeaderChange('Global_Discount_Amount', parseFloat(e.target.value))}
+                      className="w-full bg-transparent outline-none font-mono text-right text-red-300 focus:text-red-400 font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Freight */}
+                <div className="grid grid-cols-12 gap-4 items-center py-2 px-2 hover:bg-gray-800/20">
+                  <div className="col-span-10 text-right text-gray-400 font-medium">Freight / Charges (+)</div>
+                  <div className="col-span-2">
+                    <input
+                      type="number"
+                      value={invoiceData?.Freight_Charges || 0}
+                      onChange={(e) => handleHeaderChange('Freight_Charges', parseFloat(e.target.value))}
+                      className="w-full bg-transparent outline-none font-mono text-right text-green-300 focus:text-green-400 font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Grand Total */}
+                <div className="grid grid-cols-12 gap-4 items-center py-4 px-2 bg-gray-800 border-t border-gray-600 shadow-inner">
+                  <div className="col-span-10 text-right text-white font-bold text-lg">
+                    Grand Total
+                    <span className="block text-xs font-normal text-gray-400 font-sans mt-0.5">(Subtotal - Discount + Freight)</span>
+                  </div>
+                  <div className="col-span-2 text-right text-indigo-400 font-mono text-xl font-bold">
+                    {(
+                      lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0)
+                      - (parseFloat(invoiceData?.Global_Discount_Amount) || 0)
+                      + (parseFloat(invoiceData?.Freight_Charges) || 0)
+                    ).toFixed(2)}
+                  </div>
+                </div>
+              </div>
 
               <button
                 onClick={handleAddRow}

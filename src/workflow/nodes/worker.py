@@ -9,9 +9,9 @@ from src.workflow.state import InvoiceState as InvoiceStateDict
 logger = logging.getLogger(__name__)
 
 # Initialize Gemini
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GOOGLE_API_KEY")
 if not API_KEY:
-    logger.warning("GEMINI_API_KEY not found in environment variables.")
+    logger.warning("GOOGLE_API_KEY not found in environment variables.")
 
 genai.configure(api_key=API_KEY)
 
@@ -35,9 +35,18 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             Task: Extract line items from this specific section.
             
             CRITICAL RULES:
-            1. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)? If they sum to 24%, this is an error—assume the rate is 12%. Do NOT blind sum.
-            2. **Taxable vs Net**: Do not confuse (Qty * Rate) with Net Amount. If a column value equals Qty * Rate, it is 'Raw_Taxable_Value', NOT 'Stated_Net_Amount'. 'Stated_Net_Amount' should be the final amount including tax.
-            3. **Exclusions**: Table worker must IGNORE rows that look like 'Total', 'Subtotal', 'Discount', or 'Freight'. Leave those for the Footer worker.
+            1. **Batch Number Hunt**: You MUST find the Batch Number. Look for columns 'Batch', 'Lot', 'B.No'.
+               - **CRITICAL EXCLUSION**: Do **NOT** extract values from columns labeled **"PCode"**, "Product Code", or "SKU". These are item codes, not batches.
+               - **Fallback**: If no specific Batch column exists, look for a batch string (alphanumeric, e.g. 'B2G2', 'GT45') printed **inside** the Description column or immediately next to the 'Expiry' column. Do NOT return 'UNKNOWN' unless strictly empty.
+            2. **Single Pass Extraction**: Scan the table top-to-bottom exactly ONCE. Do NOT repeat items. Do NOT hallucinate double rows. If you see the same item name twice, ensure it is physically printed twice with different data; otherwise, it is a duplication error.
+            3. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)? If they sum to 24%, this is an error—assume the rate is 12%.
+            4. **Taxable vs Net**: Do not confuse (Qty * Rate) with Net Amount. If a column value equals Qty * Rate, it is 'Raw_Taxable_Value'. 'Stated_Net_Amount' MUST be the final column (Inc. Tax).
+            5. **Exclusions**: IGNORE 'Total', 'Subtotal', 'Discount', 'Freight' rows.
+            6. **Logic Check (Rate vs Amount)**: 
+               - A "Rate" (Unit Price) is for **ONE** item. "Net Amount" is for **ALL** items (Qty * Rate).
+               - **MATH CHECK**: If a column's value is roughly (Qty * Another Column), that column is the **TOTAL AMOUNT**. NEVER extract it as 'Rate'.
+               - If two financial columns exist and Qty > 1, the SMALLER value is usually the Rate, and the LARGER is the Amount.
+            7. **GST Summation**: If 'SGST' and 'CGST' columns exist separately, SUM them (e.g. 2.5% + 2.5% = 5.0%). But CHECK: Does the sum match a standard rate (5, 12, 18, 28)? If it sums to 24%, assume 12%.
             
             Return a JSON object with a key 'line_items' containing a list of items.
             Item Schema:
@@ -45,6 +54,7 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                 "Original_Product_Description": str,
                 "Raw_Quantity": float,
                 "Batch_No": str,
+                "Raw_HSN_Code": str,
                 "Raw_Rate_Column_1": float,
                 "Raw_Discount_Percentage": float,
                 "Raw_GST_Percentage": float,
@@ -134,7 +144,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     # State only has path. We'll upload here.
     try:
         sample_file = genai.upload_file(path=image_path, display_name="Worker Extraction")
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Create Tasks
         tasks = []

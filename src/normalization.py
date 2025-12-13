@@ -224,38 +224,33 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     # 7. Calculate Total Amount (Calculated Net)
     calculated_net = round(derived_taxable_value + tax_amount, 2)
     
-    # 8. Reconciliation & Discovery Mode
-    diff = abs(calculated_net - stated_net_amount)
+    # 8. SAFETY NET: Double-Multiplication Guard
     final_net_amount = calculated_net
     
-    # --- TRIANGULATION CHECK (New Logic) ---
-    # Check if Stated Net Amount is actually the Taxable Value
-    # Condition: 
-    # 1. Stated Net is close to Derived Taxable (within 1.0)
-    # 2. Calculated Net (with tax) is significantly higher than Stated Net (diff > 5.0)
-    # 3. Tax is present (>0)
-    
-    might_be_taxable = abs(stated_net_amount - derived_taxable_value) < 1.0
-    significant_tax_impact = abs(calculated_net - stated_net_amount) > 5.0
-    
-    if might_be_taxable and significant_tax_impact and effective_tax_percent > 0:
-        # print(f"Correction Triggered for {supplier_name}: Extracted Net ({stated_net_amount}) matches Taxable Value. Overriding with Calculated Net ({calculated_net}).")
-        # TRUST STATED NET BY DEFAULT (To avoid Double Tax issues reported by User)
-        # In modern flow, the Auditor Agent is responsible for this check. 
-        # We disable this algorithmic correction to prevent false positives inflating the bill.
-        final_net_amount = stated_net_amount 
-        # final_net_amount = calculated_net 
-
+    # Logic: If Calculated Net is huge and roughly equals (Stated Net * Qty), 
+    # then the AI extracted the "Total" into the "Rate" column.
+    if qty > 1 and stated_net_amount > 0:
+        implied_mistake_value = stated_net_amount * qty
         
-    elif diff <= 5.0:
-        # Acceptable variance
-        if diff <= 0.05:
+        # Check if difference is small (allow 5% variance for rounding)
+        if abs(calculated_net - implied_mistake_value) < (implied_mistake_value * 0.05):
+            print(f"⚠️ SAFETY NET TRIGGERED: Double Multiplication detected for item. Reverting Rate.")
+            
+            # 1. Trust the Stated Net Amount as the single source of truth
             final_net_amount = stated_net_amount
-    else:
-        # Standard Variance Check
-        # If difference is huge, we might flag it, but for now we trust the STATED amount
-        # unless user overrides. The Auditor Agent is responsible for deep checks.
-        pass
+            
+            # 2. Reverse Engineer the Real Unit Rate (CP)
+            # Formula: (Total / TaxFactor) / Qty
+            tax_factor = 1 + (effective_tax_percent / 100.0)
+            
+            # Recalculate true values
+            derived_taxable_value = round(final_net_amount / tax_factor, 2)
+            cp_per_unit = round(derived_taxable_value / qty, 2)
+            tax_amount = round(final_net_amount - derived_taxable_value, 2)
+
+    # 9. Standard Reconciliation (for small rounding differences)
+    elif abs(calculated_net - stated_net_amount) <= 5.0:
+        final_net_amount = stated_net_amount
 
 
     return {
@@ -300,6 +295,22 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         batch_no = re.sub(r'^(OTSI |MICR |MHN- )', '', batch_no)
         # Remove numeric prefixes with pipes (e.g. "215 | ")
         batch_no = re.sub(r'^\d+\s*\|\s*', '', batch_no)
+
+    # 3.5. Regex Fallback: If Batch is UNKNOWN, hunt in Description
+    if batch_no == "UNKNOWN" or not batch_no:
+        # Look for alphanumeric tokens like 'B2G2', 'GLP12' (Must have digits and letters)
+        # Exclude common tokens: '10GM', '5ML', 'STRIPS', 'NO'
+        desc_text = raw_item.Original_Product_Description
+        # Tokenize
+        tokens = re.findall(r'\b[A-Z0-9-]{3,10}\b', desc_text.upper())
+        for t in tokens:
+            if re.search(r'\d', t) and re.search(r'[A-Z]', t):
+                # Has both letters and numbers
+                if not re.search(r'(GM|ML|KG|PCS|TAB|CAP|SFT|RTM)', t):
+                     batch_no = t
+                     # Clean it from description? Optional.
+                     break
+
         
     # 4. Clean & Enrich HSN Code
     raw_hsn = raw_item.Raw_HSN_Code
@@ -316,12 +327,13 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         final_hsn = BULK_HSN_MAP[lookup_key]
         
     # Priority B: Vector Search (Semantic Fallback)
-    elif GLOBAL_VECTOR_STORE:
-        # Using Description to find best HSN match
-        # Limit 1, default threshold 1.0 (can be tuned in service)
-        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_item.Original_Product_Description)
+    elif GLOBAL_VECTOR_STORE and not final_hsn:
+        # Use Description to find best HSN match
+        # Lower threshold (0.5) implies stricter matching
+        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_item.Original_Product_Description, threshold=0.5)
         if vector_match:
-             final_hsn = vector_match
+            print(f"   -> Vector Store recovered HSN: {vector_match} for {std_name}")
+            final_hsn = vector_match
 
     # Priority C: Use OCR with "Chapter Expansion"
     # Fallback to what was printed if no DB match found
@@ -336,7 +348,9 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         "Standard_Item_Name": std_name,
         "Pack_Size_Description": pack_size,
         "Batch_No": batch_no,
-        "HSN_Code": final_hsn
+        "HSN_Code": final_hsn,
+        # ADD THIS LINE:
+        "MRP": parse_float(raw_item.Raw_Rate_Column_2) # Maps secondary rate to MRP
     }
 
 def distribute_global_modifiers(

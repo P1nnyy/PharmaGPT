@@ -48,3 +48,4 @@ class NormalizedLineItem(BaseModel):
     Net_Line_Amount: float = Field(..., description="Total final cost of the line item.")
     Prorated_Global_Discount: float = Field(0.0, description="Share of global discount distributed to this item.")
     HSN_Code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")
+    MRP: Optional[float] = Field(None, description="Maximum Retail Price, if available.")

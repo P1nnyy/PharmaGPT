@@ -22,8 +22,13 @@ from src.persistence import ingest_invoice
 from src.workflow.graph import run_extraction_pipeline
 
 # Basic validation that API Key exists (optional but good practice)
-if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
-    print("WARNING: GEMINI_API_KEY or GOOGLE_API_KEY not found in environment variables.")
+API_KEY = os.getenv("GOOGLE_API_KEY")
+if not API_KEY:
+    # Fallback to GEMINI_API_KEY for backward compatibility
+    API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not API_KEY:
+    print("WARNING: GOOGLE_API_KEY or GEMINI_API_KEY not found in environment variables.")
 
 app = FastAPI(title="Invoice Extractor API")
 
