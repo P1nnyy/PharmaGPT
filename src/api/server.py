@@ -19,7 +19,7 @@ import uvicorn
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item, parse_float
 from src.persistence import ingest_invoice
-from src.extraction.extraction_agent import extract_invoice_data
+from src.workflow.graph import run_extraction_pipeline
 
 # Basic validation that API Key exists (optional but good practice)
 if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
@@ -95,10 +95,10 @@ async def analyze_invoice(file: UploadFile = File(...)):
 
     # Scope 2: Extraction (Outside the with block)
     try:
-        # 2. Extract Data using Gemini Vision + Agents
-        print("Starting extraction...")
-        extracted_data = extract_invoice_data(tmp_path)
-        print("Extraction completed.")
+        # 2. Extract Data using Gemini Vision + Agents (LangGraph)
+        print("Starting extraction pipeline...")
+        extracted_data = await run_extraction_pipeline(tmp_path)
+        print("Extraction pipeline completed.")
         
         if extracted_data is None:
             raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")

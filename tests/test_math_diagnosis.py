@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 load_dotenv()
 
-from src.extraction.extraction_agent import extract_invoice_data
 from src.normalization import normalize_line_item, parse_float
 from src.schemas import InvoiceExtraction
+from src.workflow.graph import run_extraction_pipeline
 
 def test_specific_invoice(image_path):
     print(f"\n--- TESTING: {os.path.basename(image_path)} ---")
@@ -19,12 +19,15 @@ def test_specific_invoice(image_path):
         return
 
     # 1. Run Extractor
-    print("Running Extractor...")
-    raw_data = extract_invoice_data(image_path)
+    print("Running Extractor (Graph Pipeline)...")
+    # raw_data = extract_invoice_data(image_path) 
+    import asyncio
+    raw_data = asyncio.run(run_extraction_pipeline(image_path))
     if not raw_data:
         print("Extraction Failed.")
         return
 
+    print(f"Extraction Complete. Found {len(raw_data.get('Line_Items', []))} items.")
     print(f"Supplier: {raw_data.get('Supplier_Name')}")
     print(f"Extracted Grand Total: {raw_data.get('Stated_Grand_Total')}")
     print(f"Extracted Global Discount: {raw_data.get('Global_Discount_Amount')}")

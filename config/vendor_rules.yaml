@@ -28,8 +28,7 @@ vendors:
     calculation_rules:
       rate_divisor: 12.0
   "c m associates":
-    calculation_rules:
-      amount_column_strategy: "IS_TAXABLE_VALUE"
+    calculation_rules: {}
   "sood medicos":
     calculation_rules: {}
   "rakesh & co":

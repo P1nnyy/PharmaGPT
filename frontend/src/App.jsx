@@ -283,7 +283,7 @@ function App() {
                     <th className="p-3 font-medium border-b border-gray-700 w-20">Qty</th>
                     <th className="p-3 font-medium border-b border-gray-700 w-24">HSN</th>
                     <th className="p-3 font-medium border-b border-gray-700 w-24">Batch</th>
-                    <th className="p-3 font-medium border-b border-gray-700 w-28 text-right">Net Amt</th>
+                    <th className="p-3 font-medium border-b border-gray-700 w-28 text-right">Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
@@ -336,6 +336,45 @@ function App() {
                       </tr>
                     );
                   })}
+                  {/* Summary Section */}
+                  <tr className="bg-gray-800/50 border-t border-gray-700 font-medium">
+                    <td colSpan="4" className="p-3 text-right text-gray-400">Subtotal</td>
+                    <td className="p-3 text-right text-white font-mono">
+                      {lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0).toFixed(2)}
+                    </td>
+                  </tr>
+                  <tr className="bg-gray-800/50">
+                    <td colSpan="4" className="p-3 text-right text-gray-400">Global Discount (-)</td>
+                    <td className="p-3">
+                      <input
+                        type="number"
+                        value={invoiceData?.Global_Discount_Amount || 0}
+                        onChange={(e) => handleHeaderChange('Global_Discount_Amount', parseFloat(e.target.value))}
+                        className="w-full bg-transparent outline-none font-mono text-right text-red-300 focus:text-red-400"
+                      />
+                    </td>
+                  </tr>
+                  <tr className="bg-gray-800/50">
+                    <td colSpan="4" className="p-3 text-right text-gray-400">Freight / Charges (+)</td>
+                    <td className="p-3">
+                      <input
+                        type="number"
+                        value={invoiceData?.Freight_Charges || 0}
+                        onChange={(e) => handleHeaderChange('Freight_Charges', parseFloat(e.target.value))}
+                        className="w-full bg-transparent outline-none font-mono text-right text-green-300 focus:text-green-400"
+                      />
+                    </td>
+                  </tr>
+                  <tr className="bg-gray-800 text-lg font-bold border-t-2 border-gray-600">
+                    <td colSpan="4" className="p-3 text-right text-white">Grand Total</td>
+                    <td className="p-3 text-right text-indigo-400 font-mono">
+                      {(
+                        lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0)
+                        - (parseFloat(invoiceData?.Global_Discount_Amount) || 0)
+                        + (parseFloat(invoiceData?.Freight_Charges) || 0)
+                      ).toFixed(2)}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
 
@@ -362,6 +401,13 @@ function App() {
             >
               <Download className="w-5 h-5" /> Download Excel
             </button>
+
+            <div className="flex items-center gap-4 mr-auto text-xl font-bold text-white">
+              <span>Total:</span>
+              <span className="font-mono text-indigo-400">
+                {lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0).toFixed(2)}
+              </span>
+            </div>
 
             <button
               onClick={handleConfirm}

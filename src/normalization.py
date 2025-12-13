@@ -164,12 +164,7 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     # Or just re-scan here (inefficient but safe). 
     normalized_supplier = supplier_name.lower()
     vendors = VENDOR_RULES.get("vendors", {})
-    amount_col_strategy = None
-    
-    for vendor_key, rules in vendors.items():
-        if vendor_key in normalized_supplier:
-             amount_col_strategy = rules.get("calculation_rules", {}).get("amount_column_strategy")
-             break
+
 
     # 1. Calculate Cost Price (CP)
     # Note: calculate_cost_price only returns float now. 
@@ -189,35 +184,7 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     
     is_calculated = False
 
-    # --- LOGIC PATCH: Vendor Specific Override ---
-    if amount_col_strategy == "IS_TAXABLE_VALUE" and stated_net_amount > 0:
-         print(f"Applying Strategy: IS_TAXABLE_VALUE for {supplier_name}")
-         # Trust 'Stated Net' as the Taxable Base
-         raw_taxable_value = stated_net_amount 
-         
-         # Recalculate Net from this Taxable Base
-         tax_factor = 1 + (effective_tax_percent / 100.0)
-         recalculated_net = round(raw_taxable_value * tax_factor, 2)
-         
-         # IMPORTANT: Final Net is the Recalculated one!
-         # The 'Stated Net' on the invoice was actually the Taxable Value.
-         # So we 'correct' the stated net to be this new value for downstream verification?
-         # Or we just return Net_Line_Amount as this new value.
-         is_calculated = True
-         
-         # Override local vars for downstream logic (like triangulation which comes later)
-         # Actually, we can skip standard calc logic if this strategy hits.
-         
-         return {
-            "Standard_Quantity": qty,
-            "Calculated_Cost_Price_Per_Unit": round(cp_per_unit, 2),
-            "Discount_Amount_Currency": raw_disc_amount, # Assumed pre-baked or irrelevant if we trust Amount Col
-            "Calculated_Taxable_Value": raw_taxable_value,
-            "Calculated_Tax_Amount": round(recalculated_net - raw_taxable_value, 2),
-            "Net_Line_Amount": recalculated_net,
-            "Raw_GST_Percentage": effective_tax_percent,
-            "Is_Calculated": True
-         }
+
 
     # --- LOGIC PATCH: Derive Missing Rate ---
     # If the Extractor found no Unit Rate, we try to reverse-engineer it.

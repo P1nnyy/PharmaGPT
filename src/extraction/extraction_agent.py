@@ -240,6 +240,9 @@ def _mock_ocr() -> Dict[str, Any]:
 
 def extract_invoice_data(image_path: str) -> Dict[str, Any]:
     """
+    WARNING: DEPRECATED. Use src.workflow.graph.run_extraction_pipeline instead.
+    This function is retained only for legacy unit tests.
+
     Main extraction entry point orchestrating the Council of Agents.
     Pipeline: Scout -> Extractor -> Auditor
     """
