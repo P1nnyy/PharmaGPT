@@ -30,7 +30,7 @@ def format_invoice_for_display(normalized_items: List[Dict[str, Any]]) -> List[D
             "Cost Price (Per Unit)": format_currency(item.get("Calculated_Cost_Price_Per_Unit", 0.0)),
             "Discount (₹)": format_currency(item.get("Discount_Amount_Currency", 0.0)),
             "Tax Rate (%)": f"{item.get('Raw_GST_Percentage', 0)}%", 
-            "Net Amount (Line Total)": format_currency(item.get("Net_Line_Amount", 0.0))
+            "Net Amount (Line Total)": format_currency(item.get("Net_Line_Amount", 0.0)) + (" 🧮" if item.get("Is_Calculated") else "")
         }
         display_rows.append(row)
         

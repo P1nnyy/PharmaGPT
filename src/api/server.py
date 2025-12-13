@@ -17,7 +17,7 @@ from pydantic import BaseModel
 import uvicorn
 
 from src.schemas import InvoiceExtraction
-from src.normalization import normalize_line_item
+from src.normalization import normalize_line_item, parse_float
 from src.persistence import ingest_invoice
 from src.extraction.extraction_agent import extract_invoice_data
 
@@ -111,6 +111,14 @@ async def analyze_invoice(file: UploadFile = File(...)):
         for raw_item in invoice_obj.Line_Items:
             norm_item = normalize_line_item(raw_item, invoice_obj.Supplier_Name)
             normalized_items.append(norm_item)
+        
+        # 3.b Apply Global Proration (Phase 3)
+        global_discount = parse_float(extracted_data.get("Global_Discount_Amount", 0.0))
+        freight = parse_float(extracted_data.get("Freight_Charges", 0.0))
+        
+        if global_discount > 0 or freight > 0:
+            from src.normalization import distribute_global_modifiers
+            normalized_items = distribute_global_modifiers(normalized_items, global_discount, freight)
         
         # 4. Financial Integrity Check
         validation_flags = []

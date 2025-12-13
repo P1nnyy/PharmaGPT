@@ -29,6 +29,9 @@ class InvoiceExtraction(BaseModel):
     Invoice_No: str = Field(..., description="Unique identifier for the invoice.")
     Invoice_Date: str = Field(..., description="Date of the invoice.")
     Line_Items: List[RawLineItem] = Field(default_factory=list, description="List of line items extracted from the invoice tables.")
+    Global_Discount_Amount: Union[str, float, None] = Field(None, description="Global discount applied to the invoice total (e.g., Cash Discount).")
+    Freight_Charges: Union[str, float, None] = Field(None, description="Freight or transport charges.")
+    Round_Off: Union[str, float, None] = Field(None, description="Rounding adjustment amount.")
     Stated_Grand_Total: Union[str, float, None] = Field(None, description="The Total Amount Payable or Grand Total as stated on the invoice.")
 
 class NormalizedLineItem(BaseModel):
@@ -43,4 +46,5 @@ class NormalizedLineItem(BaseModel):
     Discount_Amount_Currency: float = Field(..., description="Discount amount converted from percentage to monetary value.")
     Calculated_Taxable_Value: float = Field(..., description="The taxable value of the line item.")
     Net_Line_Amount: float = Field(..., description="Total final cost of the line item.")
+    Prorated_Global_Discount: float = Field(0.0, description="Share of global discount distributed to this item.")
     HSN_Code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")

@@ -158,14 +158,27 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     Returns a dictionary corresponding to normalized fields.
     Now includes 'Discovery Mode' to identify potential vendor-specific rule deviations.
     """
+    # 0. Get Vendor Strategy (if any)
+    # Refactor: We pulled strategy in calculate_cost_price loop, but cleaner to do it here or split. 
+    # Let's simple reload or modify calculate_cost_price to return strategy? 
+    # Or just re-scan here (inefficient but safe). 
+    normalized_supplier = supplier_name.lower()
+    vendors = VENDOR_RULES.get("vendors", {})
+    amount_col_strategy = None
     
+    for vendor_key, rules in vendors.items():
+        if vendor_key in normalized_supplier:
+             amount_col_strategy = rules.get("calculation_rules", {}).get("amount_column_strategy")
+             break
+
     # 1. Calculate Cost Price (CP)
+    # Note: calculate_cost_price only returns float now. 
     cp_per_unit = calculate_cost_price(raw_item, supplier_name)
     
     # 2. Parse Quantities and Percents
     qty = parse_float(raw_item.Raw_Quantity)
     stated_net_amount = parse_float(raw_item.Stated_Net_Amount)
-    raw_taxable_value = parse_float(raw_item.Raw_Taxable_Value) # New Field
+    raw_taxable_value = parse_float(raw_item.Raw_Taxable_Value) 
     
     # Discounts
     raw_disc_amount = parse_float(raw_item.Raw_Discount_Amount) if raw_item.Raw_Discount_Amount else 0.0
@@ -173,6 +186,56 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     
     # Tax - Use Effective Rate
     effective_tax_percent = get_effective_tax_rate(raw_item)
+    
+    is_calculated = False
+
+    # --- LOGIC PATCH: Vendor Specific Override ---
+    if amount_col_strategy == "IS_TAXABLE_VALUE" and stated_net_amount > 0:
+         print(f"Applying Strategy: IS_TAXABLE_VALUE for {supplier_name}")
+         # Trust 'Stated Net' as the Taxable Base
+         raw_taxable_value = stated_net_amount 
+         
+         # Recalculate Net from this Taxable Base
+         tax_factor = 1 + (effective_tax_percent / 100.0)
+         recalculated_net = round(raw_taxable_value * tax_factor, 2)
+         
+         # IMPORTANT: Final Net is the Recalculated one!
+         # The 'Stated Net' on the invoice was actually the Taxable Value.
+         # So we 'correct' the stated net to be this new value for downstream verification?
+         # Or we just return Net_Line_Amount as this new value.
+         is_calculated = True
+         
+         # Override local vars for downstream logic (like triangulation which comes later)
+         # Actually, we can skip standard calc logic if this strategy hits.
+         
+         return {
+            "Standard_Quantity": qty,
+            "Calculated_Cost_Price_Per_Unit": round(cp_per_unit, 2),
+            "Discount_Amount_Currency": raw_disc_amount, # Assumed pre-baked or irrelevant if we trust Amount Col
+            "Calculated_Taxable_Value": raw_taxable_value,
+            "Calculated_Tax_Amount": round(recalculated_net - raw_taxable_value, 2),
+            "Net_Line_Amount": recalculated_net,
+            "Raw_GST_Percentage": effective_tax_percent,
+            "Is_Calculated": True
+         }
+
+    # --- LOGIC PATCH: Derive Missing Rate ---
+    # If the Extractor found no Unit Rate, we try to reverse-engineer it.
+    if cp_per_unit == 0.0 and qty > 0:
+        # Source 1: Taxable Value (Preferred)
+        if raw_taxable_value > 0:
+            derived_rate = round(raw_taxable_value / qty, 2)
+            print(f"DERIVED RATE (from Taxable): {derived_rate}")
+            cp_per_unit = derived_rate
+            
+        # Source 2: Stated Net Amount (Fallback - Must Back-Calculate Tax)
+        elif stated_net_amount > 0:
+            # We assume Stated Net is Inclusive of Tax
+            tax_factor = 1 + (effective_tax_percent / 100.0)
+            derived_taxable = stated_net_amount / tax_factor
+            derived_rate = round(derived_taxable / qty, 2)
+            print(f"DERIVED RATE (from Net): {derived_rate} (Net {stated_net_amount} / TaxFactor {tax_factor})")
+            cp_per_unit = derived_rate
 
     # 3. Calculate Gross Value (Baseline)
     gross_value = qty * cp_per_unit
@@ -297,3 +360,39 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         "Batch_No": batch_no,
         "HSN_Code": final_hsn
     }
+
+def distribute_global_modifiers(
+    normalized_items: list[Dict[str, Any]], 
+    global_discount: float, 
+    freight: float
+) -> list[Dict[str, Any]]:
+    """
+    Distributes Global Discount and Freight across line items based on their Taxable Value.
+    Updates 'Net_Line_Amount' and adds 'Prorated_Global_Discount'.
+    """
+    # 1. Calculate Total Taxable Value
+    total_taxable = sum(item.get("Calculated_Taxable_Value", 0.0) for item in normalized_items)
+    
+    if total_taxable == 0.0:
+        return normalized_items
+
+    # 2. Distribute Modifiers
+    for item in normalized_items:
+        item_taxable = item.get("Calculated_Taxable_Value", 0.0)
+        weight = item_taxable / total_taxable
+        
+        # Calculate Share
+        discount_share = round(global_discount * weight, 2)
+        freight_share = round(freight * weight, 2)
+        
+        # Update Net Amount
+        # Net = Net - Discount + Freight
+        current_net = item.get("Net_Line_Amount", 0.0)
+        new_net = round(current_net - discount_share + freight_share, 2)
+        
+        item["Net_Line_Amount"] = new_net
+        item["Prorated_Global_Discount"] = discount_share
+        
+        # Optional: We could also track Prorated_Freight if schema allowed
+        
+    return normalized_items

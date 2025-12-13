@@ -49,21 +49,30 @@ class ScoutAgent:
                 mime_type = "image/webp"
 
             prompt = """
-            Analyze the invoice image and identify the following structural elements from the MAIN PRODUCT TABLE:
+            Analyze the invoice image and identify ALL distinct grid or table structures containing transaction line items.
             
             1. **Supplier Name**: The name of the vendor/supplier issuing the invoice.
-            2. **Detected Headers**: The exact list of column headers found in the main transaction table (product list).
+            2. **Tables**: Identify all distinct tables containing product data.
+               - **Primary Table**: The main list of goods/products.
+               - **Secondary Tables**: Separate sections for Free Goods, Cold Chain items, Schedule H drugs, or other product listings.
             
             Return a JSON object strictly matching this schema:
             {
                 "supplier_name": "string",
-                "detected_headers": ["string", "string", ...]
+                "tables": [
+                    {
+                        "id": "string", # e.g., "primary_table", "cold_chain_table"
+                        "type": "Primary", # or "Secondary"
+                        "description": "string", # e.g., "Main Product List", "Free Goods Section"
+                        "detected_headers": ["string", "string", ...]
+                    }
+                ]
             }
             
             INSTRUCTIONS:
-            - **Focus on the Main Table**: Locate the largest table listing products.
-            - **Exact Strings**: Extract headers exactly as they appear (e.g., "Pcode", "Batch No.", "Qty", "Rate").
-            - **Ignore Summary Tables**: Do not extract headers from tax breakdowns or dispatch summaries.
+            - **Identify ALL Tables**: Do not limit to just the largest one. Look for multiple separated grids.
+            - **Header Extraction**: For each table, extract the exact list of column headers.
+            - **Ignore Non-Product Grids**: Do not extract headers from Tax Breakdowns, HSN Summaries, or Dispatch Summaries.
             """
             
             response = self.model.generate_content(

@@ -21,7 +21,7 @@ from src.utils.config_loader import load_vendor_rules
 
 class GeminiExtractorAgent:
     """
-    OCR Engine using Gemini 2.5 Flash with Structured JSON Output.
+    OCR Engine using Gemini 2.0 Flash with Structured JSON Output.
     """
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -57,34 +57,41 @@ class GeminiExtractorAgent:
                 mime_type = "image/webp"
 
             # Dynamic Context Construction
-            locking_instruction = ""
-            batch_instruction = "Extract the Batch Number."
-            detected_headers_str = ""
-            
-            if structure_map:
+            # --- Dynamic Prompt Construction (Phase 2) ---
+            tables = structure_map.get("tables", [])
+            table_instructions = ""
+            if tables:
+                table_instructions += f"I have detected {len(tables)} distinct tables. Extract data from EACH table sequentially and merge them into the single 'Line_Items' list.\n"
+                for i, table in enumerate(tables):
+                    headers = ", ".join(f"'{h}'" for h in table.get("detected_headers", []))
+                    table_instructions += f"    - **Table {i+1} ({table.get('type', 'Unknown')})**: Located at {table.get('description', 'section')}. Extract using these headers: [{headers}].\n"
+            else:
+                # Fallback to Phase 1 / Single Table
                 headers = structure_map.get("detected_headers", [])
                 detected_headers_str = ", ".join(f"'{h}'" for h in headers)
-                
-                # 1. Strict Positional Priority
                 if headers:
-                    locking_instruction = f"""
-                    **Strict Positional Priority (Scan-and-Lock)**: 
-                    - Scan top-down. 
-                    - Lock onto the FIRST table that specifically contains this header sequence (or subset): [{detected_headers_str}].
-                    - This identified table is the ONLY valid source.
-                    """
+                     table_instructions = f"- **Primary Table**: Identify the main table with headers: [{detected_headers_str}]."
 
-                # 2. Dynamic Mapping for Batch No
-                try:
-                    vendor_rules = load_vendor_rules()
-                    batch_aliases = vendor_rules.get("global_column_aliases", {}).get("Batch_No", [])
-                except Exception:
-                    batch_aliases = ["Pcode", "Batch", "Lot", "Batch No"] # Fallback
+            # 2. Dynamic Mapping for Batch No
+            batch_instruction = "Extract the Batch Number."
+            try:
+                vendor_rules = load_vendor_rules()
+                batch_aliases = vendor_rules.get("global_column_aliases", {}).get("Batch_No", [])
+            except Exception:
+                batch_aliases = ["Pcode", "Batch", "Lot", "Batch No"] # Fallback
+            
+            # Check headers from all tables
+            all_headers = []
+            if tables:
+                for t in tables:
+                     all_headers.extend(t.get("detected_headers", []))
+            else:
+                all_headers = structure_map.get("detected_headers", [])
 
-                found_batch_col = next((h for h in headers if any(alias.lower() in h.lower() for alias in batch_aliases)), None)
-                
-                if found_batch_col:
-                     batch_instruction = f"Extract the Batch Number from the column explicitly labeled '{found_batch_col}'."
+            found_batch_col = next((h for h in all_headers if any(alias.lower() in h.lower() for alias in batch_aliases)), None)
+            
+            if found_batch_col:
+                 batch_instruction = f"Extract the Batch Number from the column explicitly labeled '{found_batch_col}'."
 
             prompt = f"""
             Extract the invoice data into a structured JSON format.
@@ -105,39 +112,46 @@ class GeminiExtractorAgent:
                         "Raw_Discount_Percentage": "float or null",
                         "Raw_Discount_Amount": "float or null",
                         "Raw_GST_Percentage": "float or null",
-                        "Raw_CGST_Percentage": "float or null",
-                        "Raw_SGST_Percentage": "float or null",
-                        "Raw_IGST_Percentage": "float or null",
                         "Raw_Taxable_Value": "float or null",
                         "Stated_Net_Amount": "float"
                     }}
                 ],
+                "Global_Discount_Amount": "float or null",
+                "Freight_Charges": "float or null",
+                "Round_Off": "float or null",
                 "Stated_Grand_Total": "float or null"
             }}
 
             STRICT INSTRUCTIONS:
             
-            1. **Primary Table Identification**:
-               {locking_instruction or "- Identify the FIRST logical table structure that contains the MAXIMUM NUMBER of distinct columns (10+)."}
+            1. **Multi-Pass Table Extraction**:
+               {table_instructions}
+               - **Merge Strategy**: Combine all line items from all tables into the single 'Line_Items' array.
+               - **EDGE ITEM RULE**: The first valid item is often immediately below the header, and the last valid item is immediately above the total. Extract ALL rows between the Header and the Footer. Do NOT skip the first or last items.
                - Treat the entire document as a single continuous surface, ignoring distinct visual changes caused by shadows, lighting glares, or folds.
-               
-            2. **Termination (Stop Logic)**:
-               - The extraction must STOP ONLY when the structure definitively shifts to non-product data (e.g., Bank Details, Terms & Conditions).
-               - **Nuance**: Do NOT stop immediately upon seeing a 'Total' or 'Carried Forward' label if there are still valid product rows (with Qty and Rate) visually adjacent to it. Differentiate between a 'Page Total' inside the table and the final 'Grand Total' footer.
-               - **Explicit Ignore List**: Tax Breakdowns, HSN Summaries, Dispatch Summaries.
             
-            3. **SEMANTIC VERIFICATION (PRODUCT NAME ANCHORING)**:
-               - **Contextual Hint**: The table is expected to contain pharmaceutical product names.
-               - **Stop Signal**: If the 'Original_Product_Description' closely matches a financial label like 'CGST Output', 'Round Off', or 'Freight', STOP extraction immediately.
+            2. **Aggressive Row Extraction**:
+               - **Capture ALL Rows**: Capture every single line that looks like a product (has a Quantity and Amount), even if it is isolated or far from the main cluster.
+               - **Whitespace Handling**: Do not assume whitespace is a separator. Continue scanning until the Footer.
             
-            4. **Financial Disambiguation & GST**:
+            3. **Financial Disambiguation & GST**:
                - **The 'Qty' Rule**: A valid transaction row MUST have a specific Quantity. If a row contains a 'Rate' but NO 'Qty', it is a Tax/Summary row. IGNORE IT.
-               - **Shadow Rule**: Force read rows located in shadowed or dark areas of the image if they align vertically with the columns of the main table.
-               - **Split Tax & GST Handling**: 
-                   - **Check for Split Taxes**: Look for separate columns labeled 'CGST', 'SGST', or 'IGST'.
-                   - **Negative Constraint**: Do not mentally sum 2.5% + 2.5% to make 5%. Extract exactly what is written in the respective column (e.g., if column says 2.5, extract 2.5).
-                   - **Mapping**: Map strictly to `Raw_CGST_Percentage`, `Raw_SGST_Percentage`, and `Raw_IGST_Percentage`.
-                   - **Combined GST**: If only a single 'GST' column exists, map to `Raw_GST_Percentage`.
+               - **CRITICAL GST LOGIC (Split-Tax Summation)**: 
+                   - If the table contains separate columns for 'SGST' and 'CGST', you **MUST SUM** their values to populate `Raw_GST_Percentage`. 
+                   - **Do not extract just one half.**
+                   - **Example**: SGST 2.5% + CGST 2.5% = Extract **5.0** as `Raw_GST_Percentage`.
+                   - **Combined GST**: If only a single 'GST' or 'IGST' column exists, map directly to `Raw_GST_Percentage`.
+            
+            4. **Footer Sweep & Analysis**:
+               - **Footer Scan**: After extracting the tables, strictly scan the bottom region of the document.
+               - **Specific Fields**:
+                   - `Global_Discount_Amount`: Extract 'Cash Discount', 'Scheme Discount', or 'Trade Discount' found in the footer (not line-level).
+                   - `Freight_Charges`: Extract any 'Freight', 'Transport', or 'Courier' charges.
+                   - `Round_Off`: Extract 'Round Off' or 'Rounding' adjustment.
+               - **Logic Check (Net vs Gross)**: 
+                   - **Do not confuse 'Gross Amount' (Qty * Rate) with 'Net Amount' (Final Payable).** 
+                   - If a column value equals precisely `Qty * Rate`, map it to `Raw_Taxable_Value`. 
+                   - `Stated_Net_Amount` MUST be the final effective amount for the line item (often including tax or after discount).
             
             5. **Details & Column Mapping**:
                - **Original_Product_Description**: Extract only the text content found in the 'Particulars' column.
@@ -238,6 +252,18 @@ def extract_invoice_data(image_path: str) -> Dict[str, Any]:
     print(f"Scout Result: {structure_map}")
     logger.info(f"Scout Result: {structure_map}")
     
+    # --- Multi-Zone Handling (Phase 1 Compatibility) ---
+    tables = structure_map.get("tables", [])
+    if tables:
+        print(f"\n--- Multi-Zone Scout Detection ---")
+        for table in tables:
+             print(f"Found Table [{table.get('type')}]: {table.get('id')} - {table.get('description')}")
+        
+        # Compatibility: Use Primary Table headers for the single-pass extraction
+        primary_table = next((t for t in tables if t.get("type", "").lower() == "primary"), tables[0])
+        structure_map["detected_headers"] = primary_table.get("detected_headers", [])
+        print(f"Forwarding Headers from {primary_table.get('id')}: {structure_map['detected_headers']}\n")
+
     # --- Step 2 & 3: Extractor Agent (Extraction with Dynamic Context) ---
     print("Initializing Agent 2: Extractor")
     logger.info("Initializing Agent 2: Extractor")
