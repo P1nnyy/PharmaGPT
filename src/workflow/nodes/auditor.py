@@ -34,7 +34,6 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     for item in line_items:
         try:
             # 1. Scalable Noise Filter
-            # Drop items with negligible Net Amount AND Quantity (e.g. Schemes/Initiatives)
             n_val = float(item.get("Stated_Net_Amount") or 0)
             q_val = float(item.get("Raw_Quantity") or 0)
             
@@ -42,12 +41,8 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 continue # Skip noise
                 
             # 2. Fuzzy Deduplication Signature
-            # Normalize Description: Lowercase, remove extra spaces
             desc = str(item.get("Original_Product_Description", "")).strip().lower()
-            desc = " ".join(desc.split()) # Collapses "Vaporub  " to "vaporub"
-            
-            # Signature: (Description, Integer Net Amount)
-            # Casting Net Amount to int ignores penny variance (1072.00 vs 1072.10)
+            desc = " ".join(desc.split())
             net_sig = int(n_val)
             
             signature = (desc, net_sig)
@@ -58,13 +53,12 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 
         except Exception as e:
             logger.warning(f"Auditor Deduplication Error: {e}")
-            # If error, safely include items to avoid data loss
             deduped_line_items.append(item)
             
     logger.info(f"Auditor Deduplication: Reduced {len(line_items)} items to {len(deduped_line_items)} unique items.")
 
-    # 2. Return RAW Deduplicated Items
-    # We delegate Normalization to the Server/Consumer to keep schemas aligned (Raw -> Normalized).
+    # --- AUDIT COMPLETE ---
+    # We now pass the 'deduped_line_items' to the Critic for Math Verification.
     
     final_output = {
         "Line_Items": deduped_line_items,
@@ -72,4 +66,8 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     }
     
     logger.info("Auditor verification complete.")
-    return {"final_output": final_output}
+    # Return as 'line_item_fragments' so the State updates for the next node
+    return {
+        "line_item_fragments": deduped_line_items,
+        "final_output": final_output # Keep this for legacy single-pass, but Graph will rely on State
+    }

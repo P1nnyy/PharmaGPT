@@ -1,67 +1,111 @@
-# Invoice Extractor 🧾
+# PharmaCouncil Invoice Extraction System 🏥
 
-Yo! Welcome to the Invoice Extractor. 
+## Overview
+The **PharmaCouncil Invoice Extraction System** is an advanced detailed-oriented document processing pipeline designed specifically for the complex and noisy format of pharmaceutical invoices. Unlike unexpected OCR tools, this system employs a **Swarm Architecture** of specialized AI agents to ensure financial accuracy, utilizing a **Self-Correcting Feedback Loop** to reconcile line-item data against the invoice's grand total.
 
-This is a little tool I built to solve a big headache: messy pharmaceutical invoices. You know the deal — every supplier has their own weird format, column names make no sense, and "Dolo" could mean five different things.
+## Architecture: The Swarm 🐝
 
-So, I built this thing to take that chaos and turn it into clean, structured data in a Neo4j graph database.
+The system is built on a Directed Acyclic Graph (DAG) workflow (using LangGraph) where multiple specialized nodes collaborate to process a single document.
 
-## The Secret Sauce 🌶️
+### 1. Surveyor Node
+- **Role**: The Architect.
+- **Function**: Scans the document to identify layout zones (Header, Footer, Main Table, Tax Breakdown). Isolate specific coordinates for downstream workers.
 
-1.  **Gemini 2.5 Flash**: We're using Google's latest model to read these docs. It's configured with a custom "Scan-and-Lock" prompt that finds the *real* product table and rigidly ignores summary boxes, footer noise, and promotional junk.
-2.  **Smart Normalization**: It doesn't just read; it understands. It standardizes product names (e.g., mapping "Augmentin Duo" to a canonical ID), calculates costs per unit, and explicitly rounds everything to 2 decimal places so your database stays clean.
-3.  **Batch & Tax Tracking**: We now track `Batch_No` and explicit `GST %` all the way from the image to the final report. No data left behind.
-4.  **Graph Power**: Dumps everything into Neo4j so we can track price fluctuations and supplier history over time.
-5.  **The "Clean Invoice" Report**: A simple HTML report lets you audit the extraction. It shows you the raw data next to the standardized values so you can trust (but verify).
+### 2. Worker Node (The Anchor)
+- **Role**: The Extractor.
+- **Function**: Executes parallel extraction tasks on identified zones.
+- **Critical Logic**: Captures the **"Stated Grand Total"** as the immutable Anchor of Truth.
 
-## How to run this bad boy
+### 3. Auditor Node
+- **Role**: The Deduplicator.
+- **Function**: Merges parallel extraction fragments, filters noise (e.g., repeating sub-headers), and ensures schema compliance.
+
+### 4. Critic Node (The Logic Engine)
+- **Role**: The Judge.
+- **Function**: Performs a ratio analysis: `Grand Total / Sum(Line Items)`.
+    - **Verdict: APPROVE**: Exact match (< 1% variance).
+    - **Verdict: APPLY_MARKUP**: Ratio > 1.0 (Implies Tax Exclusive lines or Freight addition).
+    - **Verdict: APPLY_MARKDOWN**: Ratio < 1.0 (Implies Global Discount).
+    - **Verdict: RETRY_OCR**: Massive mismatch (> 30%).
+
+### 5. Solver Node (Mathematics)
+- **Role**: The Fixer.
+- **Function**: Applies the `correction_factor` derived by the Critic. Mathematically adjusts `Net_Line_Amount` and recalculates the `Landed_Cost_Per_Unit` to ensure the final data is 100% accurate to the penny.
+
+---
+
+## Technology Stack
+
+- **Backend**: Python 3.11+, FastAPI, Uvicorn
+- **AI/LLM**: Google Gemini 2.0 Flash (Vision)
+- **Workflow**: LangGraph (StateGraph)
+- **Database**: Neo4j (Graph Database) for inventory and tracking.
+- **Frontend**: React, Vite, TailwindCSS (Dark Mode SaaS UI)
+
+---
+
+## Setup & Installation
 
 ### 1. Prerequisites
-Make sure you have [Neo4j](https://neo4j.com/) running locally.
+- Python 3.10+
+- Node.js & npm
+- Neo4j Database (Local or Aura)
+- Google Cloud API Key (Gemini)
 
-### 2. Configure Environment
-Create a `.env` file in the project root. Don't skip this, or it won't work.
-
+### 2. Environment Variables
+Create a `.env` file in the root directory:
 ```bash
+GOOGLE_API_KEY=your_gemini_key
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_password
-GEMINI_API_KEY=your_gemini_vision_api_key
 ```
 
-### 3. Install the goods
+### 3. Installation
+
+**Backend:**
 ```bash
+# Create Virtual Environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install Dependencies
 pip install -r requirements.txt
 ```
 
-### 4. Fire up the server
+**Frontend:**
 ```bash
+cd frontend
+npm install
+```
+
+---
+
+## Running the Application
+
+### Start the Backend
+```bash
+# From project root
+source .venv/bin/activate
 uvicorn src.api.server:app --reload
 ```
-Access the API docs at `http://0.0.0.0:8000/docs`.
+API Documentation available at: `http://localhost:8000/docs`
 
----
-
-## Testing the Logic 🧠
-
-Want to see the agents in action without running the full API?
-
+### Start the Frontend
 ```bash
-python tests/test_extraction_manual.py
+# From frontend directory
+npm run dev
 ```
-This runs the extraction pipeline on a test image (or mock data if the image is missing) and prints the JSON output.
-
-## API Usage
-
-### POST /process-invoice
-Upload an invoice image (JPEG/PNG) to extract data.
-**Request:** `multipart/form-data` with key `file`.
-
-**Response:** JSON object containing `status` and `normalized_data`.
-
-### GET /report/{invoice_no}
-View a human-readable HTML report of the processed invoice, complete with Batch numbers and tax breakdowns.
+UI available at: `http://localhost:5173`
 
 ---
 
-Happy extracting! 🚀
+## Key Features
+
+- **Reconciliation Engine**: Automatically detects if an invoice is "Tax Inclusive" or "Tax Exclusive" and normalizes the data.
+- **Global Table Persistence**: Stores extracted `Expiry Date`, `Batch No`, `MRP`, and `Landed Cost` into the Graph for inventory valuation.
+- **Draft & Staging**: Invoices can be saved as 'DRAFT' allowing for partial extraction and manual review before committing to inventory.
+- **Excel Export**: Download reconciled data directly to Excel for manual ERP upload.
+
+## License
+Proprietary.

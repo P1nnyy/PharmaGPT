@@ -38,15 +38,16 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             1. **Batch Number Hunt**: You MUST find the Batch Number. Look for columns 'Batch', 'Lot', 'B.No'.
                - **CRITICAL EXCLUSION**: Do **NOT** extract values from columns labeled **"PCode"**, "Product Code", or "SKU". These are item codes, not batches.
                - **Fallback / Semantic Hunt**: If no specific Batch column exists, look for a "Batch Details" section elsewhere or a batch string (alphanumeric, e.g. 'B2G2', 'GT45') printed **inside** the Description column or near the 'Expiry' column. Do NOT return 'UNKNOWN' unless strictly empty.
-            2. **Single Pass Extraction**: Scan the table top-to-bottom exactly ONCE. Do NOT repeat items. Do NOT hallucinate double rows.
-            3. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)? If they sum to 24%, this is an error—assume the rate is 12%.
-            4. **Taxable vs Net**: Do not confuse (Qty * Rate) with Net Amount. If a column value equals Qty * Rate, it is 'Raw_Taxable_Value'. 'Stated_Net_Amount' MUST be the final column (Inc. Tax).
-            5. **Exclusions**: IGNORE 'Total', 'Subtotal', 'Discount', 'Freight' rows.
-            6. **Top-Down Math Logic (Anchor)**: 
+            2. **Expiry Date Hunt**: Look for Expiry Dates (Exp, Expiry, Validity) in the row. Format as MM/YY or MM/YYYY if possible.
+            3. **Single Pass Extraction**: Scan the table top-to-bottom exactly ONCE. Do NOT repeat items. Do NOT hallucinate double rows.
+            4. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)? If they sum to 24%, this is an error—assume the rate is 12%.
+            5. **Taxable vs Net**: Do not confuse (Qty * Rate) with Net Amount. If a column value equals Qty * Rate, it is 'Raw_Taxable_Value'. 'Stated_Net_Amount' MUST be the final column (Inc. Tax).
+            6. **Exclusions**: IGNORE 'Total', 'Subtotal', 'Discount', 'Freight' rows.
+            7. **Top-Down Math Logic (Anchor)**: 
                - The **'Stated_Net_Amount'** is the Anchor.
                - **MATH CHECK**: If you see a Total of 10,000 and Qty of 10, the Rate is 1,000. 
                - **CRITICAL**: Never extract the Total (10,000) as the 'Rate'. If the printed Rate column is missing or confusing, leave it blank (0.0), but ensure 'Stated_Net_Amount' is correct.
-            7. **GST Summation**: If 'SGST' and 'CGST' columns exist separately, SUM them (e.g. 2.5% + 2.5% = 5.0%).
+            8. **GST Summation**: If 'SGST' and 'CGST' columns exist separately, SUM them (e.g. 2.5% + 2.5% = 5.0%).
             
             Return a JSON object with a key 'line_items' containing a list of items.
             Item Schema:
@@ -54,9 +55,11 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                 "Original_Product_Description": str,
                 "Raw_Quantity": float,
                 "Batch_No": str,
+                "Raw_Expiry_Date": str,
                 "Raw_HSN_Code": str,
                 "Raw_Rate_Column_1": float,
                 "Raw_Rate_Column_2": float,
+                "Raw_MRP": float,
                 "Raw_Discount_Percentage": float,
                 "Raw_GST_Percentage": float,
                 "Raw_Taxable_Value": float,
@@ -79,7 +82,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - Global_Discount_Amount (Look for 'Cash Discount', 'CD', 'Less Discount')
             - Freight_Charges
             - Round_Off
-            - Stated_Grand_Total (The final invoice total)
+            - Stated_Grand_Total (The final 'Net Payable' or 'Grand Total'). This is the **ANCHOR** truth for the invoice.
+            
+            CRITICAL:
+            - The 'Stated_Grand_Total' is the most important field. If it is ambiguous, look for the double-bolded or final bottom-right figure.
             
             Return JSON:
             {{
@@ -158,6 +164,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         # Aggregate Results
         line_item_fragments = []
         global_modifiers = {}
+        anchor_totals = {}
         error_logs = []
         
         for res in results:
@@ -168,12 +175,21 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             elif res.get("type") == "modifiers":
                 mods = res.get("data", {})
                 global_modifiers.update(mods)
+                
+                # Capture Anchor for Critic
+                if "Stated_Grand_Total" in mods and mods["Stated_Grand_Total"]:
+                    try:
+                        anchor_totals["Stated_Grand_Total"] = float(mods["Stated_Grand_Total"])
+                    except:
+                        pass
+                        
             elif res.get("type") == "error":
                 error_logs.append(f"Zone Extraction Failed: {res.get('error')}")
                 
         return {
             "line_item_fragments": line_item_fragments,
             "global_modifiers": global_modifiers,
+            "anchor_totals": anchor_totals,
             "error_logs": error_logs
         }
         

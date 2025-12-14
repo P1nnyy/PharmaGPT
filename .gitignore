@@ -1,10 +1,49 @@
+# --- System & IDE ---
 .DS_Store
-node_modules/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Python ---
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+*$py.class
+*.so
 .venv/
-env/
 venv/
+env/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
 dist/
 build/
+*.egg-info/
+
+# --- Node / Frontend ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/node_modules/
+
+# --- Application Specific ---
+logs/
+*.log
+data/temp/
+temp/
+outputs/
+*.sqlite
+*.db
+
+# --- Invoice Extractor Specific ---
+# Exclude raw image uploads from git if stored locally outside of test assets
+uploads/
+.gemini/
+
+# --- Backup ---
+code backup/

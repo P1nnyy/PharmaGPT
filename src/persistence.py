@@ -28,14 +28,50 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
         for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
             session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item)
 
+def create_invoice_draft(driver, state: Dict[str, Any]):
+    """
+    Creates a DRAFT invoice node in Neo4j.
+    Used for Staging before full confirmation.
+    """
+    global_mods = state.get("global_modifiers", {})
+    invoice_no = global_mods.get("Invoice_No", "UNKNOWN")
+    supplier = global_mods.get("Supplier_Name", "UNKNOWN")
+    
+    with driver.session() as session:
+        session.execute_write(_create_draft_tx, invoice_no, supplier, state)
+        
+def _create_draft_tx(tx, invoice_no, supplier, state):
+    query = """
+    MERGE (i:Invoice {invoice_number: $invoice_no, supplier_name: $supplier})
+    ON CREATE SET 
+        i.status = 'DRAFT',
+        i.created_at = timestamp(),
+        i.raw_state = $raw_state
+    ON MATCH SET
+        i.status = 'DRAFT',  // Reset to draft if exists
+        i.updated_at = timestamp(),
+        i.raw_state = $raw_state
+    """
+    # Serialize state partially if needed, but neo4j can store strings
+    import json
+    state_json = json.dumps(state.get("final_output", {}), default=str)
+    
+    tx.run(query, 
+           invoice_no=invoice_no, 
+           supplier=supplier,
+           raw_state=state_json)
+
 def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
     query = """
     MERGE (i:Invoice {invoice_number: $invoice_no, supplier_name: $supplier_name})
     ON CREATE SET 
+        i.status = 'CONFIRMED',
         i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
         i.created_at = timestamp()
     ON MATCH SET
+        i.status = 'CONFIRMED',
+        i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
         i.updated_at = timestamp()
     """
@@ -62,8 +98,11 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
         cost_price: $cost_price,
         net_amount: $net_amount,
         batch_no: $batch_no,
-        hsn_code: $hsn_code,   // Keep property for easy access
-        mrp: $mrp
+        hsn_code: $hsn_code,
+        mrp: $mrp,
+        expiry_date: $expiry_date,
+        landing_cost: $landing_cost,
+        tax_percent: $tax_percent
     })
     
     // 4. Connect Graph
@@ -81,5 +120,8 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            net_amount=item.get("Net_Line_Amount"),
            batch_no=item.get("Batch_No"),
            hsn_code=item.get("HSN_Code") or "UNKNOWN", 
-           mrp=item.get("MRP", 0.0)
+           mrp=item.get("MRP", 0.0),
+           expiry_date=item.get("Expiry_Date"),
+           landing_cost=item.get("Landed_Cost_Per_Unit", 0.0),
+           tax_percent=item.get("Raw_GST_Percentage", 0.0)
     )

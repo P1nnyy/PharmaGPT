@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from src.workflow.state import InvoiceState
-from src.workflow.nodes import surveyor, worker, auditor
+from src.workflow.nodes import surveyor, worker, auditor, critic, mathematics
 import logging
 
 # Setup Logging
@@ -17,12 +17,37 @@ def build_graph():
     workflow.add_node("surveyor", surveyor.survey_document)
     workflow.add_node("worker", worker.execute_extraction)
     workflow.add_node("auditor", auditor.audit_extraction)
+    workflow.add_node("critic", critic.critique_extraction)
+    workflow.add_node("solver", mathematics.apply_correction)
     
     # Define Edges
     workflow.add_edge(START, "surveyor")
     workflow.add_edge("surveyor", "worker")
     workflow.add_edge("worker", "auditor")
-    workflow.add_edge("auditor", END)
+    workflow.add_edge("auditor", "critic")
+    
+    # Conditional Feedback Loop
+    def route_critic(state):
+        verdict = state.get("critic_verdict")
+        logger.info(f"Graph Decision: Verdict is {verdict}")
+        
+        if verdict in ["APPLY_MARKUP", "APPLY_MARKDOWN"]:
+            return "solver"
+        elif verdict == "RETRY_OCR" and state.get("retry_count", 0) < 2:
+            return "worker"
+        return END
+
+    workflow.add_conditional_edges(
+        "critic",
+        route_critic,
+        {
+            "solver": "solver",
+            "worker": "worker",
+            END: END
+        }
+    )
+    
+    workflow.add_edge("solver", END)
     
     return workflow.compile()
 

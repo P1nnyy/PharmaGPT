@@ -19,6 +19,8 @@ class RawLineItem(BaseModel):
     Raw_IGST_Percentage: Union[str, float, None] = Field(None, description="Integrated GST percentage if explicit (e.g. 12%).")
     Raw_Taxable_Value: Union[str, float, None] = Field(None, description="The value of the line item BEFORE tax. Explicitly captured to prevent confusion with Net Amount.")
     Raw_HSN_Code: Optional[str] = Field(None, description="HSN/SAC code extracted from the invoice.")
+    Raw_Expiry_Date: Optional[str] = Field(None, description="Expiry date of the item (e.g. MM/YY).")
+    Landed_Cost_Per_Unit: Optional[float] = Field(None, description="Calculated Landed Cost (Reconciled) from Auditor.")
     Stated_Net_Amount: Union[str, float] = Field(..., description="The final amount for this line item as stated on the invoice.")
 
 class InvoiceExtraction(BaseModel):
@@ -49,3 +51,5 @@ class NormalizedLineItem(BaseModel):
     Prorated_Global_Discount: float = Field(0.0, description="Share of global discount distributed to this item.")
     HSN_Code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")
     MRP: Optional[float] = Field(None, description="Maximum Retail Price, if available.")
+    Expiry_Date: Optional[str] = Field(None, description="Expiry date of the item.")
+    Landed_Cost_Per_Unit: Optional[float] = Field(0.0, description="Final cost per unit after all reconciliations.")

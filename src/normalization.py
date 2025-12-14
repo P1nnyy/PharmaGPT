@@ -299,7 +299,9 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
         "Batch_No": batch_no,
         "HSN_Code": final_hsn,
         # ADD THIS LINE:
-        "MRP": parse_float(raw_item.Raw_Rate_Column_2) # Maps secondary rate to MRP
+        "MRP": parse_float(raw_item.Raw_Rate_Column_2), # Maps secondary rate to MRP
+        "Expiry_Date": raw_item.Raw_Expiry_Date,
+        "Landed_Cost_Per_Unit": raw_item.Landed_Cost_Per_Unit if raw_item.Landed_Cost_Per_Unit else financials.get("Calculated_Cost_Price_Per_Unit")
     }
 
 def distribute_global_modifiers(

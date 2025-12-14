@@ -71,7 +71,9 @@ function App() {
       Standard_Quantity: 1,
       HSN_Code: "",
       Batch_No: "",
+      Expiry_Date: "",
       Net_Line_Amount: 0,
+      Landed_Cost_Per_Unit: 0,
       // Default dummy values for required fields
       Raw_Item_Name: "Manual Entry",
       MRP: 0,
@@ -132,8 +134,10 @@ function App() {
       "Item Name": item.Standard_Item_Name,
       "HSN Code": item.HSN_Code,
       "Batch No": item.Batch_No,
+      "Expiry": item.Expiry_Date,
       "Quantity": item.Standard_Quantity,
-      "Cost Price": item.Calculated_Cost_Price_Per_Unit,
+      "Landed Cost": item.Landed_Cost_Per_Unit,
+      "MRP": item.MRP,
       "Tax %": item.Raw_GST_Percentage,
       "Net Amount": item.Net_Line_Amount
     }));
@@ -266,10 +270,10 @@ function App() {
               <div className="sticky top-0 z-10 bg-gray-900 pt-2">
                 <div className="grid grid-cols-12 gap-4 mb-2 text-sm font-bold text-gray-400 border-b border-gray-700 pb-2 px-2">
                   <div className="col-span-3">Item Name</div>
-                  <div className="col-span-1">Item Type</div>
                   <div className="col-span-2">Batch No.</div>
-                  <div className="col-span-1 text-center">Quantity</div>
-                  <div className="col-span-2 text-right">Rate (Cost)</div>
+                  <div className="col-span-1">Expiry</div>
+                  <div className="col-span-1 text-center">Qty</div>
+                  <div className="col-span-2 text-right">Landed Cost</div>
                   <div className="col-span-1 text-right">MRP</div>
                   <div className="col-span-2 text-right">Total Cost</div>
                 </div>
@@ -278,12 +282,6 @@ function App() {
               {/* TABLE ROWS */}
               <div className="divide-y divide-gray-800">
                 {lineItems.map((item, idx) => {
-                  // Helper: Calculate Rate dynamically for display
-                  const qty = parseFloat(item.Standard_Quantity) || 1;
-                  const net = parseFloat(item.Net_Line_Amount) || 0;
-                  const displayRate = (net / qty).toFixed(2);
-                  const itemType = item.Pack_Size_Description || "Unit";
-
                   return (
                     <div key={idx} className="grid grid-cols-12 gap-4 items-center py-2 hover:bg-gray-800/30 px-2 transition-colors">
 
@@ -297,18 +295,23 @@ function App() {
                         />
                       </div>
 
-                      {/* 2. Item Type (Pack Size) */}
-                      <div className="col-span-1 text-xs text-gray-500 uppercase tracking-wide truncate">
-                        {itemType}
-                      </div>
-
-                      {/* 3. Batch No */}
+                      {/* 2. Batch No (Editable) */}
                       <div className="col-span-2">
                         <input
                           value={item.Batch_No || ''}
                           onChange={(e) => handleInputChange(idx, 'Batch_No', e.target.value)}
                           className="w-full bg-transparent outline-none font-mono text-gray-400 focus:text-indigo-400"
                           placeholder="Batch"
+                        />
+                      </div>
+
+                      {/* 3. Expiry (New - Editable) */}
+                      <div className="col-span-1">
+                        <input
+                          value={item.Expiry_Date || ''}
+                          onChange={(e) => handleInputChange(idx, 'Expiry_Date', e.target.value)}
+                          className="w-full bg-transparent outline-none font-mono text-gray-400 focus:text-indigo-400 text-xs"
+                          placeholder="MM/YY"
                         />
                       </div>
 
@@ -322,17 +325,22 @@ function App() {
                         />
                       </div>
 
-                      {/* 5. Rate (Cost Price after taxes) - Read Only Calculation */}
-                      <div className="col-span-2 text-right font-mono text-gray-300">
-                        {displayRate}
+                      {/* 5. Landed Cost (Read Only) */}
+                      <div className="col-span-2 text-right font-mono text-yellow-500 font-medium">
+                        {(parseFloat(item.Landed_Cost_Per_Unit) || 0).toFixed(2)}
                       </div>
 
-                      {/* 6. MRP */}
-                      <div className="col-span-1 text-right font-mono text-gray-500">
-                        {item.MRP || '-'}
+                      {/* 6. MRP (Editable) */}
+                      <div className="col-span-1">
+                        <input
+                          type="number"
+                          value={item.MRP || 0}
+                          onChange={(e) => handleInputChange(idx, 'MRP', parseFloat(e.target.value))}
+                          className="w-full bg-transparent outline-none font-mono text-right text-gray-400 focus:text-indigo-400"
+                        />
                       </div>
 
-                      {/* 7. Total Cost (Net Amount) */}
+                      {/* 7. Total Cost (Net Amount - Editable) */}
                       <div className="col-span-2">
                         <input
                           type="number"
@@ -346,53 +354,18 @@ function App() {
                 })}
               </div>
 
-              {/* Summary Section (Adapted to Grid) */}
+              {/* Summary Section (Reconciled) */}
               <div className="mt-4 border-t border-gray-700">
-                {/* Subtotal */}
-                <div className="grid grid-cols-12 gap-4 items-center py-2 px-2 bg-gray-900/50">
-                  <div className="col-span-10 text-right text-gray-400 font-medium">Subtotal</div>
-                  <div className="col-span-2 text-right text-white font-mono font-bold">
-                    {lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0).toFixed(2)}
-                  </div>
-                </div>
 
-                {/* Global Discount */}
-                <div className="grid grid-cols-12 gap-4 items-center py-2 px-2 hover:bg-gray-800/20">
-                  <div className="col-span-10 text-right text-gray-400 font-medium">Global Discount (-)</div>
-                  <div className="col-span-2">
-                    <input
-                      type="number"
-                      value={invoiceData?.Global_Discount_Amount || 0}
-                      onChange={(e) => handleHeaderChange('Global_Discount_Amount', parseFloat(e.target.value))}
-                      className="w-full bg-transparent outline-none font-mono text-right text-red-300 focus:text-red-400 font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* Freight */}
-                <div className="grid grid-cols-12 gap-4 items-center py-2 px-2 hover:bg-gray-800/20">
-                  <div className="col-span-10 text-right text-gray-400 font-medium">Freight / Charges (+)</div>
-                  <div className="col-span-2">
-                    <input
-                      type="number"
-                      value={invoiceData?.Freight_Charges || 0}
-                      onChange={(e) => handleHeaderChange('Freight_Charges', parseFloat(e.target.value))}
-                      className="w-full bg-transparent outline-none font-mono text-right text-green-300 focus:text-green-400 font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* Grand Total */}
+                {/* Grand Total (Sum of Lines) */}
                 <div className="grid grid-cols-12 gap-4 items-center py-4 px-2 bg-gray-800 border-t border-gray-600 shadow-inner">
                   <div className="col-span-10 text-right text-white font-bold text-lg">
                     Grand Total
-                    <span className="block text-xs font-normal text-gray-400 font-sans mt-0.5">(Subtotal - Discount + Freight)</span>
+                    <span className="block text-xs font-normal text-gray-400 font-sans mt-0.5">(Sum of Total Cost)</span>
                   </div>
                   <div className="col-span-2 text-right text-indigo-400 font-mono text-xl font-bold">
                     {(
                       lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0)
-                      - (parseFloat(invoiceData?.Global_Discount_Amount) || 0)
-                      + (parseFloat(invoiceData?.Freight_Charges) || 0)
                     ).toFixed(2)}
                   </div>
                 </div>
