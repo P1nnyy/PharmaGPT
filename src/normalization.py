@@ -169,6 +169,29 @@ def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     effective_tax_percent = get_effective_tax_rate(raw_item)
     tax_factor = 1 + (effective_tax_percent / 100.0)
 
+    # 1.5. PRIORITY: SOLVER HAS SPOKEN
+    # If the Swarm Solver has already reconciled the Landed Cost, we TRUST IT BLINDLY.
+    # This bypasses the "double taxation" risk of fallback logic.
+    if raw_item.Landed_Cost_Per_Unit is not None and float(raw_item.Landed_Cost_Per_Unit) > 0:
+        cp_per_unit = float(raw_item.Landed_Cost_Per_Unit)
+        final_net_amount = float(raw_item.Stated_Net_Amount) # Solver sets this too
+        
+        # Back-calculate Taxable from Net (Standard Inclusive Logic)
+        derived_taxable_value = round(final_net_amount / tax_factor, 2)
+        tax_amount = round(final_net_amount - derived_taxable_value, 2)
+        discount_amount = 0.0
+        
+        return {
+            "Standard_Quantity": qty,
+            "Calculated_Cost_Price_Per_Unit": cp_per_unit, 
+            "Discount_Amount_Currency": discount_amount,
+            "Calculated_Taxable_Value": derived_taxable_value,
+            "Calculated_Tax_Amount": tax_amount,
+            "Net_Line_Amount": final_net_amount,
+            "Raw_GST_Percentage": effective_tax_percent,
+            "Is_Calculated": True # Mark as done
+        }
+    
     # 2. STRATEGY A: TOP-DOWN (Trust the Total)
     # If we have a valid Total and Quantity, we ignore the extracted Rate to prevent "Double Multiplication".
     if stated_net > 0 and qty > 0:

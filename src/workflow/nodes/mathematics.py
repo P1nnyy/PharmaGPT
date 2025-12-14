@@ -12,33 +12,26 @@ def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     factor = state.get("correction_factor", 1.0)
     lines = state.get("line_item_fragments", [])
     
-    logger.info(f"Mathematics: Applying correction factor {factor:.4f} to {len(lines)} items.")
-    
     updated_lines = []
     for item in lines:
         try:
             raw_net = float(item.get("Stated_Net_Amount") or 0)
             qty = float(item.get("Raw_Quantity") or 1)
-            if qty <= 0: qty = 1.0
             
             # 1. Adjust Total Cost to match the Check (Landed Cost)
             new_net = round(raw_net * factor, 2)
             
             # 2. Recalculate Unit Rate
             # This is the most critical number for the shop user!
-            new_rate = round(new_net / qty, 2)
+            new_rate = round(new_net / qty, 2) if qty > 0 else 0
             
-            item["Stated_Net_Amount"] = new_net
-            # Using Landed_Cost_Per_Unit as it is defined in RawLineItem schema for pass-through
-            item["Landed_Cost_Per_Unit"] = new_rate 
-            # Also setting the user-requested key for clarity/legacy
+            item["Net_Line_Amount"] = new_net
             item["Calculated_Cost_Price_Per_Unit"] = new_rate
-            
             item["Logic_Note"] = f"Auto-Adjusted by {factor:.4f} (Global Tax/Discount)"
             
             updated_lines.append(item)
         except Exception as e:
-            logger.error(f"Math Fix Failed on item: {e}")
+            logger.error(f"Solver Error: {e}")
             updated_lines.append(item)
         
     return {

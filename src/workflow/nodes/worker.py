@@ -40,14 +40,13 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                - **Fallback / Semantic Hunt**: If no specific Batch column exists, look for a "Batch Details" section elsewhere or a batch string (alphanumeric, e.g. 'B2G2', 'GT45') printed **inside** the Description column or near the 'Expiry' column. Do NOT return 'UNKNOWN' unless strictly empty.
             2. **Expiry Date Hunt**: Look for Expiry Dates (Exp, Expiry, Validity) in the row. Format as MM/YY or MM/YYYY if possible.
             3. **Single Pass Extraction**: Scan the table top-to-bottom exactly ONCE. Do NOT repeat items. Do NOT hallucinate double rows.
-            4. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)? If they sum to 24%, this is an error—assume the rate is 12%.
-            5. **Taxable vs Net**: Do not confuse (Qty * Rate) with Net Amount. If a column value equals Qty * Rate, it is 'Raw_Taxable_Value'. 'Stated_Net_Amount' MUST be the final column (Inc. Tax).
+            4. **Blind Extraction**: Extract exactly what you see.
+               - If a column looks like an Amount, extract it. 
+               - Do NOT perform calculations. Do NOT attempt to multiply Qty * Rate.
+               - Do NOT try to fix mismatches. Trust the printed text.
+            5. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)?
             6. **Exclusions**: IGNORE 'Total', 'Subtotal', 'Discount', 'Freight' rows.
-            7. **Top-Down Math Logic (Anchor)**: 
-               - The **'Stated_Net_Amount'** is the Anchor.
-               - **MATH CHECK**: If you see a Total of 10,000 and Qty of 10, the Rate is 1,000. 
-               - **CRITICAL**: Never extract the Total (10,000) as the 'Rate'. If the printed Rate column is missing or confusing, leave it blank (0.0), but ensure 'Stated_Net_Amount' is correct.
-            8. **GST Summation**: If 'SGST' and 'CGST' columns exist separately, SUM them (e.g. 2.5% + 2.5% = 5.0%).
+            7. **Output**: Return the raw values. The 'Stated_Net_Amount' should be the final column value for that row.
             
             Return a JSON object with a key 'line_items' containing a list of items.
             Item Schema:
@@ -186,11 +185,19 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             elif res.get("type") == "error":
                 error_logs.append(f"Zone Extraction Failed: {res.get('error')}")
                 
+        # Get current retry count and increment
+        # This prevents infinite loops if Critic keeps rejecting
+        current_retry = int(state.get("retry_count", 0))
+        new_retry_count = current_retry + 1
+        
+        logger.info(f"Worker: Extraction Complete. Retry Count: {state.get('retry_count')} -> {new_retry_count}")
+
         return {
             "line_item_fragments": line_item_fragments,
             "global_modifiers": global_modifiers,
             "anchor_totals": anchor_totals,
-            "error_logs": error_logs
+            "error_logs": error_logs,
+            "retry_count": new_retry_count
         }
         
     except Exception as e:

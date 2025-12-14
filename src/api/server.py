@@ -15,6 +15,23 @@ from fastapi.templating import Jinja2Templates
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 import uvicorn
+import logging
+from logging.handlers import RotatingFileHandler
+
+# --- Logging Configuration ---
+# Create logs directory if it doesn't exist
+os.makedirs("logs", exist_ok=True)
+
+# Configure Root Logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        RotatingFileHandler("logs/app.log", maxBytes=5*1024*1024, backupCount=3), # 5MB per file
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("api")
 
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item, parse_float
@@ -78,6 +95,25 @@ class ConfirmInvoiceRequest(BaseModel):
 
 # --- API Endpoints ---
 
+@app.get("/logs")
+async def get_logs(lines: int = 100):
+    """
+    Retrieves the last N lines of the application log.
+    Useful for debugging without SSH access.
+    """
+    log_file = "logs/app.log"
+    if not os.path.exists(log_file):
+        return {"error": "Log file not found."}
+        
+    try:
+        with open(log_file, "r") as f:
+            content = f.readlines()
+            # Return last N lines
+            recent = content[-lines:]
+            return {"logs": recent}
+    except Exception as e:
+        return {"error": f"Failed to read logs: {str(e)}"}
+        
 @app.post("/analyze-invoice", response_model=Dict[str, Any])
 async def analyze_invoice(file: UploadFile = File(...)):
     """

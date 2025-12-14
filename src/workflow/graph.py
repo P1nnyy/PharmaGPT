@@ -35,7 +35,7 @@ def build_graph():
             return "solver"
         elif verdict == "RETRY_OCR" and state.get("retry_count", 0) < 2:
             return "worker"
-        return END
+        return "end"
 
     workflow.add_conditional_edges(
         "critic",
@@ -43,7 +43,7 @@ def build_graph():
         {
             "solver": "solver",
             "worker": "worker",
-            END: END
+            "end": END
         }
     )
     
