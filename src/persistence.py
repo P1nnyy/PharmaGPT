@@ -49,27 +49,27 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     query = """
     MATCH (i:Invoice {invoice_number: $invoice_no})
     
-    // Merge Product based on Standard Name
+    // 1. Merge Product (Standard Name)
     MERGE (p:Product {name: $standard_item_name})
     
-    // Create Line Item
+    // 2. Merge HSN Node (NEW: Optimized for Analytics)
+    MERGE (h:HSN {code: $hsn_code})
+    
+    // 3. Create Line Item
     CREATE (l:Line_Item {
         pack_size: $pack_size,
         quantity: $quantity,
         cost_price: $cost_price,
-        discount_amount: $discount_amount,
-        taxable_value: $taxable_value,
-        calculated_tax_amount: $tax_amount,
         net_amount: $net_amount,
         batch_no: $batch_no,
-        hsn_code: $hsn_code,
-        raw_description: $raw_desc,
-        stated_net_amount: $stated_net
+        hsn_code: $hsn_code,   // Keep property for easy access
+        mrp: $mrp
     })
     
-    // Create Relationships
+    // 4. Connect Graph
     MERGE (i)-[:CONTAINS]->(l)
     MERGE (l)-[:REFERENCES]->(p)
+    MERGE (l)-[:BELONGS_TO_HSN]->(h)
     """
     
     tx.run(query,
@@ -78,11 +78,8 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            pack_size=item.get("Pack_Size_Description"),
            quantity=item.get("Standard_Quantity"),
            cost_price=item.get("Calculated_Cost_Price_Per_Unit"),
-           discount_amount=item.get("Discount_Amount_Currency"),
-           taxable_value=item.get("Calculated_Taxable_Value"),
-           tax_amount=item.get("Calculated_Tax_Amount"),
            net_amount=item.get("Net_Line_Amount"),
            batch_no=item.get("Batch_No"),
-           hsn_code=item.get("HSN_Code"),
-           raw_desc=raw_item.Original_Product_Description,
-           stated_net=parse_float(raw_item.Stated_Net_Amount))
+           hsn_code=item.get("HSN_Code") or "UNKNOWN", 
+           mrp=item.get("MRP", 0.0)
+    )

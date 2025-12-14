@@ -32,36 +32,33 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     deduped_line_items = []
     
     for item in line_items:
-        # Create a unique signature
-        # Normalize strings to prevent case/whitespace dupes
-        desc = str(item.get("Original_Product_Description", "")).strip().lower().replace("  ", " ")
-        net = str(item.get("Stated_Net_Amount", "")).strip()
-        batch = str(item.get("Batch_No", "")).strip().lower()
-        
-        # Use (Description, Net) as primary uniqueness if Batch is missing?
-        # Or (Description, Batch) if Net varies slightly due to OCR noise?
-        # Let's keep strict net for now, but formatted standardly
         try:
-             # Try to normalize net amount to 2 decimal places string
-             net_val = float(net)
-             net = f"{net_val:.2f}"
-        except:
-             pass
-        
-        signature = (desc, net, batch)
-        
-        if signature not in unique_items_map:
-            # Noise Filter: Ignore items with 0 Net AND 0 Quantity (or negligible values)
-            try:
-                n_val = float(item.get("Stated_Net_Amount") or 0)
-                q_val = float(item.get("Raw_Quantity") or 0)
-                if n_val == 0.0 and q_val == 0.0:
-                    continue # Skip noise
-            except Exception as e:
-                logger.warning(f"Auditor Filter Error: {e}")
-                pass
+            # 1. Scalable Noise Filter
+            # Drop items with negligible Net Amount AND Quantity (e.g. Schemes/Initiatives)
+            n_val = float(item.get("Stated_Net_Amount") or 0)
+            q_val = float(item.get("Raw_Quantity") or 0)
+            
+            if abs(n_val) < 0.1 and abs(q_val) < 0.1:
+                continue # Skip noise
+                
+            # 2. Fuzzy Deduplication Signature
+            # Normalize Description: Lowercase, remove extra spaces
+            desc = str(item.get("Original_Product_Description", "")).strip().lower()
+            desc = " ".join(desc.split()) # Collapses "Vaporub  " to "vaporub"
+            
+            # Signature: (Description, Integer Net Amount)
+            # Casting Net Amount to int ignores penny variance (1072.00 vs 1072.10)
+            net_sig = int(n_val)
+            
+            signature = (desc, net_sig)
 
-            unique_items_map[signature] = True
+            if signature not in unique_items_map:
+                unique_items_map[signature] = True
+                deduped_line_items.append(item)
+                
+        except Exception as e:
+            logger.warning(f"Auditor Deduplication Error: {e}")
+            # If error, safely include items to avoid data loss
             deduped_line_items.append(item)
             
     logger.info(f"Auditor Deduplication: Reduced {len(line_items)} items to {len(deduped_line_items)} unique items.")

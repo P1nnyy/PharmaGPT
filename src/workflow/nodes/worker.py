@@ -37,16 +37,16 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             CRITICAL RULES:
             1. **Batch Number Hunt**: You MUST find the Batch Number. Look for columns 'Batch', 'Lot', 'B.No'.
                - **CRITICAL EXCLUSION**: Do **NOT** extract values from columns labeled **"PCode"**, "Product Code", or "SKU". These are item codes, not batches.
-               - **Fallback**: If no specific Batch column exists, look for a batch string (alphanumeric, e.g. 'B2G2', 'GT45') printed **inside** the Description column or immediately next to the 'Expiry' column. Do NOT return 'UNKNOWN' unless strictly empty.
-            2. **Single Pass Extraction**: Scan the table top-to-bottom exactly ONCE. Do NOT repeat items. Do NOT hallucinate double rows. If you see the same item name twice, ensure it is physically printed twice with different data; otherwise, it is a duplication error.
+               - **Fallback / Semantic Hunt**: If no specific Batch column exists, look for a "Batch Details" section elsewhere or a batch string (alphanumeric, e.g. 'B2G2', 'GT45') printed **inside** the Description column or near the 'Expiry' column. Do NOT return 'UNKNOWN' unless strictly empty.
+            2. **Single Pass Extraction**: Scan the table top-to-bottom exactly ONCE. Do NOT repeat items. Do NOT hallucinate double rows.
             3. **Tax Verification**: Strictly extract the tax rate as printed. If columns SGST(12%) and CGST(12%) exist, CHECK: do they sum to a standard rate (5, 12, 18, 28)? If they sum to 24%, this is an error—assume the rate is 12%.
             4. **Taxable vs Net**: Do not confuse (Qty * Rate) with Net Amount. If a column value equals Qty * Rate, it is 'Raw_Taxable_Value'. 'Stated_Net_Amount' MUST be the final column (Inc. Tax).
             5. **Exclusions**: IGNORE 'Total', 'Subtotal', 'Discount', 'Freight' rows.
-            6. **Logic Check (Rate vs Amount)**: 
-               - A "Rate" (Unit Price) is for **ONE** item. "Net Amount" is for **ALL** items (Qty * Rate).
-               - **MATH CHECK**: If a column's value is roughly (Qty * Another Column), that column is the **TOTAL AMOUNT**. NEVER extract it as 'Rate'.
-               - If two financial columns exist and Qty > 1, the SMALLER value is usually the Rate, and the LARGER is the Amount.
-            7. **GST Summation**: If 'SGST' and 'CGST' columns exist separately, SUM them (e.g. 2.5% + 2.5% = 5.0%). But CHECK: Does the sum match a standard rate (5, 12, 18, 28)? If it sums to 24%, assume 12%.
+            6. **Top-Down Math Logic (Anchor)**: 
+               - The **'Stated_Net_Amount'** is the Anchor.
+               - **MATH CHECK**: If you see a Total of 10,000 and Qty of 10, the Rate is 1,000. 
+               - **CRITICAL**: Never extract the Total (10,000) as the 'Rate'. If the printed Rate column is missing or confusing, leave it blank (0.0), but ensure 'Stated_Net_Amount' is correct.
+            7. **GST Summation**: If 'SGST' and 'CGST' columns exist separately, SUM them (e.g. 2.5% + 2.5% = 5.0%).
             
             Return a JSON object with a key 'line_items' containing a list of items.
             Item Schema:
@@ -56,6 +56,7 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                 "Batch_No": str,
                 "Raw_HSN_Code": str,
                 "Raw_Rate_Column_1": float,
+                "Raw_Rate_Column_2": float,
                 "Raw_Discount_Percentage": float,
                 "Raw_GST_Percentage": float,
                 "Raw_Taxable_Value": float,

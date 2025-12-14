@@ -154,113 +154,61 @@ def standardize_product(raw_description: str) -> Tuple[str, str]:
 
 def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
     """
-    Calculates financial figures including Cost Price, Discount Amount, Taxable Value, and Net Amount.
-    Returns a dictionary corresponding to normalized fields.
-    Now includes 'Discovery Mode' to identify potential vendor-specific rule deviations.
+    TOP-DOWN STRATEGY (Net Amount Priority):
+    1. Trust 'Stated_Net_Amount' as the primary truth.
+    2. Derived Unit Rate = (Stated_Net / Tax_Factor) / Qty.
+    3. Fallback: Only use 'Raw_Rate' if Net Amount is missing.
     """
-    # 0. Get Vendor Strategy (if any)
-    # Refactor: We pulled strategy in calculate_cost_price loop, but cleaner to do it here or split. 
-    # Let's simple reload or modify calculate_cost_price to return strategy? 
-    # Or just re-scan here (inefficient but safe). 
-    normalized_supplier = supplier_name.lower()
-    vendors = VENDOR_RULES.get("vendors", {})
-
-
-    # 1. Calculate Cost Price (CP)
-    # Note: calculate_cost_price only returns float now. 
-    cp_per_unit = calculate_cost_price(raw_item, supplier_name)
     
-    # 2. Parse Quantities and Percents
+    # 1. Parse Basic Inputs
     qty = parse_float(raw_item.Raw_Quantity)
-    stated_net_amount = parse_float(raw_item.Stated_Net_Amount)
-    raw_taxable_value = parse_float(raw_item.Raw_Taxable_Value) 
+    stated_net = parse_float(raw_item.Stated_Net_Amount)
+    raw_rate = parse_float(raw_item.Raw_Rate_Column_1)
     
-    # Discounts
-    raw_disc_amount = parse_float(raw_item.Raw_Discount_Amount) if raw_item.Raw_Discount_Amount else 0.0
-    discount_percent = parse_float(raw_item.Raw_Discount_Percentage)
-    
-    # Tax - Use Effective Rate
+    # Get Tax Rate
     effective_tax_percent = get_effective_tax_rate(raw_item)
-    
-    is_calculated = False
+    tax_factor = 1 + (effective_tax_percent / 100.0)
 
-
-
-    # --- LOGIC PATCH: Derive Missing Rate ---
-    # If the Extractor found no Unit Rate, we try to reverse-engineer it.
-    if cp_per_unit == 0.0 and qty > 0:
-        # Source 1: Taxable Value (Preferred)
-        if raw_taxable_value > 0:
-            derived_rate = round(raw_taxable_value / qty, 2)
-            print(f"DERIVED RATE (from Taxable): {derived_rate}")
-            cp_per_unit = derived_rate
-            
-        # Source 2: Stated Net Amount (Fallback - Must Back-Calculate Tax)
-        elif stated_net_amount > 0:
-            # We assume Stated Net is Inclusive of Tax
-            tax_factor = 1 + (effective_tax_percent / 100.0)
-            derived_taxable = stated_net_amount / tax_factor
-            derived_rate = round(derived_taxable / qty, 2)
-            print(f"DERIVED RATE (from Net): {derived_rate} (Net {stated_net_amount} / TaxFactor {tax_factor})")
-            cp_per_unit = derived_rate
-
-    # 3. Calculate Gross Value (Baseline)
-    gross_value = qty * cp_per_unit
-    
-    # 4. Calculate Discount Amount (Branching Logic)
-    if raw_disc_amount > 0:
-        discount_amount = raw_disc_amount
-    elif discount_percent > 0:
-        discount_amount = round(gross_value * (discount_percent / 100.0), 2)
-    else:
-        discount_amount = 0.0
-    
-    # 5. Calculate Taxable Value (Derived)
-    derived_taxable_value = round(gross_value - discount_amount, 2)
-    
-    # 6. Calculate Tax Amount
-    tax_amount = round(derived_taxable_value * (effective_tax_percent / 100.0), 2)
-    
-    # 7. Calculate Total Amount (Calculated Net)
-    calculated_net = round(derived_taxable_value + tax_amount, 2)
-    
-    # 8. SAFETY NET: Double-Multiplication Guard
-    final_net_amount = calculated_net
-    
-    # Logic: If Calculated Net is huge and roughly equals (Stated Net * Qty), 
-    # then the AI extracted the "Total" into the "Rate" column.
-    if qty > 1 and stated_net_amount > 0:
-        implied_mistake_value = stated_net_amount * qty
+    # 2. STRATEGY A: TOP-DOWN (Trust the Total)
+    # If we have a valid Total and Quantity, we ignore the extracted Rate to prevent "Double Multiplication".
+    if stated_net > 0 and qty > 0:
+        final_net_amount = stated_net
         
-        # Check if difference is small (allow 5% variance for rounding)
-        if abs(calculated_net - implied_mistake_value) < (implied_mistake_value * 0.05):
-            print(f"⚠️ SAFETY NET TRIGGERED: Double Multiplication detected for item. Reverting Rate.")
-            
-            # 1. Trust the Stated Net Amount as the single source of truth
-            final_net_amount = stated_net_amount
-            
-            # 2. Reverse Engineer the Real Unit Rate (CP)
-            # Formula: (Total / TaxFactor) / Qty
-            tax_factor = 1 + (effective_tax_percent / 100.0)
-            
-            # Recalculate true values
-            derived_taxable_value = round(final_net_amount / tax_factor, 2)
-            cp_per_unit = round(derived_taxable_value / qty, 2)
-            tax_amount = round(final_net_amount - derived_taxable_value, 2)
+        # Reverse Engineer Taxable Value
+        # Net = Taxable * (1 + Tax%)
+        derived_taxable_value = round(final_net_amount / tax_factor, 2)
+        
+        # Reverse Engineer Unit Cost
+        # Taxable = Qty * CP
+        cp_per_unit = round(derived_taxable_value / qty, 2)
+        
+        # Calculate Tax Amount
+        tax_amount = round(final_net_amount - derived_taxable_value, 2)
+        
+        discount_amount = 0.0 # Assumed Net is post-discount
 
-    # 9. Standard Reconciliation (for small rounding differences)
-    elif abs(calculated_net - stated_net_amount) <= 5.0:
-        final_net_amount = stated_net_amount
-
+    # 3. STRATEGY B: BOTTOM-UP (Fallback)
+    else:
+        # Use existing logic only if Net Amount is missing
+        cp_per_unit = calculate_cost_price(raw_item, supplier_name)
+        gross_value = qty * cp_per_unit
+        
+        discount_percent = parse_float(raw_item.Raw_Discount_Percentage)
+        discount_amount = (gross_value * discount_percent / 100) if discount_percent else 0
+        
+        derived_taxable_value = gross_value - discount_amount
+        tax_amount = derived_taxable_value * (effective_tax_percent / 100.0)
+        final_net_amount = derived_taxable_value + tax_amount
 
     return {
         "Standard_Quantity": qty,
-        "Calculated_Cost_Price_Per_Unit": round(cp_per_unit, 2),
+        "Calculated_Cost_Price_Per_Unit": cp_per_unit, 
         "Discount_Amount_Currency": discount_amount,
         "Calculated_Taxable_Value": derived_taxable_value,
         "Calculated_Tax_Amount": tax_amount,
         "Net_Line_Amount": final_net_amount,
-        "Raw_GST_Percentage": effective_tax_percent, # Return the EFFECTIVE consolidated rate
+        "Raw_GST_Percentage": effective_tax_percent,
+        "Is_Calculated": True
     }
 
 # Initialize Vector Store (Global Singleton)
@@ -329,8 +277,9 @@ def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, 
     # Priority B: Vector Search (Semantic Fallback)
     elif GLOBAL_VECTOR_STORE and not final_hsn:
         # Use Description to find best HSN match
-        # Lower threshold (0.5) implies stricter matching
-        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_item.Original_Product_Description, threshold=0.5)
+        # Lower threshold (0.5) implies stricter matching, but 0.66 was observed for valid case
+        # Relaxing to 0.75 to capture "Paracetamol 500mg" matches
+        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_item.Original_Product_Description, threshold=0.75)
         if vector_match:
             print(f"   -> Vector Store recovered HSN: {vector_match} for {std_name}")
             final_hsn = vector_match
