@@ -29,28 +29,15 @@ def preprocess_image_for_ocr(image_path: str) -> bytes:
         if img is None:
             raise ValueError(f"Failed to load image: {image_path}")
             
-        original = img.copy()
+        # Convert to Grayscale (Simple & Safe)
+        # Gemini 2.0 is multimodal and handles skew well. Warping is too brittle.
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # 1. Perspective Transform (The "Flattener")
-        processed_img = _flatten_document(img, gray)
-        
-        if processed_img is None:
-            logger.warning("Perspective transform failed. Using original image.")
-            processed_img = original
-            
-        # 2. Binarization (Adaptive Thresholding)
-        # Check if already single channel
-        if len(processed_img.shape) == 3:
-             processed_img = cv2.cvtColor(processed_img, cv2.COLOR_BGR2GRAY)
-             
-        # Optimized for text extraction (larger block size 15, C=8)
-        binarized = cv2.adaptiveThreshold(
-            processed_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 8
-        )
+        # Optional: Mild Denoising
+        # gray = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
         
         # Encode to bytes
-        success, encoded_img = cv2.imencode('.jpg', processed_img)
+        success, encoded_img = cv2.imencode('.jpg', gray)
         if not success:
             raise ValueError("Failed to encode processed image.")
             
@@ -58,7 +45,6 @@ def preprocess_image_for_ocr(image_path: str) -> bytes:
 
     except Exception as e:
         logger.error(f"Image preprocessing failed: {e}")
-        # Fallback to reading original file as bytes
         with open(image_path, "rb") as f:
             return f.read()
 

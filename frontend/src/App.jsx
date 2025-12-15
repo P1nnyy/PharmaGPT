@@ -136,7 +136,7 @@ function App() {
       "Batch No": item.Batch_No,
       "Expiry": item.Expiry_Date,
       "Quantity": item.Standard_Quantity,
-      "Landed Cost": item.Landed_Cost_Per_Unit,
+      "Rate": item.Rate, // EXPORT RATE
       "MRP": item.MRP,
       "Tax %": item.Raw_GST_Percentage,
       "Net Amount": item.Net_Line_Amount
@@ -268,14 +268,14 @@ function App() {
             <>
               {/* TABLE HEADERS - Spreadsheet Style */}
               <div className="sticky top-0 z-10 bg-gray-900 pt-2">
-                <div className="grid grid-cols-12 gap-4 mb-2 text-sm font-bold text-gray-400 border-b border-gray-700 pb-2 px-2">
-                  <div className="col-span-3">Item Name</div>
-                  <div className="col-span-2">Batch No.</div>
-                  <div className="col-span-1">Expiry</div>
+                <div className="grid grid-cols-12 gap-6 mb-2 text-sm font-bold text-gray-400 border-b border-gray-700 pb-2 px-2">
+                  <div className="col-span-4 pl-2">Item Name</div>
+                  <div className="col-span-3">Batch No.</div>
+                  <div className="col-span-1 text-center">Expiry</div>
+                  <div className="col-span-1 text-center">MRP</div>
                   <div className="col-span-1 text-center">Qty</div>
-                  <div className="col-span-2 text-right">Landed Cost</div>
-                  <div className="col-span-1 text-right">MRP</div>
-                  <div className="col-span-2 text-right">Total Cost</div>
+                  {/* Rate Column Removed */}
+                  <div className="col-span-2 text-right pr-2">Total Cost</div>
                 </div>
               </div>
 
@@ -283,20 +283,20 @@ function App() {
               <div className="divide-y divide-gray-800">
                 {lineItems.map((item, idx) => {
                   return (
-                    <div key={idx} className="grid grid-cols-12 gap-4 items-center py-2 hover:bg-gray-800/30 px-2 transition-colors">
+                    <div key={idx} className="grid grid-cols-12 gap-6 items-center py-3 hover:bg-gray-800/30 px-2 transition-colors border-b border-gray-800/50">
 
-                      {/* 1. Item Name */}
-                      <div className="col-span-3">
+                      {/* 1. Item Name - Expanded Span */}
+                      <div className="col-span-4 pl-2">
                         <input
                           value={item.Standard_Item_Name || ''}
                           onChange={(e) => handleInputChange(idx, 'Standard_Item_Name', e.target.value)}
-                          className="w-full bg-transparent outline-none focus:text-indigo-400 font-medium text-gray-200"
+                          className="w-full bg-transparent outline-none focus:text-indigo-400 font-medium text-gray-200 text-base"
                           placeholder="Item Name"
                         />
                       </div>
 
-                      {/* 2. Batch No (Editable) */}
-                      <div className="col-span-2">
+                      {/* 2. Batch No */}
+                      <div className="col-span-3">
                         <input
                           value={item.Batch_No || ''}
                           onChange={(e) => handleInputChange(idx, 'Batch_No', e.target.value)}
@@ -305,50 +305,46 @@ function App() {
                         />
                       </div>
 
-                      {/* 3. Expiry (New - Editable) */}
-                      <div className="col-span-1">
+                      {/* 3. Expiry */}
+                      <div className="col-span-1 text-center">
                         <input
                           value={item.Expiry_Date || ''}
                           onChange={(e) => handleInputChange(idx, 'Expiry_Date', e.target.value)}
-                          className="w-full bg-transparent outline-none font-mono text-gray-400 focus:text-indigo-400 text-xs"
+                          className="w-full bg-transparent outline-none font-mono text-gray-400 focus:text-indigo-400 text-xs text-center"
                           placeholder="MM/YY"
                         />
                       </div>
 
-                      {/* 4. Quantity */}
-                      <div className="col-span-1">
-                        <input
-                          type="number"
-                          value={item.Standard_Quantity || 0}
-                          onChange={(e) => handleInputChange(idx, 'Standard_Quantity', parseFloat(e.target.value))}
-                          className="w-full bg-transparent outline-none font-mono text-center text-indigo-300 font-bold bg-gray-800/20 rounded focus:bg-gray-700"
-                        />
-                      </div>
-
-                      {/* 5. Landed Cost (Read Only) */}
-                      <div className="col-span-2 text-right font-mono text-yellow-500 font-medium">
-                        {(parseFloat(item.Landed_Cost_Per_Unit) || 0).toFixed(2)}
-                      </div>
-
-                      {/* 6. MRP (Editable) */}
-                      <div className="col-span-1">
+                      {/* 4. MRP */}
+                      <div className="col-span-1 text-center">
                         <input
                           type="number"
                           value={item.MRP || 0}
                           onChange={(e) => handleInputChange(idx, 'MRP', parseFloat(e.target.value))}
-                          className="w-full bg-transparent outline-none font-mono text-right text-gray-400 focus:text-indigo-400"
+                          className="w-full bg-transparent outline-none font-mono text-center text-gray-400 focus:text-indigo-400"
                         />
                       </div>
 
-                      {/* 7. Total Cost (Net Amount - Editable) */}
-                      <div className="col-span-2">
+                      {/* 5. Quantity */}
+                      <div className="col-span-1 text-center">
+                        <input
+                          type="number"
+                          value={item.Standard_Quantity || 0}
+                          onChange={(e) => handleInputChange(idx, 'Standard_Quantity', parseFloat(e.target.value))}
+                          className="w-full bg-transparent outline-none font-mono text-center text-indigo-300 font-bold bg-gray-800/20 rounded focus:bg-gray-700 py-1"
+                        />
+                      </div>
+
+                      {/* 7. Total Cost (Net Amount) */}
+                      <div className="col-span-2 text-right pr-2">
                         <input
                           type="number"
                           value={item.Net_Line_Amount || 0}
                           onChange={(e) => handleInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
-                          className="w-full bg-transparent outline-none font-mono text-right text-green-400 font-bold focus:text-green-300"
+                          className="w-full bg-transparent outline-none font-mono text-right text-green-400 font-bold focus:text-green-300 text-lg"
                         />
                       </div>
+
                     </div>
                   );
                 })}

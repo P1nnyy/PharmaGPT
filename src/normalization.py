@@ -251,9 +251,47 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note
         "Raw_MRP": raw_item.get("MRP"),
         
         # REQUIRED FOR FRONTEND / SERVER SCHEMA
-        "Standard_Quantity": raw_item.get("Qty"),
-        "Net_Line_Amount": raw_item.get("Amount"), 
+        "Standard_Quantity": parse_float(raw_item.get("Qty")),
+        "Net_Line_Amount": parse_float(raw_item.get("Amount")), 
         # Calculate Unit Cost (Amount / Qty) as placeholder until Solver
-        "Final_Unit_Cost": (float(raw_item.get("Amount") or 0) / float(raw_item.get("Qty") or 1)) if raw_item.get("Qty") else 0.0,
-        "Logic_Note": "Pre-Solver Extraction"
+        "Final_Unit_Cost": (parse_float(raw_item.get("Amount")) / (parse_float(raw_item.get("Qty")) or 1.0)) if raw_item.get("Qty") else 0.0,
+        "Logic_Note": "Pre-Solver Extraction",
+        
+        # Metadata Populated
+        "MRP": raw_item.get("MRP"),
+        "Rate": raw_item.get("Rate"),
+        "Expiry_Date": raw_item.get("Expiry") 
     }
+
+def distribute_global_modifiers(line_items: list, global_discount: float, freight: float, global_tax: float = 0.0) -> list:
+    """
+    Distributes global discount, freight, and global tax across line items based on value.
+    This runs after basic normalization but before final commitment.
+    
+    Formula: Final Net = Original Net - Discount Share + Freight Share + Tax Share
+    """
+    total_value = sum(float(item.get("Net_Line_Amount", 0)) for item in line_items)
+    
+    if total_value == 0:
+        return line_items
+
+    for item in line_items:
+        original_net = float(item.get("Net_Line_Amount", 0))
+        ratio = original_net / total_value
+        
+        # Calculate shares
+        discount_share = global_discount * ratio
+        freight_share = freight * ratio
+        tax_share = global_tax * ratio
+        
+        # Apply to Net Amount
+        # Net = Original - Discount + Freight + Tax
+        new_net = original_net - discount_share + freight_share + tax_share
+        item["Net_Line_Amount"] = round(new_net, 2)
+        
+        # Recalculate Unit Cost
+        qty = float(item.get("Standard_Quantity", 1) or 1)
+        if qty > 0:
+            item["Final_Unit_Cost"] = round(new_net / qty, 2)
+            
+    return line_items

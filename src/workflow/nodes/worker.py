@@ -45,6 +45,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             4. Include headers if visible.
             5. Do NOT try to rename columns. Capture exact text like "Pcode", "Qty", "N.Rate".
             
+            CRITICAL TABLE PARSING RULES:
+            - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free" or capture as "10+2" in one cell. DO NOT shift data left/right.
+            - **Prices are NOT Quantities**: "MRP" (e.g. 200.00) and "Rate" (e.g. 150.00) are typically larger than "Qty" (e.g. 1, 10). Do not mix them up.
+            
             IMPORTANT:
             - **DENSE ROWS**: If you see "Vaporub 5gm" and "Vaporub 10gm" on separate lines, WRITE THEM ON SEPARATE LINES.
             - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
@@ -72,6 +76,9 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - Global_Discount_Amount (Look for 'Cash Discount', 'CD', 'Less Discount')
             - Freight_Charges
             - Round_Off
+            - SGST_Amount (Total S.GST from footer summary)
+            - CGST_Amount (Total C.GST from footer summary)
+            - IGST_Amount (Total I.GST from footer summary)
             - Stated_Grand_Total (The final 'Net Payable' or 'Grand Total'). This is the **ANCHOR** truth for the invoice.
             
             CRITICAL:
@@ -82,12 +89,29 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                 "Global_Discount_Amount": float,
                 "Freight_Charges": float,
                 "Round_Off": float,
+                "SGST_Amount": float,
+                "CGST_Amount": float,
+                "IGST_Amount": float,
                 "Stated_Grand_Total": float
             }}
             """
             response = await model.generate_content_async([prompt, image_file])
-            text = response.text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(text)
+            text = response.text.strip()
+            
+            # Robust JSON Extraction
+            import re
+            json_match = re.search(r"\{.*\}", text, re.DOTALL)
+            if json_match:
+                clean_json = json_match.group(0)
+                data = json.loads(clean_json)
+                return {"type": "modifiers", "data": data}
+            else:
+                 # Fallback: Try raw load or return empty
+                 try:
+                     data = json.loads(text)
+                     return {"type": "modifiers", "data": data}
+                 except:
+                     return {"type": "error", "error": f"Invalid JSON from Header: {text[:50]}..."}
             return {"type": "modifiers", "data": data}
             
         elif "header" in zone_type.lower():
@@ -102,10 +126,14 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - Invoice_No
             - Invoice_Date (YYYY-MM-DD format preferred)
             
-            NEGATIVE CONSTRAINTS (STRICTLY IGNORE):
-            - IGNORE "Bank Details".
-            - IGNORE "Previous Balance" or "Outstanding" tables.
-            - **Allowed**: You MAY look at Tax Columns ONLY if they contain the "Net Amount" or "Total".
+            NEGATIVE CONSTRAINTS:
+            - IGNORE "Bank Details"
+            - IGNORE "Outstanding"
+            
+            CRITICAL INSTRUCTION:
+            - RETURN ONLY VALID JSON.
+            - NO CONVERSATIONAL TEXT. NO "Here is the JSON".
+            - IF DATA IS MISSING, RETURN NULL/NONE.
             
             Return JSON:
             {{
@@ -115,8 +143,22 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             }}
             """
             response = await model.generate_content_async([prompt, image_file])
-            text = response.text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(text)
+            text = response.text.strip()
+            
+            # Robust JSON Extraction
+            import re
+            json_match = re.search(r"\{.*\}", text, re.DOTALL)
+            if json_match:
+                clean_json = json_match.group(0)
+                data = json.loads(clean_json)
+                return {"type": "modifiers", "data": data}
+            else:
+                 # Fallback: Try raw load or return empty
+                 try:
+                     data = json.loads(text)
+                     return {"type": "modifiers", "data": data}
+                 except:
+                     return {"type": "error", "error": f"Invalid JSON from Header: {text[:50]}..."}
             return {"type": "modifiers", "data": data}
             
     except Exception as e:

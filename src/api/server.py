@@ -187,12 +187,19 @@ async def analyze_invoice(file: UploadFile = File(...)):
             normalized_items.append(norm_item)
         
         # 3.b Apply Global Proration (Phase 3)
+        # 3.b Apply Global Proration (Phase 3)
         global_discount = parse_float(extracted_data.get("Global_Discount_Amount", 0.0))
         freight = parse_float(extracted_data.get("Freight_Charges", 0.0))
         
-        if global_discount > 0 or freight > 0:
+        # Sum Split Taxes
+        sgst = parse_float(extracted_data.get("SGST_Amount", 0.0))
+        cgst = parse_float(extracted_data.get("CGST_Amount", 0.0))
+        igst = parse_float(extracted_data.get("IGST_Amount", 0.0))
+        global_tax = sgst + cgst + igst
+        
+        if global_discount > 0 or freight > 0 or global_tax > 0:
             from src.normalization import distribute_global_modifiers
-            normalized_items = distribute_global_modifiers(normalized_items, global_discount, freight)
+            normalized_items = distribute_global_modifiers(normalized_items, global_discount, freight, global_tax)
         
         # 4. Financial Integrity Check
         validation_flags = []

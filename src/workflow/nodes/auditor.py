@@ -88,10 +88,14 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                                  logger.info(f"Auditor: Scavenged Batch '{scavenged_batch}' from Scheme Row for '{last_item.get('Product')}'")
                                  last_item["Batch"] = scavenged_batch
 
-                 # disable_scheme_filter: USER REQUEST: Keep all rows for raw extract. 
-                 # logger.info(f"Auditor: Removing Scheme Row -> {desc_lower}")
-                 # continue
-                 logger.info(f"Auditor: RETAINING Scheme Row -> {desc_lower}")
+                 # 2c. Scheme Filter Strategy
+                 # Standard: Drop the row if it's purely a textual description of an offer (Qty=0)
+                 if q_val == 0 or "initiative name" in desc_norm:
+                     logger.info(f"Auditor: Dropping Scheme/Info Row -> {desc_lower}")
+                     continue
+                 else:
+                     # If it has Qty > 0, it might be a "Free Good" line item that we need to keep.
+                     logger.info(f"Auditor: RETAINING Scheme Row (Has Qty) -> {desc_lower}")
 
             desc_norm = " ".join(desc_norm.split())
 
@@ -164,6 +168,37 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                          item["Batch"] = extracted_batch
 
             if not merged:
+                # 4. Quantity Sanity Check & Fix
+                # Problem: Sometimes Qty column is missed and Rate/MRP (e.g. 200, 300) is extracted as Qty.
+                # Heuristic 1: If Qty is exactly equal to MRP or Rate, it's a shifted column error.
+                # Heuristic 2: If Qty > 100 on a pharmacy invoice, it's highly suspicious (unless it's 'strips' vs 'tabs').
+                
+                check_mrp = parse_float(item.get("MRP", 0))
+                check_rate = parse_float(item.get("Rate", 0))
+                
+                if q_val > 50:
+                     # Check for Swap with MRP/Rate
+                     if (check_mrp > 0 and abs(q_val - check_mrp) < 1.0) or (check_rate > 0 and abs(q_val - check_rate) < 1.0):
+                         logger.warning(f"Auditor: Qty {q_val} matches Price/MRP. Suspected column swap. Correcting Qty to 1.")
+                         q_val = 1.0
+                         item["Qty"] = 1.0
+                     
+                     # Check for "Year" confusion (e.g. Qty 2024, 2025)
+                     elif q_val > 1900 and q_val < 2100:
+                         logger.warning(f"Auditor: Qty {q_val} looks like a Year. Correcting to 1.")
+                         q_val = 1.0
+                         item["Qty"] = 1.0
+                         
+                     # General High Value Warning (User likely needs to review this)
+                     else:
+                         logger.warning(f"Auditor: High Quantity Detected ({q_val}). Flagging for review.")
+                         # We can't auto-correct arbitrary high numbers safely without more context, 
+                         # but we can try to look for a small integer in the 'Amount' / 'Rate' math?
+                         
+                item["Qty"] = q_val
+                
+                # --- END SANITY CHECKS ---
+
                 deduped_line_items.append(item)
 
         except Exception as e:

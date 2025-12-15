@@ -39,16 +39,16 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         
         CRITICAL GOAL: Distinguish the "Main Product Line Item Table" from "Tax/HSN Summaries".
         
-        1. Primary Table (Product List):
-           - Look for a large grid containing 'Description', 'Qty', 'Rate', 'Amount', 'Batch'.
+        42. Primary Table (Product List):
+           - **MUST CONTAIN** a column for 'Description', 'Item Name', 'Product', or 'Particulars'.
            - It usually spans the middle of the document.
            - Label this zone_type: "primary_table".
+           - **DISTINCTION**: If a table has "HSN" and "Tax" columns but **LACKS** a "Description/Item Name" column, it is a TAX SUMMARY. Ignore it.
            - Use zone_id: "table_1".
 
         2. Secondary Tables (IGNORE THESE AS PRIMARY):
            - **Tax Summary / HSN Summary**: Often at the bottom, contains 'Taxable Amt', 'CGST', 'SGST', 'Total Tax'. **DO NOT** claim this as the primary table.
            - **Schemes / Free Goods**: Small detached tables.
-           - Label these zone_type: "secondary_table".
 
         3. Header: Top section with Supplier Name, Invoice Date, Invoice No.
         4. Footer: Bottom section with Grand Total, Net Payable, Bank Details.

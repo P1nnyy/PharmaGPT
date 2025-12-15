@@ -7,11 +7,11 @@ class RawLineItem(BaseModel):
     BLIND EXTRACTION SCHEMA: Captures only what is seen, no math.
     """
     Product: str = Field(..., description="The product description exactly as it appears on the invoice.")
-    Qty: Union[str, float] = Field(..., description="Quantity extracted.")
+    Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
     Batch: Optional[str] = Field(None, description="Batch number.")
     
     # New Blind Fields
-    Amount: Union[str, float] = Field(..., description="The neutral column value (Amount/Total) found on the invoice.")
+    Amount: Optional[Union[str, float]] = Field(None, description="The neutral column value (Amount/Total) found on the invoice.")
     Rate: Optional[float] = Field(None, description="Unit Price.")
     MRP: Optional[float] = Field(None, description="MRP if available.")
     Expiry: Optional[str] = Field(None, description="Expiry date content.")
@@ -26,15 +26,19 @@ class InvoiceExtraction(BaseModel):
     """
     Represents the full data structure extracted from an invoice document.
     """
-    Supplier_Name: str = Field(..., description="Name of the supplier or vendor.")
-    Invoice_No: str = Field(..., description="Unique identifier for the invoice.")
-    Invoice_Date: str = Field(..., description="Date of the invoice.")
+    # Header Details - Made Optional for Robustness
+    Supplier_Name: Optional[str] = Field("Unknown", description="Name of the supplier (e.g. 'Deepak Agencies').")
+    Invoice_No: Optional[str] = Field(None, description="Invoice number.")
+    Invoice_Date: Optional[str] = Field(None, description="Date of invoice.")
     Line_Items: List[RawLineItem] = Field(default_factory=list, description="List of line items extracted from the invoice tables.")
     Stated_Grand_Total: Union[str, float, None] = Field(None, description="The Total Amount Payable or Grand Total as stated on the invoice.")
     
     # Global Modifiers (Optional)
     Global_Discount_Amount: Union[str, float, None] = Field(None)
     Freight_Charges: Union[str, float, None] = Field(None)
+    SGST_Amount: Union[str, float, None] = Field(None, description="Total SGST Amount from footer.")
+    CGST_Amount: Union[str, float, None] = Field(None, description="Total CGST Amount from footer.")
+    IGST_Amount: Union[str, float, None] = Field(None, description="Total IGST Amount from footer.")
     Round_Off: Union[str, float, None] = Field(None)
 
 class NormalizedLineItem(BaseModel):
@@ -55,5 +59,6 @@ class NormalizedLineItem(BaseModel):
     # Metadata
     HSN_Code: Optional[str] = Field(None, description="HSN Code.")
     MRP: Optional[float] = Field(None, description="MRP.")
+    Rate: Optional[float] = Field(None, description="Unit Price (Rate).")
     Expiry_Date: Optional[str] = Field(None, description="Expiry date.")
     Batch_No: Optional[str] = Field(None)
