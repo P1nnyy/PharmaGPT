@@ -20,14 +20,36 @@ from src.workflow.nodes.worker import execute_extraction
 from src.workflow.nodes.auditor import audit_extraction
 import google.generativeai as genai
 
+from src.utils.logging_config import setup_logging, get_logger
+
+# Initialize Logger
+setup_logging()
+logger = get_logger("debug_script")
+
 # Setup
 API_KEY = os.getenv("GOOGLE_API_KEY")
 print(f"API Key Found: {bool(API_KEY)}")
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
+from src.utils.logging_config import setup_logging
+setup_logging(log_dir="logs", log_file="debug.log") # Separate log for this script
+
 async def debug_pipeline():
-    image_path = "/Users/pranavgupta/.gemini/antigravity/brain/274fe64f-1c46-4dd9-8ab6-d8b117f77ac9/uploaded_image_1765647732313.png"
+    # Use the file from the logs, or a known sample. 
+    # Based on logs: /var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpt9sfmesy.jpeg was used.
+    # But that's a temp file that might be gone.
+    # Using a sample from artifacts if available, or just printing "Please Provide Path"
+    # Actually, let's use the one in the code if it exists, or one from artifacts.
+    image_path = "/Users/pranavgupta/.gemini/antigravity/brain/274fe64f-1c46-4dd9-8ab6-d8b117f77ac9/uploaded_image_1765647732313.png" # Existing artifact
+    
+    if not os.path.exists(image_path):
+        # Try to find ANY png in artifacts
+        artifact_dir = "/Users/pranavgupta/.gemini/antigravity/brain/274fe64f-1c46-4dd9-8ab6-d8b117f77ac9"
+        files = [f for f in os.listdir(artifact_dir) if f.endswith(".png")]
+        if files:
+            image_path = os.path.join(artifact_dir, files[0])
+            print(f"Fallback to Artifact: {image_path}")
     
     print(f"--- Debugging Image: {image_path} ---")
     
@@ -51,18 +73,25 @@ async def debug_pipeline():
     print("\n[2] Running Full Pipeline (Worker + Auditor + Normalization)...")
     try:
         final_output = await run_extraction_pipeline(image_path)
-        items = final_output.get("line_items", [])
-        print(f"Pipeline Extracted {len(items)} items.")
+        # Use Capital 'Line_Items' as per final output schema
+        items = final_output.get("Line_Items", [])
+        logger.info(f"Pipeline Extracted {len(items)} items.")
         
-        print("\n--- Final Normalized Items ---")
-        for i, item in enumerate(items):
-            desc = item.get("Standard_Item_Name", "")
-            qty = item.get("Standard_Quantity", 0)
-            rate = item.get("Calculated_Cost_Price_Per_Unit", 0)
-            net = item.get("Net_Line_Amount", 0)
-            batch = item.get("Batch_No", "UNKNOWN")
+        logger.info("\n--- Final Normalized Items ---")
+        # Also print keys to verify Headers exists
+        logger.info(f"Final Keys: {list(final_output.keys())}")
+        
+        if "Invoice_No" not in final_output:
+            logger.error("CRITICAL ERROR: Headers missing in final output!")
+        else:
+            logger.info(f"Success: Invoice No '{final_output.get('Invoice_No')}' found.")
             
-            print(f"[{i}] {desc} | Qty: {qty} | Rate: {rate} | Net: {net} | Batch: {batch}")
+        for i, item in enumerate(items):
+            desc = item.get("Original_Product_Description", "")
+            qty = item.get("Raw_Quantity", 0)
+            net = item.get("Invoice_Line_Amount", 0.0) or item.get("Stated_Net_Amount", 0.0)
+            batch = item.get("Batch_No", "N/A")
+            logger.info(f"ROW [{i}] {desc} | Qty: {qty} | Batch: {batch} | Net: {net}")
             
     except Exception as e:
         print(f"Pipeline Error: {e}")

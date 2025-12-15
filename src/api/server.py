@@ -15,23 +15,14 @@ from fastapi.templating import Jinja2Templates
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 import uvicorn
-import logging
-from logging.handlers import RotatingFileHandler
+import uuid
+from src.utils.logging_config import setup_logging, get_logger, request_id_ctx
+from fastapi.responses import JSONResponse
 
 # --- Logging Configuration ---
-# Create logs directory if it doesn't exist
-os.makedirs("logs", exist_ok=True)
-
-# Configure Root Logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        RotatingFileHandler("logs/app.log", maxBytes=5*1024*1024, backupCount=3), # 5MB per file
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger("api")
+# 1. Setup Enterprise Logging using config
+setup_logging(log_dir="logs", log_file="app.log")
+logger = get_logger("api")
 
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item, parse_float
@@ -45,9 +36,49 @@ if not API_KEY:
     API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not API_KEY:
-    print("WARNING: GOOGLE_API_KEY or GEMINI_API_KEY not found in environment variables.")
+    logger.warning("GOOGLE_API_KEY or GEMINI_API_KEY not found in environment variables.")
 
 app = FastAPI(title="Invoice Extractor API")
+
+# --- Middleware ---
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """
+    Generates a unique Request ID for every request.
+    Injects it into ContextVar for logging.
+    Returns X-Request-ID header.
+    """
+    req_id = str(uuid.uuid4())
+    token = request_id_ctx.set(req_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = req_id
+        return response
+    except Exception as e:
+        # If middleware itself fails (rare), we still want to log it
+        logger.exception("Middleware Error")
+        raise e
+    finally:
+        request_id_ctx.reset(token)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catches all unhandled exceptions.
+    Logs full traceback with Request ID.
+    Returns JSON to frontend.
+    """
+    req_id = request_id_ctx.get()
+    logger.exception(f"Unhandled Exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "message": "Internal Server Error", 
+            "detail": str(exc),
+            "request_id": req_id
+        }
+    )
 
 # --- CORS Middleware ---
 origins = [
@@ -150,7 +181,9 @@ async def analyze_invoice(file: UploadFile = File(...)):
         
         normalized_items = []
         for raw_item in invoice_obj.Line_Items:
-            norm_item = normalize_line_item(raw_item, invoice_obj.Supplier_Name)
+            # Conversion: Normalization now expects a dict, but we have a Pydantic model
+            raw_dict = raw_item.model_dump() if hasattr(raw_item, 'model_dump') else raw_item.dict()
+            norm_item = normalize_line_item(raw_dict, invoice_obj.Supplier_Name)
             normalized_items.append(norm_item)
         
         # 3.b Apply Global Proration (Phase 3)
@@ -225,9 +258,9 @@ async def confirm_invoice(request: ConfirmInvoiceRequest):
         }
 
     except Exception as e:
-        print(f"Database ingestion failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Database ingestion failed: {e}")
+        # Traceback is already logged by logger.exception if we use it, keeping traceback for now if needed explicitly but logger.exception is better
+        logger.exception("Ingestion Traceback")
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
 

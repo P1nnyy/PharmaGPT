@@ -51,3 +51,10 @@ def load_hsn_master(config_dir: str = "config") -> Dict[str, str]:
                 # Key is Description (lower), Value is HSN Code
                 hsn_map[desc.lower()] = code
     return hsn_map
+
+def load_column_aliases(config_dir: str = "config") -> Dict[str, Any]:
+    """
+    Loads column_aliases.yaml to guide the Harvester Agent.
+    """
+    path = os.path.join(os.getcwd(), config_dir, "column_aliases.yaml")
+    return load_yaml_config(path)

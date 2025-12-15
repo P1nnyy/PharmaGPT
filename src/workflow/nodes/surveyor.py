@@ -4,11 +4,10 @@ import json
 import logging
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
-# Note: InvoiceState is defined as TypedDict in src/workflow/state.py, ensuring matching keys.
+from src.utils.logging_config import get_logger
 
 # Setup Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger("surveyor")
 
 # Initialize Gemini
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -36,8 +35,23 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         sample_file = genai.upload_file(path=image_path, display_name="Invoice Surveyor")
         
         prompt = """
-        3. Secondary Tables: Look explicitly for smaller, separate grids (e.g., 'Free Goods', 'Schemes', 'Cold Chain', 'Schedule H'). These are often widely separated or completely distinct from the main table.
-        4. Footer: The bottom region containing 'Grand Total', 'Tax Summaries', and 'Cash Discounts'.
+        Analyze this invoice and identify distinct layout zones.
+        
+        CRITICAL GOAL: Distinguish the "Main Product Line Item Table" from "Tax/HSN Summaries".
+        
+        1. Primary Table (Product List):
+           - Look for a large grid containing 'Description', 'Qty', 'Rate', 'Amount', 'Batch'.
+           - It usually spans the middle of the document.
+           - Label this zone_type: "primary_table".
+           - Use zone_id: "table_1".
+
+        2. Secondary Tables (IGNORE THESE AS PRIMARY):
+           - **Tax Summary / HSN Summary**: Often at the bottom, contains 'Taxable Amt', 'CGST', 'SGST', 'Total Tax'. **DO NOT** claim this as the primary table.
+           - **Schemes / Free Goods**: Small detached tables.
+           - Label these zone_type: "secondary_table".
+
+        3. Header: Top section with Supplier Name, Invoice Date, Invoice No.
+        4. Footer: Bottom section with Grand Total, Net Payable, Bank Details.
         
         Output JSON Schema: 
         [
@@ -50,13 +64,6 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
                 "zone_id": "table_1", 
                 "type": "primary_table", 
                 "description": "Main product grid with columns Item, Qty, Rate, Amount"
-            },
-            ...
-        ]
-            {
-                "zone_id": "table_2",
-                "type": "secondary_table",
-                "description": "Small side table for Free Goods"
             },
             {
                 "zone_id": "footer_1",

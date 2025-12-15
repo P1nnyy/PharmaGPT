@@ -4,24 +4,23 @@ from pydantic import BaseModel, Field
 class RawLineItem(BaseModel):
     """
     Represents a single line item extracted from an invoice in its raw form.
-    Captures diverse column variations found in different invoice formats.
+    BLIND EXTRACTION SCHEMA: Captures only what is seen, no math.
     """
-    Original_Product_Description: str = Field(..., description="The product description exactly as it appears on the invoice.")
-    Raw_Quantity: Union[str, float] = Field(..., description="Quantity extracted, kept flexible to handle formats like '10 strips' or numeric values.")
-    Batch_No: Optional[str] = Field(None, description="Batch number. May be null if not found.")
-    Raw_Rate_Column_1: Union[str, float, None] = Field(None, description="Primary rate column (e.g., Rate, Rate/Doz, PTR).")
-    Raw_Rate_Column_2: Union[str, float, None] = Field(None, description="Secondary rate column (e.g., MRP) if present.")
-    Raw_Discount_Percentage: Union[str, float, None] = Field(None, description="Discount percentage applied to the item.")
-    Raw_Discount_Amount: Union[str, float, None] = Field(None, description="Absolute discount amount in currency, not percentage.")
-    Raw_GST_Percentage: Union[str, float, None] = Field(None, description="GST percentage applied to the item.")
-    Raw_CGST_Percentage: Union[str, float, None] = Field(None, description="Central GST percentage if split (e.g. 6%).")
-    Raw_SGST_Percentage: Union[str, float, None] = Field(None, description="State GST percentage if split (e.g. 6%).")
-    Raw_IGST_Percentage: Union[str, float, None] = Field(None, description="Integrated GST percentage if explicit (e.g. 12%).")
-    Raw_Taxable_Value: Union[str, float, None] = Field(None, description="The value of the line item BEFORE tax. Explicitly captured to prevent confusion with Net Amount.")
-    Raw_HSN_Code: Optional[str] = Field(None, description="HSN/SAC code extracted from the invoice.")
-    Raw_Expiry_Date: Optional[str] = Field(None, description="Expiry date of the item (e.g. MM/YY).")
-    Landed_Cost_Per_Unit: Optional[float] = Field(None, description="Calculated Landed Cost (Reconciled) from Auditor.")
-    Stated_Net_Amount: Union[str, float] = Field(..., description="The final amount for this line item as stated on the invoice.")
+    Product: str = Field(..., description="The product description exactly as it appears on the invoice.")
+    Qty: Union[str, float] = Field(..., description="Quantity extracted.")
+    Batch: Optional[str] = Field(None, description="Batch number.")
+    
+    # New Blind Fields
+    Amount: Union[str, float] = Field(..., description="The neutral column value (Amount/Total) found on the invoice.")
+    Rate: Optional[float] = Field(None, description="Unit Price.")
+    MRP: Optional[float] = Field(None, description="MRP if available.")
+    Expiry: Optional[str] = Field(None, description="Expiry date content.")
+    HSN: Optional[str] = Field(None, description="HSN/SAC code.")
+    
+    # Transport Field (Filled by Solver)
+    Net_Line_Amount: Optional[float] = Field(None, description="Calculated Net Amount (Reconciled) from Solver.")
+    Calculated_Cost_Price_Per_Unit: Optional[float] = Field(None, description="Calculated Cost Price Per Unit (Reconciled).")
+    Logic_Note: Optional[str] = Field(None, description="Explanation of Solver logic.")
 
 class InvoiceExtraction(BaseModel):
     """
@@ -31,25 +30,30 @@ class InvoiceExtraction(BaseModel):
     Invoice_No: str = Field(..., description="Unique identifier for the invoice.")
     Invoice_Date: str = Field(..., description="Date of the invoice.")
     Line_Items: List[RawLineItem] = Field(default_factory=list, description="List of line items extracted from the invoice tables.")
-    Global_Discount_Amount: Union[str, float, None] = Field(None, description="Global discount applied to the invoice total (e.g., Cash Discount).")
-    Freight_Charges: Union[str, float, None] = Field(None, description="Freight or transport charges.")
-    Round_Off: Union[str, float, None] = Field(None, description="Rounding adjustment amount.")
     Stated_Grand_Total: Union[str, float, None] = Field(None, description="The Total Amount Payable or Grand Total as stated on the invoice.")
+    
+    # Global Modifiers (Optional)
+    Global_Discount_Amount: Union[str, float, None] = Field(None)
+    Freight_Charges: Union[str, float, None] = Field(None)
+    Round_Off: Union[str, float, None] = Field(None)
 
 class NormalizedLineItem(BaseModel):
     """
     Represents the standardized 'clean invoice' format, corresponding to the (:Line_Item) node.
-    Contains calculated properties distinct from raw extraction data.
     """
     Standard_Item_Name: str = Field(..., description="Standardized name of the item.")
-    Pack_Size_Description: str = Field(..., description="Description of the pack size (e.g., '10x10').")
-    Standard_Quantity: float = Field(..., description="Total units/packs. Corresponds to the standardized quantity.")
-    Calculated_Cost_Price_Per_Unit: float = Field(..., description="Cost Price per unit, excluding tax and discounts.")
-    Discount_Amount_Currency: float = Field(..., description="Discount amount converted from percentage to monetary value.")
-    Calculated_Taxable_Value: float = Field(..., description="The taxable value of the line item.")
-    Net_Line_Amount: float = Field(..., description="Total final cost of the line item.")
-    Prorated_Global_Discount: float = Field(0.0, description="Share of global discount distributed to this item.")
-    HSN_Code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")
-    MRP: Optional[float] = Field(None, description="Maximum Retail Price, if available.")
-    Expiry_Date: Optional[str] = Field(None, description="Expiry date of the item.")
-    Landed_Cost_Per_Unit: Optional[float] = Field(0.0, description="Final cost per unit after all reconciliations.")
+    Pack_Size_Description: str = Field(..., description="Description of the pack size.")
+    Standard_Quantity: float = Field(..., description="Total units/packs.")
+    
+    # Net Amount (Passed Through)
+    Net_Line_Amount: float = Field(..., description="Total final cost of the line item (Invoice Value).")
+    
+    # The Critical Value for the Shop
+    Final_Unit_Cost: float = Field(..., description="Landed Cost per unit (Net / Qty).")
+    Logic_Note: str = Field(..., description="Traceability note from the Solver.")
+    
+    # Metadata
+    HSN_Code: Optional[str] = Field(None, description="HSN Code.")
+    MRP: Optional[float] = Field(None, description="MRP.")
+    Expiry_Date: Optional[str] = Field(None, description="Expiry date.")
+    Batch_No: Optional[str] = Field(None)

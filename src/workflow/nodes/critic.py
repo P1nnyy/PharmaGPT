@@ -1,8 +1,9 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 import logging
 from src.workflow.state import InvoiceState as InvoiceStateDict
+from src.utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("critic")
 
 def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
@@ -12,8 +13,12 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     logger.info("Critic: Starting extraction critique...")
     
-    # 1. Get the Data
-    lines = state.get("line_item_fragments", [])
+    # 1. Get Extracted Totals
+    # PREFER: Cleaned 'line_items' from Auditor
+    # FALLBACK: 'line_item_fragments' from Worker (Dirty/Duplicate)
+    lines = state.get("line_items") or state.get("line_item_fragments", [])
+    
+    # Calculate Anchor (Header/Footer Truth)
     # Ensure Anchor agent saved 'Stated_Grand_Total' into global_modifiers or anchor_totals
     # User requested global_modifiers access, checking both for robustness
     anchor_curr = state.get("global_modifiers", {}).get("Stated_Grand_Total", 0.0)
@@ -31,40 +36,80 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
 
     # 2. Calculate Line Sum
     line_sum = 0.0
-    for item in lines:
+    debug_vals = []
+    for i, item in enumerate(lines):
         try:
-             val = float(item.get("Stated_Net_Amount") or 0)
+             # UPDATED: Use Amount (Blind Schema)
+             val = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
              line_sum += val
+             debug_vals.append((item.get("Product"), val))
         except:
              pass
+    
+    logger.info(f"Critic: ALL Items: {debug_vals}")
     
     # 3. Calculate Ratio (The "Magic Number")
     logger.info(f"Critic: Anchor {anchor_total} vs Line Sum {line_sum}")
     
     if line_sum == 0: 
-        return {"critic_verdict": "RETRY_EXTRACTION"}
+        logger.warning("Critic: Line Sum is 0. Requesting Retry.")
+        return {"critic_verdict": "RETRY_OCR"}
     
     ratio = anchor_total / line_sum
     diff_percent = abs(1 - ratio) * 100
 
     # 4. Universal Decision Matrix
+    # 4. Universal Decision Matrix
+    feedback_msg = ""
+    
     if diff_percent < 1.0:
-        logger.info("Critic: Match Exact (or close). APPROVE.")
-        return {"critic_verdict": "APPROVE"} # C.M. Associates (Exact match)
+        logger.info(f"Critic: Match Exact (or close). APPROVE.")
+        
+        # On APPROVE, we must Construct Final Output (Headers + Lines)
+        # because we skip the Solver node.
+        headers = state.get("global_modifiers", {})
+        final_output = headers.copy()
+        final_output["Line_Items"] = lines
+        
+        return {
+            "critic_verdict": "APPROVE", 
+            "correction_factor": 1.0,
+            "final_output": final_output
+        } 
         
     elif ratio > 1.0 and ratio < 1.30:
         # Sum is LESS than Total (e.g. 875 vs 920). 
         # This implies Global Tax or Freight was added at the bottom.
         logger.info(f"Critic: Under-sum detected (Markup needed). Ratio {ratio:.4f}")
-        return {"critic_verdict": "APPLY_MARKUP", "correction_factor": ratio} # Deepak Agencies
+        return {"critic_verdict": "APPLY_MARKUP", "correction_factor": ratio} 
         
     elif ratio < 1.0 and ratio > 0.70:
         # Sum is MORE than Total.
         # This implies Global Discount was subtracted at the bottom.
         logger.info(f"Critic: Over-sum detected (Markdown needed). Ratio {ratio:.4f}")
-        return {"critic_verdict": "APPLY_MARKDOWN", "correction_factor": ratio} # Enn Pee Medical
+        return {"critic_verdict": "APPLY_MARKDOWN", "correction_factor": ratio} 
         
     else:
         # Massive mismatch (>30%). Likely a bad OCR scan or missing rows.
         logger.warning(f"Critic: Massive mismatch ({diff_percent:.2f}%). RETRY_OCR.")
-        return {"critic_verdict": "RETRY_OCR"}
+        
+        # GENERATE SMART FEEDBACK
+        if line_sum < anchor_total:
+            missing_val = anchor_total - line_sum
+            feedback_msg = (
+                f"Validation Failed: Extracted Total ({line_sum:.2f}) is significantly LOWER than Invoice Total ({anchor_total:.2f}). "
+                f"You are missing items worth approx {missing_val:.2f}. "
+                "Check for missed rows at bottom of table or tax rows misidentified."
+            )
+        else:
+            excess_val = line_sum - anchor_total
+            feedback_msg = (
+                f"Validation Failed: Extracted Total ({line_sum:.2f}) is significantly HIGHER than Invoice Total ({anchor_total:.2f}). "
+                f"You have hallucinated approx {excess_val:.2f}. "
+                "Check if you accidentally extracted 'Total' or 'Subtotal' rows as line items."
+            )
+            
+        return {
+            "critic_verdict": "RETRY_OCR",
+            "feedback_logs": [feedback_msg]
+        }

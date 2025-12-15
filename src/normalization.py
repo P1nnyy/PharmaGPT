@@ -30,8 +30,13 @@ def load_and_transform_catalog() -> Dict[str, Tuple[str, str]]:
     return mapping
 
 # Load mappings and rules at module level
+# Load mappings and rules at module level
 PRODUCT_MAPPING = load_and_transform_catalog()
 VENDOR_RULES = load_vendor_rules()
+
+# Initialize Vector Store (Lazy Load or explicit init?)
+# For now, default to None to prevent NameError.
+GLOBAL_VECTOR_STORE = None
 
 def parse_float(value: Union[str, float, None]) -> float:
     """
@@ -68,297 +73,187 @@ def parse_float(value: Union[str, float, None]) -> float:
 
 
     # Extract the first valid number found (handling potential text around it)
+    # Handle "Billed + Free" formats (e.g. "10+2", "4.50+.50")
+    # Rule: The first number is usually the Billed Quantity. The second is Free.
+    # We should return ONLY the Billed Quantity for financial calculations.
     if "+" in cleaned_value:
         try:
             parts = cleaned_value.split('+')
-            # Extract numbers from parts and sum them
-            total = sum(float(re.search(r'\d+(\.\d+)?', p).group()) for p in parts if re.search(r'\d+', p))
-            return total
+            # Extract the FIRST number found (Billed Qty)
+            first_part = parts[0]
+            match = re.search(r'\d+(\.\d+)?', first_part)
+            if match:
+                return float(match.group())
         except:
-            pass # Fallback to standard regex if math fails
+            pass # Fallback to standard regex if match fails
     
     match = re.search(r'-?\d+(\.\d+)?', cleaned_value)
     if match:
         return float(match.group())
     return 0.0
 
-def get_effective_tax_rate(raw_item: RawLineItem) -> float:
+def standardize_product(raw_desc: str) -> Tuple[str, Union[str, None]]:
     """
-    Determines the single effective GST percentage for calculations.
-    Priority:
-    1. Raw_GST_Percentage (if explicitly combined)
-    2. Raw_IGST_Percentage (if interstate)
-    3. Sum of Raw_CGST_Percentage + Raw_SGST_Percentage (if split)
+    Matches raw description against the loaded product catalog.
+    Returns (Standard Name, Pack Size) if found.
+    Otherwise returns (Raw Description, None).
     """
-    # 1. Check for explicit combined GST
-    gst_val = parse_float(raw_item.Raw_GST_Percentage)
-    if gst_val > 0:
-        return gst_val
+    if not raw_desc:
+        return "Unknown", None
         
-    # 2. Check for IGST
-    igst_val = parse_float(raw_item.Raw_IGST_Percentage)
-    if igst_val > 0:
-        return igst_val
+    # Normalize: lower, strip, remove extra spaces
+    key = str(raw_desc).lower().strip()
+    key = re.sub(r'\s+', ' ', key)
+    
+    # 1. Direct Match
+    if key in PRODUCT_MAPPING:
+        return PRODUCT_MAPPING[key]
         
-    # 3. Sum Split Taxes
-    cgst_val = parse_float(raw_item.Raw_CGST_Percentage)
-    sgst_val = parse_float(raw_item.Raw_SGST_Percentage)
+    # 2. Fuzzy Match / Synonym Check (Simplified)
+    # The PRODUCT_MAPPING already contains synonyms as keys (see load_and_transform_catalog)
+    # So we just check if the key exists.
     
-    total_split_tax = cgst_val + sgst_val
-    return total_split_tax
+    # If no match, return original (Title Case for aesthetics)
+    return str(raw_desc).strip(), None
 
-def calculate_cost_price(raw_item: RawLineItem, supplier_name: str) -> float:
+
+
+# src/normalization.py (Cleaned Version)
+
+def refine_extracted_fields(raw_item: Dict) -> Dict:
     """
-    Calculates the Cost Price Per Unit based on supplier-specific rules.
+    Applies strict Regex rules to clean specific fields.
+    1. Quantity/Pack Split: "115GM" -> Qty: 1, Pack: 15GM
+    2. HSN: Enforce 4-8 digits.
     """
+    # 1. Pack Size Separation Strategy
+    raw_qty = str(raw_item.get("Qty", "")).strip()
+    raw_pack = str(raw_item.get("Pack", "")).strip()
     
-    # 1. Parse inputs
-    raw_qty = parse_float(raw_item.Raw_Quantity)
-    
-    # Check for primary rate column first, fallback to secondary if needed
-    raw_rate = parse_float(raw_item.Raw_Rate_Column_1)
-    if raw_rate == 0.0 and raw_item.Raw_Rate_Column_2 is not None:
-         raw_rate = parse_float(raw_item.Raw_Rate_Column_2)
-
-    # 2. Handle Zero Quantity Logic
-    if raw_qty == 0.0:
-        return 0.0
-
-    # 3. Handle Supplier Specific Logic
-    normalized_supplier = supplier_name.lower()
-    
-    # Dynamic Vendor Logic
-    vendors = VENDOR_RULES.get("vendors", {})
-    
-    for vendor_key, rules in vendors.items():
-        if vendor_key in normalized_supplier:
-            calc_rules = rules.get("calculation_rules", {})
+    # Only split if Pack is empty and Qty looks suspicious (Digits + Text)
+    if raw_qty and not raw_pack:
+        # Pattern: Starts with Digits, followed by Letters/Symbols (e.g. 115GM, 1200ML, 10TAB)
+        match = re.match(r"^(\d+)\s*([a-zA-Z*xX]+[\d]*.*)$", raw_qty)
+        if match:
+            qty_part = match.group(1)
+            pack_part = match.group(2)
             
-            # Check for Rate Divisor
-            rate_divisor = calc_rules.get("rate_divisor")
-            if rate_divisor:
-                return raw_rate / float(rate_divisor)
-    
-    # Default: Standard Rate (Rate per pack/strip)
-    return raw_rate
+            # Heuristic: If split, update the dict
+            raw_item["Qty"] = qty_part
+            raw_item["Pack"] = pack_part
+            # raw_item["Product"] += f" ({pack_part})" # Optional: Append back to desc? Maybe not.
 
-def standardize_product(raw_description: str) -> Tuple[str, str]:
+    # 2. HSN Enforcement
+    raw_hsn = str(raw_item.get("HSN", "")).strip()
+    if raw_hsn:
+        # Remove all non-digits
+        clean_hsn = re.sub(r"[^\d]", "", raw_hsn)
+        
+        # Enforce Length (4 to 8 digits)
+        if 4 <= len(clean_hsn) <= 8:
+            raw_item["HSN"] = clean_hsn
+        else:
+            # Invalid HSN (too short/long) -> Nullify to avoid pollution
+            # Or keep it if it's close? "The Strict Librarian" says enforce.
+            if len(clean_hsn) > 0:
+                 # Logic choice: If it's valid digits but wrong length (e.g. 3 digits), maybe keep or drop?
+                 # Let's drop it if it's garbage. 
+                 # But if it's 3 digit, user might want to see it? 
+                 # Prompt said "Ensure ... strictly a 4-to-8 digit string".
+                 if len(clean_hsn) < 4 or len(clean_hsn) > 8:
+                     # Check if it was purely text trash
+                     raw_item["Raw_HSN_Code"] = None
+                 else:
+                     raw_item["Raw_HSN_Code"] = clean_hsn
+            else:
+                raw_item["Raw_HSN_Code"] = None
+
+    # 3. Date Normalization (Batch Cleanup)
+    # Scan Batch for date patterns (e.g. DD/MM/YY)
+    batch_val = str(raw_item.get("Batch", "")).strip()
+    if batch_val:
+        # Regex for dates: DD/MM/YY, DD-MM-YY, MM/YY, MM-YY
+        # (Allows 2 or 4 digit year)
+        date_pattern = r"(\d{1,2}[/-]\d{2,4})" 
+        date_match = re.search(date_pattern, batch_val)
+        
+        if date_match:
+            extracted_date = date_match.group(1)
+            
+            # Move to Expiry if Expiry is empty
+            if not raw_item.get("Expiry"):
+                raw_item["Expiry"] = extracted_date
+                
+            # Remove date from Batch to clean it
+            clean_batch = re.sub(date_pattern, "", batch_val).strip()
+            # Clean up trailing/leading separators like "-" or "/" or ","
+            clean_batch = re.sub(r"^[\W_]+|[\W_]+$", "", clean_batch)
+            
+            raw_item["Batch"] = clean_batch if clean_batch else None
+
+    return raw_item
+
+def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note: Input is now dict from Harvester
     """
-    Maps a raw product description to a Standard Item Name and Pack Size.
-    Returns (raw_description, "Unit") if no match is found.
+    Standardizes Text ONLY. Does NOT calculate financials.
+    Financials are handled by the Solver Node.
     """
-    if raw_description in PRODUCT_MAPPING:
-        return PRODUCT_MAPPING[raw_description]
+    # 0. STRICT PATTERN ENFORCEMENT (The Librarian)
+    raw_item = refine_extracted_fields(raw_item)
+
+    # 1. Standardize Name
+    raw_desc = raw_item.get("Product", "")
+    std_name, pack_size = standardize_product(raw_desc)
     
-    return (raw_description, "Unit")
+    # If Regex extracted a pack size, prioritize it over catalog default?
+    # Or merge?
+    regex_pack = raw_item.get("Pack")
+    if regex_pack:
+        pack_size = regex_pack # Override catalog default with actual observed pack
 
-def calculate_financials(raw_item: RawLineItem, supplier_name: str) -> dict:
-    """
-    TOP-DOWN STRATEGY (Net Amount Priority):
-    1. Trust 'Stated_Net_Amount' as the primary truth.
-    2. Derived Unit Rate = (Stated_Net / Tax_Factor) / Qty.
-    3. Fallback: Only use 'Raw_Rate' if Net Amount is missing.
-    """
-    
-    # 1. Parse Basic Inputs
-    qty = parse_float(raw_item.Raw_Quantity)
-    stated_net = parse_float(raw_item.Stated_Net_Amount)
-    raw_rate = parse_float(raw_item.Raw_Rate_Column_1)
-    
-    # Get Tax Rate
-    effective_tax_percent = get_effective_tax_rate(raw_item)
-    tax_factor = 1 + (effective_tax_percent / 100.0)
-
-    # 1.5. PRIORITY: SOLVER HAS SPOKEN
-    # If the Swarm Solver has already reconciled the Landed Cost, we TRUST IT BLINDLY.
-    # This bypasses the "double taxation" risk of fallback logic.
-    if raw_item.Landed_Cost_Per_Unit is not None and float(raw_item.Landed_Cost_Per_Unit) > 0:
-        cp_per_unit = float(raw_item.Landed_Cost_Per_Unit)
-        final_net_amount = float(raw_item.Stated_Net_Amount) # Solver sets this too
-        
-        # Back-calculate Taxable from Net (Standard Inclusive Logic)
-        derived_taxable_value = round(final_net_amount / tax_factor, 2)
-        tax_amount = round(final_net_amount - derived_taxable_value, 2)
-        discount_amount = 0.0
-        
-        return {
-            "Standard_Quantity": qty,
-            "Calculated_Cost_Price_Per_Unit": cp_per_unit, 
-            "Discount_Amount_Currency": discount_amount,
-            "Calculated_Taxable_Value": derived_taxable_value,
-            "Calculated_Tax_Amount": tax_amount,
-            "Net_Line_Amount": final_net_amount,
-            "Raw_GST_Percentage": effective_tax_percent,
-            "Is_Calculated": True # Mark as done
-        }
-    
-    # 2. STRATEGY A: TOP-DOWN (Trust the Total)
-    # If we have a valid Total and Quantity, we ignore the extracted Rate to prevent "Double Multiplication".
-    if stated_net > 0 and qty > 0:
-        final_net_amount = stated_net
-        
-        # Reverse Engineer Taxable Value
-        # Net = Taxable * (1 + Tax%)
-        derived_taxable_value = round(final_net_amount / tax_factor, 2)
-        
-        # Reverse Engineer Unit Cost
-        # Taxable = Qty * CP
-        cp_per_unit = round(derived_taxable_value / qty, 2)
-        
-        # Calculate Tax Amount
-        tax_amount = round(final_net_amount - derived_taxable_value, 2)
-        
-        discount_amount = 0.0 # Assumed Net is post-discount
-
-    # 3. STRATEGY B: BOTTOM-UP (Fallback)
-    else:
-        # Use existing logic only if Net Amount is missing
-        cp_per_unit = calculate_cost_price(raw_item, supplier_name)
-        gross_value = qty * cp_per_unit
-        
-        discount_percent = parse_float(raw_item.Raw_Discount_Percentage)
-        discount_amount = (gross_value * discount_percent / 100) if discount_percent else 0
-        
-        derived_taxable_value = gross_value - discount_amount
-        tax_amount = derived_taxable_value * (effective_tax_percent / 100.0)
-        final_net_amount = derived_taxable_value + tax_amount
-
-    return {
-        "Standard_Quantity": qty,
-        "Calculated_Cost_Price_Per_Unit": cp_per_unit, 
-        "Discount_Amount_Currency": discount_amount,
-        "Calculated_Taxable_Value": derived_taxable_value,
-        "Calculated_Tax_Amount": tax_amount,
-        "Net_Line_Amount": final_net_amount,
-        "Raw_GST_Percentage": effective_tax_percent,
-        "Is_Calculated": True
-    }
-
-# Initialize Vector Store (Global Singleton)
-try:
-    from src.services.hsn_vector_store import HSNVectorStore
-    # We rely on the implicit persistence path defined in the class
-    GLOBAL_VECTOR_STORE = HSNVectorStore()
-except Exception as e:
-    print(f"Warning: HSN Vector Store unavailable: {e}")
-    GLOBAL_VECTOR_STORE = None
-
-# ... (Existing imports remain at top, this block goes after them or uses global var)
-
-def normalize_line_item(raw_item: RawLineItem, supplier_name: str) -> Dict[str, Any]:
-    """
-    The Master Function:
-    Combines financial calculations AND product standardization to produce
-    a complete dictionary ready for the NormalizedLineItem schema.
-    """
-    # 1. Get Financials
-    financials = calculate_financials(raw_item, supplier_name)
-    
-    # 2. Get Standard Product Details
-    std_name, pack_size = standardize_product(raw_item.Original_Product_Description)
-    
-    # 3. Clean Batch Number
-    batch_no = raw_item.Batch_No
-    if batch_no is None or not batch_no.strip():
-        batch_no = "UNKNOWN"
-    else:
+    # 2. Clean Batch
+    batch_no = raw_item.get("Batch", "UNKNOWN")
+    if batch_no and batch_no != "UNKNOWN":
         # Remove common OCR noise prefixes
         batch_no = re.sub(r'^(OTSI |MICR |MHN- )', '', batch_no)
         # Remove numeric prefixes with pipes (e.g. "215 | ")
         batch_no = re.sub(r'^\d+\s*\|\s*', '', batch_no)
 
-    # 3.5. Regex Fallback: If Batch is UNKNOWN, hunt in Description
-    if batch_no == "UNKNOWN" or not batch_no:
-        # Look for alphanumeric tokens like 'B2G2', 'GLP12' (Must have digits and letters)
-        # Exclude common tokens: '10GM', '5ML', 'STRIPS', 'NO'
-        desc_text = raw_item.Original_Product_Description
-        # Tokenize
-        tokens = re.findall(r'\b[A-Z0-9-]{3,10}\b', desc_text.upper())
-        for t in tokens:
-            if re.search(r'\d', t) and re.search(r'[A-Z]', t):
-                # Has both letters and numbers
-                if not re.search(r'(GM|ML|KG|PCS|TAB|CAP|SFT|RTM)', t):
-                     batch_no = t
-                     # Clean it from description? Optional.
-                     break
-
-        
-    # 4. Clean & Enrich HSN Code
-    raw_hsn = raw_item.Raw_HSN_Code
-    
-    # Basic cleaning: Remove letters/spaces (e.g. "3004 90" -> "300490")
-    clean_ocr_hsn = re.sub(r'[^\d.]', '', str(raw_hsn)) if raw_hsn else None
+    # 3. Clean HSN (Keep your existing HSN logic)
+    raw_hsn = raw_item.get("HSN")
     final_hsn = None
-
-    # Priority A: Check Bulk CSV (The "Emergency Match" - Exact)
-    # We look up the product description in your Master CSV
-    lookup_key = raw_item.Original_Product_Description.strip().lower()
     
+    # Priority A: Check Bulk CSV
+    lookup_key = raw_desc.strip().lower()
     if lookup_key in BULK_HSN_MAP:
         final_hsn = BULK_HSN_MAP[lookup_key]
         
-    # Priority B: Vector Search (Semantic Fallback)
+    # Priority B: Vector Search
     elif GLOBAL_VECTOR_STORE and not final_hsn:
-        # Use Description to find best HSN match
-        # Lower threshold (0.5) implies stricter matching, but 0.66 was observed for valid case
-        # Relaxing to 0.75 to capture "Paracetamol 500mg" matches
-        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_item.Original_Product_Description, threshold=0.75)
+        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_desc, threshold=0.75)
         if vector_match:
-            print(f"   -> Vector Store recovered HSN: {vector_match} for {std_name}")
             final_hsn = vector_match
+            
+    # Priority C: OCR Fallback
+    if not final_hsn and raw_hsn:
+         clean_ocr_hsn = re.sub(r'[^\d.]', '', str(raw_hsn))
+         if clean_ocr_hsn:
+             final_hsn = clean_ocr_hsn
 
-    # Priority C: Use OCR with "Chapter Expansion"
-    # Fallback to what was printed if no DB match found
-    if not final_hsn and clean_ocr_hsn:
-        final_hsn = clean_ocr_hsn
-    
-    # NOTE: We do NOT touch tax rates based on HSN. Strict compliance.
-
-    # 5. Merge them
     return {
-        **financials,
         "Standard_Item_Name": std_name,
         "Pack_Size_Description": pack_size,
         "Batch_No": batch_no,
         "HSN_Code": final_hsn,
-        # ADD THIS LINE:
-        "MRP": parse_float(raw_item.Raw_Rate_Column_2), # Maps secondary rate to MRP
-        "Expiry_Date": raw_item.Raw_Expiry_Date,
-        "Landed_Cost_Per_Unit": raw_item.Landed_Cost_Per_Unit if raw_item.Landed_Cost_Per_Unit else financials.get("Calculated_Cost_Price_Per_Unit")
+        # PASS THROUGH RAW NUMBERS FOR THE SOLVER
+        "Raw_Quantity": raw_item.get("Qty"),
+        "Invoice_Line_Amount": raw_item.get("Amount"),
+        "Raw_MRP": raw_item.get("MRP"),
+        
+        # REQUIRED FOR FRONTEND / SERVER SCHEMA
+        "Standard_Quantity": raw_item.get("Qty"),
+        "Net_Line_Amount": raw_item.get("Amount"), 
+        # Calculate Unit Cost (Amount / Qty) as placeholder until Solver
+        "Final_Unit_Cost": (float(raw_item.get("Amount") or 0) / float(raw_item.get("Qty") or 1)) if raw_item.get("Qty") else 0.0,
+        "Logic_Note": "Pre-Solver Extraction"
     }
-
-def distribute_global_modifiers(
-    normalized_items: list[Dict[str, Any]], 
-    global_discount: float, 
-    freight: float
-) -> list[Dict[str, Any]]:
-    """
-    Distributes Global Discount and Freight across line items based on their Taxable Value.
-    Updates 'Net_Line_Amount' and adds 'Prorated_Global_Discount'.
-    """
-    # 1. Calculate Total Taxable Value
-    total_taxable = sum(item.get("Calculated_Taxable_Value", 0.0) for item in normalized_items)
-    
-    if total_taxable == 0.0:
-        return normalized_items
-
-    # 2. Distribute Modifiers
-    for item in normalized_items:
-        item_taxable = item.get("Calculated_Taxable_Value", 0.0)
-        weight = item_taxable / total_taxable
-        
-        # Calculate Share
-        discount_share = round(global_discount * weight, 2)
-        freight_share = round(freight * weight, 2)
-        
-        # Update Net Amount
-        # Net = Net - Discount + Freight
-        current_net = item.get("Net_Line_Amount", 0.0)
-        new_net = round(current_net - discount_share + freight_share, 2)
-        
-        item["Net_Line_Amount"] = new_net
-        item["Prorated_Global_Discount"] = discount_share
-        
-        # Optional: We could also track Prorated_Freight if schema allowed
-        
-    return normalized_items

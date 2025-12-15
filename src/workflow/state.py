@@ -14,6 +14,13 @@ class InvoiceState(TypedDict):
     # operator.add ensures these lists are merged, not overwritten
     line_item_fragments: Annotated[List[Dict[str, Any]], operator.add]
     
+    # NEW: Raw Text from Worker (Stage 1) - Before Mapping
+    raw_text_rows: Annotated[List[str], operator.add]
+    
+    # Unified, Deduplicated Line Items (Output of Auditor)
+    # Default behavior is replace/overwrite, which is what we want for this stage
+    line_items: List[Dict[str, Any]]
+    
     anchor_totals: Dict[str, float]  # Stores "Grand Total" from Footer Agent (The Truth)
     critic_verdict: str              # Decision: "APPROVE", "APPLY_MARKUP", "APPLY_MARKDOWN", "RETRY_OCR"
     correction_factor: float         # Ratio to apply for markup/markdown
@@ -24,3 +31,6 @@ class InvoiceState(TypedDict):
     
     # Log of logic decisions vs failures
     error_logs: Annotated[List[str], operator.add]
+    
+    # Smart Feedback from Critic/Auditor to Worker (for Retries)
+    feedback_logs: Annotated[List[str], operator.add]

@@ -95,14 +95,13 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     CREATE (l:Line_Item {
         pack_size: $pack_size,
         quantity: $quantity,
-        cost_price: $cost_price,
         net_amount: $net_amount,
         batch_no: $batch_no,
         hsn_code: $hsn_code,
         mrp: $mrp,
         expiry_date: $expiry_date,
         landing_cost: $landing_cost,
-        tax_percent: $tax_percent
+        logic_note: $logic_note
     })
     
     // 4. Connect Graph
@@ -116,12 +115,11 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            standard_item_name=item.get("Standard_Item_Name"),
            pack_size=item.get("Pack_Size_Description"),
            quantity=item.get("Standard_Quantity"),
-           cost_price=item.get("Calculated_Cost_Price_Per_Unit"),
            net_amount=item.get("Net_Line_Amount"),
            batch_no=item.get("Batch_No"),
            hsn_code=item.get("HSN_Code") or "UNKNOWN", 
            mrp=item.get("MRP", 0.0),
            expiry_date=item.get("Expiry_Date"),
-           landing_cost=item.get("Landed_Cost_Per_Unit", 0.0),
-           tax_percent=item.get("Raw_GST_Percentage", 0.0)
+           landing_cost=item.get("Final_Unit_Cost", 0.0), # Updated Mapping
+           logic_note=item.get("Logic_Note", "N/A")
     )
