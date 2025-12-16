@@ -1,0 +1,14 @@
+{
+  "rules": [
+    "CRITICAL: Do NOT extract 8-digit HSN codes (e.g. 30043110) as Expiry Date.",
+    "CRITICAL: Do NOT extract 4-digit HSN codes (e.g. 3004) as Expiry Date.",
+    "CRITICAL: Quantity is usually small (< 50). Do not confuse Rate/MRP (e.g. 100, 200) with Qty.",
+    "CRITICAL: 'Amount' must be NET Amount (Tax Inclusive). Do NOT extract 'Taxable Value'.",
+    "CRITICAL: Watch out for missed decimal points. If MRP is > 1000, check if it should be divided by 100 (e.g. 16500 -> 165.00).",
+    "CRITICAL: Batch Numbers like 'Batch 123' and '123' are the SAME. Merge them.",
+    "CRITICAL: Do NOT list the same item twice. If Product and Batch match, SUM them.",
+    "CRITICAL: Quantity must be an INTEGER (Whole Packs). If you see '1.84', it means '2'. Round decimals UP.",
+    "CRITICAL: Amount matches the Quantity. If you extract 1.84 as 2, ensure you extract the Amount that corresponds to it (or keep original Amount and let Solver adjust Rate).",
+    "CRITICAL: Perform a Sanity Check: Does 'Qty * Rate' approx equal 'Amount'? If not, check for missing decimal points in Rate or Amount."
+  ]
+}

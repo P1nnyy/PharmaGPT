@@ -43,7 +43,8 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             2. Extract EVERY row of text you see.
             3. Format as a PIPE-SEPARATED Table (Markdown format).
             4. Include headers if visible.
-            5. Do NOT try to rename columns. Capture exact text like "Pcode", "Qty", "N.Rate".
+            4. Include headers if visible.
+            5. Do NOT try to rename columns. Capture exact text like "Pcode", "Qty", "Billed", "Sales Qty", "Rate".
             
             CRITICAL TABLE PARSING RULES:
             - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free" or capture as "10+2" in one cell. DO NOT shift data left/right.

@@ -34,9 +34,13 @@ def load_and_transform_catalog() -> Dict[str, Tuple[str, str]]:
 PRODUCT_MAPPING = load_and_transform_catalog()
 VENDOR_RULES = load_vendor_rules()
 
-# Initialize Vector Store (Lazy Load or explicit init?)
-# For now, default to None to prevent NameError.
-GLOBAL_VECTOR_STORE = None
+# Initialize Vector Store
+try:
+    from src.services.hsn_vector_store import HSNVectorStore
+    GLOBAL_VECTOR_STORE = HSNVectorStore()
+except Exception as e:
+    print(f"Warning: Vector Store failed to load: {e}")
+    GLOBAL_VECTOR_STORE = None
 
 def parse_float(value: Union[str, float, None]) -> float:
     """
@@ -260,7 +264,13 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note
         # Metadata Populated
         "MRP": raw_item.get("MRP"),
         "Rate": raw_item.get("Rate"),
-        "Expiry_Date": raw_item.get("Expiry") 
+        # Validate Expiry: If it looks like an HSN (6-8 digits, no separators), clear it.
+        "Expiry_Date": (
+            raw_item.get("Expiry") 
+            if raw_item.get("Expiry") and re.search(r'[/\-.]', str(raw_item.get("Expiry"))) # Must have separator
+            and not re.match(r'^\d{6,8}$', str(raw_item.get("Expiry")).replace(" ", "")) # Must not be pure 8-digit HSN
+            else None
+        )
     }
 
 def distribute_global_modifiers(line_items: list, global_discount: float, freight: float, global_tax: float = 0.0) -> list:

@@ -32,6 +32,11 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     # Each row is likely a string "Product | Qty | Rate"
     context_text = "\n".join(raw_rows)
     
+    # Load Memory
+    from src.services.mistake_memory import MEMORY
+    rules = MEMORY.get_rules()
+    memory_rules = "\n    ".join([f"- {r}" for r in rules]) if rules else "- No previous mistakes recorded."
+    
     prompt = f"""
     You are a DATA STRUCTURE EXPERT.
     Your input is a raw, unstructured extraction from an invoice table (OCR Text).
@@ -46,14 +51,25 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     
     SCHEMA RULES:
     - **Product**: Full description.
-    - **Qty**: Numeric (Float). Billed Quantity. If "10+2", use 10.
+    - **Pack**: Pack Size if visible (e.g. "1x10", "10's", "10T").
+    - **Qty**: Numeric (Float). Billed Quantity.
+      - **Aliases**: Look for "Billed", "Sales Qty", "Strips", "Tabs", "Packs", "Quantity".
+      - **Split**: If column is "10+2", use 10.
+      - **Fractional**: If you see "1.84" or "0.92", ROUND IT to the nearest integer/whole pack (e.g. 1.84 -> 2, 0.92 -> 1).
     - **Batch**: Alphanumeric Batch Number. 
       - **Look for aliases**: "Pcode", "Code", "Lot". 
       - **Extraction**: If a column has "Pcode: 808..." extract that as Batch.
-    - **Expiry**: Text date (MM/YY).
+    - **Expiry**: Text date (MM/YY or DD/MM/YY).
+      - **CRITICAL**: Do NOT put a 4-8 digit HSN code (e.g. 3004, 30049099) here.
+      - If you see an integer like "3004" or "30043110", put it in HSN, NOT Expiry.
     - **HSN**: Numeric HSN code (4-8 digits).
     - **Rate**: Unit Price.
-    - **Amount**: Net Total for the line.
+    - **Rate**: Unit Price.
+      - **CRITICAL**: Watch for faint decimal points. "16000" is likely "160.00".
+      - "12345" is likely "123.45".
+    - **Amount**: Net Total (Inclusive of Tax).
+      - **CRITICAL**: Watch for faint decimal points.
+      - **Consistency**: Ideally `Qty * Rate` ~= `Amount`. If `Amount` is wildly different, check if you missed a decimal in Rate or Amount.
     - **MRP**: Max Retail Price.
     
     CRITICAL:
@@ -61,11 +77,15 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     2. **Noise**: Ignore header rows (e.g. "Description | Qty").
     3. **Schemes**: Keep "Offer" / "Free" rows if they are separate line items.
     
+    SYSTEM MEMORY (PREVIOUS MISTAKES TO AVOID):
+    {memory_rules}
+    
     Output JSON format:
     {{
         "line_items": [
             {{
                 "Product": "str",
+                "Pack": "str",
                 "Qty": float,
                 "Batch": "str",
                 "Expiry": "str",

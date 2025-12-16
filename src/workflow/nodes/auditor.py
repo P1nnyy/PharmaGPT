@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
+from src.normalization import parse_float
 
 logger = get_logger("auditor")
 
@@ -113,46 +114,48 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 from difflib import SequenceMatcher
                 ratio = SequenceMatcher(None, desc_norm, ex_desc).ratio()
                 
+                # Normalization for Strict Deduplication
+                p_slug = str(item.get("Product", "")).strip().lower().replace(" ", "")
+                
+                # Intelligent Batch Normalization
+                raw_batch = str(item.get("Batch", "")).strip().lower()
+                # Remove common prefixes to match "Batch 123" with "123" or "B.No 123" with "123"
+                for prefix in ["batch", "no", "lot", "b.no", "bno", ".", ":", "-"]:
+                    raw_batch = raw_batch.replace(prefix, "")
+                b_slug = raw_batch.replace(" ", "")
+                
+                # Treat "N/A", "None" as same bucket
+                if not b_slug or b_slug in ["none", "null", "n/a", "unknown"]:
+                    b_slug = "unknown_batch"
+                
+                key = (p_slug, b_slug)
                 # Check Batch Collision (Only merge if Batches compatible: Same or One is Generic)
                 batch_curr = str(item.get("Batch", "N/A")).strip().lower()
                 batch_ex = str(existing_item.get("Batch", "N/A")).strip().lower()
                 
                 batch_match = (batch_curr == batch_ex) or (batch_curr in ["n/a", "unknown", "none", ""]) or (batch_ex in ["n/a", "unknown", "none", ""])
                 
-                if ratio > 0.94 and batch_match: # 94% threshold: Matches "6s"/"65" but separates "5gm"/"10gm"
+                if ratio > 0.94 and batch_match: # 94% threshold
                     merged = True
-                    # Merge Logic: Keep MAX Amount
-                    val_curr = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
-                    val_ex = float(existing_item.get("Amount") or existing_item.get("Stated_Net_Amount") or 0)
+                    # Merge Logic: SUM Quantities and Amounts (Additive Merge)
+                    logger.info(f"Auditor: Deduplicating '{desc_norm}' into '{ex_desc}' (SUMMING VALUES)")
                     
-                    if val_curr > val_ex:
-                        logger.info(f"Auditor: Fuzzy Merge '{desc_norm}' > '{ex_desc}' (Keeping {val_curr})")
+                    # 1. Sum Quantity
+                    q_curr = float(item.get("Qty") or 0)
+                    q_ex = float(existing_item.get("Qty") or 0)
+                    existing_item["Qty"] = q_ex + q_curr
+                    
+                    # 2. Sum Amount
+                    val_curr = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
+                    existing_item["Amount"] = val_ex + val_curr
+                    
+                    # 3. Enrich Empty Fields (Batch, Expiry)
+                    if not existing_item.get("Batch") and item.get("Batch"):
+                        existing_item["Batch"] = item["Batch"]
                         
-                        # PRESERVE METADATA: If 'existing_item' has Batch/Exp but 'item' (Main) doesn't,
-                        # don't let update() wipe it out!
-                        saved_batch = existing_item.get("Batch")
-                        saved_exp = existing_item.get("Expiry")
-                        
-                        # Update existing item in place (Python list contains ref to dict)
-                        existing_item.update(item) 
-                        
-                        if not existing_item.get("Batch") and saved_batch not in ["", "None", "N/A", None]:
-                            existing_item["Batch"] = saved_batch
-                            
-                        if not existing_item.get("Expiry") and saved_exp not in ["", "None", "N/A", None]:
-                            existing_item["Expiry"] = saved_exp
-                    else:
-                        logger.info(f"Auditor: Fuzzy Dropped '{desc_norm}' (Keeping {val_ex})")
-                        # SMART MERGE: Even if we drop the 'item' (because it has no price),
-                        # we should steal its Batch/Exp if the 'existing_item' lacks them.
-                        if item.get("Batch") and item.get("Batch") not in ["", "None", "N/A", None]:
-                             if not existing_item.get("Batch"):
-                                 existing_item["Batch"] = item["Batch"]
-                                 logger.info(f"Auditor: enriched '{desc_norm}' with Batch {item['Batch']}")
-                        
-                        if item.get("Expiry") and item.get("Expiry") not in ["", "None", "N/A", None]:
-                             if not existing_item.get("Expiry"):
-                                 existing_item["Expiry"] = item["Expiry"]
+                    if item.get("Expiry") and item.get("Expiry") not in ["", "None", "N/A", None]:
+                         if not existing_item.get("Expiry"):
+                             existing_item["Expiry"] = item["Expiry"]
             
             # 4. Self-Healing: Check Description for missing Batch No
             # e.g. "OB CRISSCROSS GUM CARE B202 SFT" -> Batch: B202
