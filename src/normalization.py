@@ -197,6 +197,43 @@ def refine_extracted_fields(raw_item: Dict) -> Dict:
 
     return raw_item
 
+import math
+
+def parse_quantity(value: Union[str, float, None]) -> int:
+    """
+    Parses a quantity string, handling sums (e.g. '10+2') and rounding UP to nearest integer.
+    Rule: 1.86 -> 2, 1.5 -> 2.
+    Rule: 1.5 + 1.5 -> 3.0 -> 3.
+    """
+    if value is None:
+        return 0
+        
+    if isinstance(value, (float, int)):
+        return math.ceil(value)
+        
+    cleaned_value = str(value).strip().lower()
+    cleaned_value = re.sub(r'(?:rs\.?|inr|\$|€|£)', '', cleaned_value).strip()
+    cleaned_value = cleaned_value.replace(',', '')
+    
+    if not cleaned_value:
+        return 0
+        
+    total_qty = 0.0
+    
+    # Check for split sums "1.5 + 1.5" or "10+2"
+    if "+" in cleaned_value:
+        parts = cleaned_value.split('+')
+        for part in parts:
+            match = re.search(r'-?\d+(\.\d+)?', part.strip())
+            if match:
+                total_qty += float(match.group())
+    else:
+        match = re.search(r'-?\d+(\.\d+)?', cleaned_value)
+        if match:
+            total_qty = float(match.group())
+            
+    return math.ceil(total_qty)
+
 def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note: Input is now dict from Harvester
     """
     Standardizes Text ONLY. Does NOT calculate financials.
@@ -255,15 +292,17 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note
         "Raw_MRP": raw_item.get("MRP"),
         
         # REQUIRED FOR FRONTEND / SERVER SCHEMA
-        "Standard_Quantity": parse_float(raw_item.get("Qty")),
+        "Standard_Quantity": parse_quantity(raw_item.get("Qty")),
         "Net_Line_Amount": parse_float(raw_item.get("Amount")), 
+        
         # Calculate Unit Cost (Amount / Qty) as placeholder until Solver
-        "Final_Unit_Cost": (parse_float(raw_item.get("Amount")) / (parse_float(raw_item.get("Qty")) or 1.0)) if raw_item.get("Qty") else 0.0,
+        # CRITICAL FIX: TRUST AMOUNT / QTY over Extracted Rate (which might be MRP)
+        "Final_Unit_Cost": (parse_float(raw_item.get("Amount")) / (parse_quantity(raw_item.get("Qty")) or 1.0)) if raw_item.get("Qty") else 0.0,
         "Logic_Note": "Pre-Solver Extraction",
         
         # Metadata Populated
         "MRP": raw_item.get("MRP"),
-        "Rate": raw_item.get("Rate"),
+        "Rate": (parse_float(raw_item.get("Amount")) / (parse_quantity(raw_item.get("Qty")) or 1.0)) if raw_item.get("Qty") else raw_item.get("Rate"),
         # Validate Expiry: If it looks like an HSN (6-8 digits, no separators), clear it.
         "Expiry_Date": (
             raw_item.get("Expiry") 

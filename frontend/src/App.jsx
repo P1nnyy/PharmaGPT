@@ -269,8 +269,9 @@ function App() {
               {/* TABLE HEADERS - Spreadsheet Style */}
               <div className="sticky top-0 z-10 bg-gray-900 pt-2">
                 <div className="grid grid-cols-12 gap-6 mb-2 text-sm font-bold text-gray-400 border-b border-gray-700 pb-2 px-2">
+                  <div className="col-span-1 pl-2 text-center text-gray-500">Sr</div>
                   <div className="col-span-4 pl-2">Item Name</div>
-                  <div className="col-span-3">Batch No.</div>
+                  <div className="col-span-2">Batch No.</div>
                   <div className="col-span-1 text-center">Expiry</div>
                   <div className="col-span-1 text-center">MRP</div>
                   <div className="col-span-1 text-center">Qty</div>
@@ -285,6 +286,11 @@ function App() {
                   return (
                     <div key={idx} className="grid grid-cols-12 gap-6 items-center py-3 hover:bg-gray-800/30 px-2 transition-colors border-b border-gray-800/50">
 
+                      {/* 0. Sr No */}
+                      <div className="col-span-1 pl-2 text-center text-gray-500 font-mono text-sm">
+                        {idx + 1}
+                      </div>
+
                       {/* 1. Item Name - Expanded Span */}
                       <div className="col-span-4 pl-2">
                         <input
@@ -296,7 +302,7 @@ function App() {
                       </div>
 
                       {/* 2. Batch No */}
-                      <div className="col-span-3">
+                      <div className="col-span-2">
                         <input
                           value={item.Batch_No || ''}
                           onChange={(e) => handleInputChange(idx, 'Batch_No', e.target.value)}

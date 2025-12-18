@@ -1,4 +1,5 @@
 import google.generativeai as genai
+import math
 import json
 import os
 import logging
@@ -32,6 +33,10 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     # Deduplication Logic (Prevent Value Overflow from overlapping zones)
     unique_items_map = {}
     deduped_line_items = []
+    
+    # Calculate Source Type Once
+    raw_sources = state.get("raw_text_rows", [])
+    is_single_source = (len(raw_sources) <= 1)
     
     for item in line_items:
         try:
@@ -114,10 +119,11 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                          batch_match = re.search(r'\b([A-Z]{1,3}[A-Z0-9-]{5,20})\b', item.get("Product", ""))
                          if batch_match:
                              scavenged_batch = batch_match.group(1)
-                             # Avoid false positives like "OFFER", "FREE", "BUY"
+                             # Avoid false positives like "OFFER", "FREE", "BUY", "GET", "APPLY"
                              if scavenged_batch.upper() not in ["OFFER", "FREE", "BUY", "GET", "APPLY"]:
                                  logger.info(f"Auditor: Scavenged Batch '{scavenged_batch}' from Scheme Row for '{last_item.get('Product')}'")
                                  last_item["Batch"] = scavenged_batch
+                                 last_item["Expiry"] = item.get("Expiry") # Also grab Expiry if possible
 
                  # 2c. Scheme Filter Strategy
                  # Standard: Drop the row if it's purely a textual description of an offer (Qty=0)
@@ -176,21 +182,11 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                      if q_curr == q_ex and abs(val_curr - val_ex) < 1.0:
                          # Identical Item Found
                          
-                         # NEW LOGIC: Check if this was a Single Source Extraction
-                         raw_sources = state.get("raw_text_rows", [])
-                         is_single_source = (len(raw_sources) <= 1)
-                         
                          if is_single_source:
-                             # SINGLE SOURCE -> Duplicate implies intentional split (e.g. 10+2 scheme) -> SUM THEM
-                             logger.info(f"Auditor: Single Source Duplicate '{desc_norm}' -> SUMMING (Qty: {q_ex}+{q_curr}, Amt: {val_ex}+{val_curr})")
-                             existing_item["Qty"] = q_ex + q_curr
-                             existing_item["Amount"] = val_ex + val_curr
-                             
-                             # Also sum Net Amount if present
-                             if existing_item.get("Stated_Net_Amount") and item.get("Stated_Net_Amount"):
-                                 existing_item["Stated_Net_Amount"] = float(existing_item["Stated_Net_Amount"]) + float(item["Stated_Net_Amount"])
-                                 
-                             merged = True # Merged into existing, so don't append new one
+                             # SINGLE SOURCE -> Duplicate implies intentional split (e.g. 10+2 scheme) -> KEEP SEPARATE
+                             # User Request: "remove that qty adding logic... model listed all those items thrice in the correct order, but inflated the first item price"
+                             logger.info(f"Auditor: Single Source Duplicate '{desc_norm}' -> KEEPING SEPARATE (User Preference)")
+                             merged = False # Do NOT merge. Keep as distinct row.
                              
                          else:
                              # MULTI SOURCE -> Duplicate implies OCR Overlap (Redundant) -> DROP
@@ -203,14 +199,19 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 
                 elif ratio > 0.94 and batch_match: 
                     # Fuzzy match + Batch match (N/A)
-                    # If Quantities identical, Drop. Else Keep.
-                     q_curr = float(item.get("Qty") or 0)
-                     q_ex = float(existing_item.get("Qty") or 0)
-                     if q_curr == q_ex:
-                         merged = True
-                         logger.info(f"Auditor: Fuzzy Duplicate '{desc_norm}' -> Dropping")
-                     else:
-                         merged = False
+                    if is_single_source:
+                        # SINGLE SOURCE -> Don't trust fuzzy dedupe if the OCR gave us two lines.
+                        merged = False
+                        logger.info(f"Auditor: Fuzzy Match '{desc_norm}' (Ratio {ratio:.2f}) -> KEEPING SEPARATE (Single Source)")
+                    else:
+                        # If Quantities identical, Drop. Else Keep.
+                         q_curr = float(item.get("Qty") or 0)
+                         q_ex = float(existing_item.get("Qty") or 0)
+                         if q_curr == q_ex:
+                             merged = True
+                             logger.info(f"Auditor: Fuzzy Duplicate '{desc_norm}' -> Dropping")
+                         else:
+                             merged = False
 
                 if merged:
                     # Enrich Empty Fields (Batch, Expiry) if dropping the duplicate
@@ -311,17 +312,13 @@ def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[st
                 calc_qty = amt / rate
                 
                 # 3. Check Plausibility of Calculated Qty
-                # It must be a "Clean Number" (Integer or simple fraction like 0.5)
-                # And it must be positive.
-                is_clean_integer = abs(calc_qty - round(calc_qty)) < 0.05
-                is_clean_fraction = abs((calc_qty * 2) - round(calc_qty * 2)) < 0.05 # Allow .5
-                
-                if (is_clean_integer or is_clean_fraction) and calc_qty > 0:
+                # User Rule: Always Round UP to nearest integer. (1.5 -> 2, 1.86 -> 2)
+                # We no longer strictly require "clean integers" because we will enforce rounding.
+                if calc_qty > 0:
                     
-                    # Round to nearest logical value
-                    final_qty = round(calc_qty, 1) if is_clean_fraction else round(calc_qty)
+                    final_qty = math.ceil(calc_qty)
                     
-                    logger.info(f"Auditor: Math Reconstruction for '{item.get('Product')}'. Extracted Qty {qty_extracted} (Inconsistent) -> Calculated Qty {final_qty} (Derived from Amt {amt}/Rate {rate})")
+                    logger.info(f"Auditor: Math Reconstruction for '{item.get('Product')}'. Extracted Qty {qty_extracted} (Inconsistent) -> Calculated Qty {final_qty} (Derived from Amt {amt}/Rate {rate} & Ceiled)")
                     
                     item["Qty"] = float(final_qty)
                     item["Logic_Note"] = item.get("Logic_Note", "") + " [Math Fix]"

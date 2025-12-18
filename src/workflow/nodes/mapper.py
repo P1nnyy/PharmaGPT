@@ -76,8 +76,9 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     
     CRITICAL:
     1. **Merges**: DO NOT merge distinct products. "Vaporub 5gm" and "Vaporub 10gm" are DIFFERENT.
-    2. **Noise**: Ignore header rows (e.g. "Description | Qty").
-    3. **Schemes**: Keep "Offer" / "Free" rows if they are separate line items.
+    2. **DUPLICATES**: If the raw text lists the SAME product twice (e.g. "Dolo 650" appears on two lines), CREATE TWO JSON OBJECTS. Do NOT merge them into one. Keep them separate.
+    3. **Noise**: Ignore header rows (e.g. "Description | Qty").
+    4. **Schemes**: Keep "Offer" / "Free" rows if they are separate line items.
     
     SYSTEM MEMORY (PREVIOUS MISTAKES TO AVOID):
     {memory_rules}

@@ -43,7 +43,6 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             2. Extract EVERY row of text you see.
             3. Format as a PIPE-SEPARATED Table (Markdown format).
             4. Include headers if visible.
-            4. Include headers if visible.
             5. Do NOT try to rename columns. Capture exact text like "Pcode", "Qty", "Billed", "Sales Qty", "Rate".
             
             CRITICAL TABLE PARSING RULES:
@@ -51,6 +50,7 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - **Prices are NOT Quantities**: "MRP" (e.g. 200.00) and "Rate" (e.g. 150.00) are typically larger than "Qty" (e.g. 1, 10). Do not mix them up.
             
             IMPORTANT:
+            - **DUPLICATES**: If the Exact Same Item appears on multiple lines (e.g. "Dolo 650" twice), LIST IT TWICE. Do not combine them.
             - **DENSE ROWS**: If you see "Vaporub 5gm" and "Vaporub 10gm" on separate lines, WRITE THEM ON SEPARATE LINES.
             - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
             - **NO MERGING**: Do not merge distinct visual rows.
@@ -237,7 +237,8 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             1. Find the main table with Products, Qty, Amounts.
             2. Convert it VISUALLY into a Pipe-Separated Markdown table.
             3. **Do not merge rows**. Keep every single line item separate.
-            4. Capture exact headers like "Pcode", "Rate", "Amount".
+            4. **DUPLICATES**: If the Exact Same Item appears multiple times, LIST IT MULTIPLE TIMES.
+            5. Capture exact headers like "Pcode", "Rate", "Amount".
             
             Output ONLY the table.
             """

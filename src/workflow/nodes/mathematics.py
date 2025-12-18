@@ -15,7 +15,17 @@ def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     lines = state.get("line_items") or state.get("line_item_fragments", [])
     
     correction_factor = state.get("correction_factor", 1.0)
-    logger.info(f"Solver: Applying Correction Factor {correction_factor} to {len(lines)} items.")
+    
+    # USER PREFERENCE: ROBUST VALUES > FORCED MATCH
+    # If the correction is scaling DOWN (e.g. 0.98) due to a Global Discount,
+    # or scaling UP slightly due to Round Off, DO NOT touch the line items.
+    # We only apply correction if it's a MASSIVE error (e.g. 0.5 or 2.0) implying OCR misread of columns.
+    if 0.9 < correction_factor < 1.1:
+        if correction_factor != 1.0:
+            logger.warning(f"Solver: Ignoring Correction Factor {correction_factor:.4f} (Assuming Valid Global Discount/RoundOff). Keeping Line Items verifyable.")
+        correction_factor = 1.0
+        
+    logger.info(f"Solver: Applying Final Correction Factor {correction_factor} to {len(lines)} items.")
     
     updated_lines = []
     for item in lines:
