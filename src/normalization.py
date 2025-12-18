@@ -273,17 +273,41 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note
         )
     }
 
-def distribute_global_modifiers(line_items: list, global_discount: float, freight: float, global_tax: float = 0.0) -> list:
+def distribute_global_modifiers(line_items: list, global_discount: float, freight: float, global_tax: float = 0.0, grand_total: float = 0.0) -> list:
     """
     Distributes global discount, freight, and global tax across line items based on value.
-    This runs after basic normalization but before final commitment.
-    
-    Formula: Final Net = Original Net - Discount Share + Freight Share + Tax Share
+    SMART LOGIC: Checks if adding tax brings the total closer to Grand Total. If not, ignores tax (assumes inclusive).
     """
     total_value = sum(float(item.get("Net_Line_Amount", 0)) for item in line_items)
     
     if total_value == 0:
         return line_items
+
+    # SMART TAX DETECTION
+    # Scenario A: Lines are Net (Inclusive). Sum ~= Grand Total.
+    # Scenario B: Lines are Taxable (Exclusive). Sum + Tax ~= Grand Total.
+    
+    # Calculate hypothetical totals
+    # (Ignoring discount/freight for a moment to isolate tax behavior, or assuming they apply)
+    # Actually, simpler: Is (Sum + Tax) closer to Grand Total than (Sum)?
+    # We must account for Discount being subtracted.
+    
+    target = grand_total
+    if target > 0:
+        # Expected Logic: Sum + Tax + Freight - Discount = Grand Total
+        with_tax = total_value + global_tax + freight - global_discount
+        without_tax = total_value + freight - global_discount
+        
+        diff_with = abs(with_tax - target)
+        diff_without = abs(without_tax - target)
+        
+        if diff_without < diff_with:
+            # Adding tax makes it WORSE. The lines must already be inclusive.
+            print(f"Normalization: Smart Tax Detection -> IGNORING Global Tax {global_tax} (Lines seem inclusive)")
+            global_tax = 0.0
+        else:
+            print(f"Normalization: Smart Tax Detection -> APPLYING Global Tax {global_tax} (Lines seem exclusive)")
+
 
     for item in line_items:
         original_net = float(item.get("Net_Line_Amount", 0))
@@ -297,6 +321,16 @@ def distribute_global_modifiers(line_items: list, global_discount: float, freigh
         # Apply to Net Amount
         # Net = Original - Discount + Freight + Tax
         new_net = original_net - discount_share + freight_share + tax_share
+        
+        # SAFETY CLAMP: 
+        # If the modification swings the value by more than 20% (likely error in Global Tax extraction),
+        # revert to original net (trusting the Line Item Amount more).
+        if abs(new_net - original_net) > (original_net * 0.20):
+             # Log warning ideally, but for now just clamp
+             # But allow if original was small? No, percent holds.
+             new_net = original_net
+             item["Logic_Note"] += " [Safety: Modifier Ignored]"
+        
         item["Net_Line_Amount"] = round(new_net, 2)
         
         # Recalculate Unit Cost

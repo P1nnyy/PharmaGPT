@@ -199,7 +199,8 @@ async def analyze_invoice(file: UploadFile = File(...)):
         
         if global_discount > 0 or freight > 0 or global_tax > 0:
             from src.normalization import distribute_global_modifiers
-            normalized_items = distribute_global_modifiers(normalized_items, global_discount, freight, global_tax)
+            grand_total = parse_float(extracted_data.get("Invoice_Amount", 0.0))
+            normalized_items = distribute_global_modifiers(normalized_items, global_discount, freight, global_tax, grand_total)
         
         # 4. Financial Integrity Check
         validation_flags = []

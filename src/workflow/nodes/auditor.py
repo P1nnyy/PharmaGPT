@@ -54,6 +54,36 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 logger.info(f"Auditor: Dropping Blacklisted Item '{desc_lower}'")
                 continue
 
+            # 5. Outlier Sanitization (Decimal Fix)
+            # Fixes "Skyrocketing" values where 160.00 is read as 16000.
+            # Strategy: If Amount > 5000 (arbitrary high shelf), check if dividing by 100 makes it "Reasonable" (< 5000).
+            # This is a heuristic for pharma prices which rarely exceed 5k/unit.
+            # Only apply if Rate/Amount are HUGE.
+            
+            # This loop should ideally run AFTER deduped_line_items is fully populated,
+            # but the instruction places it here, so we'll apply it to the current 'item'
+            # before it's potentially added to deduped_line_items.
+            # To apply it to the current 'item' being processed, we'll modify 'item' directly.
+            
+            raw_amt = float(item.get("Amount") or 0)
+            raw_rate = float(item.get("Rate") or 0)
+            
+            # Check Amount
+            if raw_amt > 10000:
+                # Sanity: Is Qty huge?
+                q = float(item.get("Qty") or 1)
+                if q < 100: 
+                    # Small Qty, Huge Amount. Likely decimal error.
+                    logger.warning(f"Auditor: Detected Huge Amount {raw_amt}. Auto-correcting to {raw_amt/100:.2f}")
+                    item["Amount"] = raw_amt / 100
+                    item["Logic_Note"] = item.get("Logic_Note", "") + " [Decimal Fix]"
+            
+            # Check Rate
+            if raw_rate > 5000:
+                 logger.warning(f"Auditor: Detected Huge Rate {raw_rate}. Auto-correcting to {raw_rate/100:.2f}")
+                 item["Rate"] = raw_rate / 100
+            
+            # 6. Strict Safety Net Deduplication
             # 3. Fuzzy Deduplication (SequenceMatcher)
             # Strategy: Compare against ALL existing uniques for >0.9 similarity
             # If match found, Merge (Keep Max). If not, Append.
@@ -135,21 +165,37 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 
                 batch_match = (batch_curr == batch_ex) or (batch_curr in ["n/a", "unknown", "none", ""]) or (batch_ex in ["n/a", "unknown", "none", ""])
                 
-                if ratio > 0.94 and batch_match: # 94% threshold
-                    merged = True
-                    # Merge Logic: SUM Quantities and Amounts (Additive Merge)
-                    logger.info(f"Auditor: Deduplicating '{desc_norm}' into '{ex_desc}' (SUMMING VALUES)")
-                    
-                    # 1. Sum Quantity
-                    q_curr = float(item.get("Qty") or 0)
-                    q_ex = float(existing_item.get("Qty") or 0)
-                    existing_item["Qty"] = q_ex + q_curr
-                    
-                    # 2. Sum Amount
-                    val_curr = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
-                    existing_item["Amount"] = val_ex + val_curr
-                    
-                    # 3. Enrich Empty Fields (Batch, Expiry)
+                if batch_match and batch_curr not in ["n/a", "unknown", "none", "", "unknown_batch"]:
+                     # AGGRESSIVE DEDUPE: If Batch Matches perfectly...
+                     # CHECK IF VALUES ARE IDENTICAL (OCR Redundancy)
+                     q_curr = float(item.get("Qty") or 0)
+                     q_ex = float(existing_item.get("Qty") or 0)
+                     val_curr = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
+                     val_ex = float(existing_item.get("Amount") or existing_item.get("Stated_Net_Amount") or 0)
+                     
+                     if q_curr == q_ex and abs(val_curr - val_ex) < 1.0:
+                         # Identical Item -> Assume OCR Artifact -> Drop (Merge without Summing)
+                         merged = True
+                         logger.info(f"Auditor: Dropping Exact Duplicate '{desc_norm}' (Redundant OCR)")
+                     else:
+                         # Same Batch, Different Values -> Real Split Entry? -> KEEP BOTH
+                         merged = False 
+                         logger.info(f"Auditor: Same Batch but Different Values ({val_curr} vs {val_ex}) -> KEEPING BOTH")
+                
+                elif ratio > 0.94 and batch_match: 
+                    # Fuzzy match + Batch match (N/A)
+                    # If Quantities identical, Drop. Else Keep.
+                     q_curr = float(item.get("Qty") or 0)
+                     q_ex = float(existing_item.get("Qty") or 0)
+                     if q_curr == q_ex:
+                         merged = True
+                         logger.info(f"Auditor: Fuzzy Duplicate '{desc_norm}' -> Dropping")
+                     else:
+                         merged = False
+
+                if merged:
+                    # Enrich Empty Fields (Batch, Expiry) if dropping the duplicate
+                    # But DO NOT SUM VALUES.
                     if not existing_item.get("Batch") and item.get("Batch"):
                         existing_item["Batch"] = item["Batch"]
                         

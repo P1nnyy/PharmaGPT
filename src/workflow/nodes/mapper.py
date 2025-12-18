@@ -55,6 +55,7 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     - **Qty**: Numeric (Float). Billed Quantity.
       - **Aliases**: Look for "Billed", "Sales Qty", "Strips", "Tabs", "Packs", "Quantity".
       - **Split**: If column is "10+2", use 10.
+      - **Multi-Column**: If text is "0 0 2" or "0 2", extract the NON-ZERO number (e.g. 2).
       - **Fractional**: If you see "1.84" or "0.92", ROUND IT to the nearest integer/whole pack (e.g. 1.84 -> 2, 0.92 -> 1).
     - **Batch**: Alphanumeric Batch Number. 
       - **Look for aliases**: "Pcode", "Code", "Lot". 
@@ -70,6 +71,7 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     - **Amount**: Net Total (Inclusive of Tax).
       - **CRITICAL**: Watch for faint decimal points.
       - **Consistency**: Ideally `Qty * Rate` ~= `Amount`. If `Amount` is wildly different, check if you missed a decimal in Rate or Amount.
+      - **Selection**: If "Total" and "Amount" both exist, prefer "Amount" (usually strict final). Avoid "Total" if it looks like Gross/MRP-based.
     - **MRP**: Max Retail Price.
     
     CRITICAL:

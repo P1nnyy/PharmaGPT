@@ -74,8 +74,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             Task: Extract global financial fields from this section. Ignore line items.
             
             Fields to Extract:
-            - Global_Discount_Amount (Look for 'Cash Discount', 'CD', 'Less Discount')
-            - Freight_Charges
+            - **Global_Discount_Amount**: 
+          - Extract specific broad discounts like "Cash Discount", "Less Discount".
+          - **CRITICAL**: IGNORE "Total Scheme Discount" or "Total Item Discount" if it appears to be just a sum of the table column. Only extract if it is an EXTRA discount on the final total.
+        - **Freight_Charges**: Shipping/Transport costs.
             - Round_Off
             - SGST_Amount (Total S.GST from footer summary)
             - CGST_Amount (Total C.GST from footer summary)
