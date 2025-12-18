@@ -174,9 +174,28 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                      val_ex = float(existing_item.get("Amount") or existing_item.get("Stated_Net_Amount") or 0)
                      
                      if q_curr == q_ex and abs(val_curr - val_ex) < 1.0:
-                         # Identical Item -> Assume OCR Artifact -> Drop (Merge without Summing)
-                         merged = True
-                         logger.info(f"Auditor: Dropping Exact Duplicate '{desc_norm}' (Redundant OCR)")
+                         # Identical Item Found
+                         
+                         # NEW LOGIC: Check if this was a Single Source Extraction
+                         raw_sources = state.get("raw_text_rows", [])
+                         is_single_source = (len(raw_sources) <= 1)
+                         
+                         if is_single_source:
+                             # SINGLE SOURCE -> Duplicate implies intentional split (e.g. 10+2 scheme) -> SUM THEM
+                             logger.info(f"Auditor: Single Source Duplicate '{desc_norm}' -> SUMMING (Qty: {q_ex}+{q_curr}, Amt: {val_ex}+{val_curr})")
+                             existing_item["Qty"] = q_ex + q_curr
+                             existing_item["Amount"] = val_ex + val_curr
+                             
+                             # Also sum Net Amount if present
+                             if existing_item.get("Stated_Net_Amount") and item.get("Stated_Net_Amount"):
+                                 existing_item["Stated_Net_Amount"] = float(existing_item["Stated_Net_Amount"]) + float(item["Stated_Net_Amount"])
+                                 
+                             merged = True # Merged into existing, so don't append new one
+                             
+                         else:
+                             # MULTI SOURCE -> Duplicate implies OCR Overlap (Redundant) -> DROP
+                             merged = True
+                             logger.info(f"Auditor: Dropping Exact Duplicate '{desc_norm}' (Redundant OCR from overlapping zones)")
                      else:
                          # Same Batch, Different Values -> Real Split Entry? -> KEEP BOTH
                          merged = False 
