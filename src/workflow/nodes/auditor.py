@@ -274,6 +274,60 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             deduped_line_items.append(item)
     
     logger.info(f"Auditor: Deduplication: Reduced {len(line_items)} items to {len(deduped_line_items)} unique items.")
+    
+    # 7. Robust Quantity Reconstruction (Math as Source of Truth)
+    # Replaces specific "Swap Fixes" with a general rule: Qty = Amount / Rate
+    deduped_line_items = _reconcile_quantities_with_math(deduped_line_items)
+
     logger.info("Auditor verification complete.")
     
     return {"line_items": deduped_line_items}
+
+def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Enforces the invariant: Quantity * Rate = Amount.
+    If the extracted Qty violates this, but Amount/Rate yields a clean integer,
+    we overwrite Qty with the calculated value.
+    This fixes Swaps, Typos (e.g. 'l'->1), and Alignment errors globally.
+    """
+    for item in items:
+        try:
+            qty_extracted = float(item.get("Qty") or 0)
+            rate = float(item.get("Rate") or 0)
+            amt = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
+            
+            # Skip if Rate is missing or zero (cannot divide)
+            if rate <= 0:
+                continue
+                
+            # 1. Check for Math Mismatch
+            # Discrepancy > 5% implies the Extracted Qty is likely wrong 
+            # (assuming Amount and Rate are correct, which is statistically safer)
+            expected_amt = qty_extracted * rate
+            is_mismatch = abs(expected_amt - amt) > max(2.0, amt * 0.05)
+            
+            if is_mismatch:
+                # 2. Attempt Reconstruction
+                calc_qty = amt / rate
+                
+                # 3. Check Plausibility of Calculated Qty
+                # It must be a "Clean Number" (Integer or simple fraction like 0.5)
+                # And it must be positive.
+                is_clean_integer = abs(calc_qty - round(calc_qty)) < 0.05
+                is_clean_fraction = abs((calc_qty * 2) - round(calc_qty * 2)) < 0.05 # Allow .5
+                
+                if (is_clean_integer or is_clean_fraction) and calc_qty > 0:
+                    
+                    # Round to nearest logical value
+                    final_qty = round(calc_qty, 1) if is_clean_fraction else round(calc_qty)
+                    
+                    logger.info(f"Auditor: Math Reconstruction for '{item.get('Product')}'. Extracted Qty {qty_extracted} (Inconsistent) -> Calculated Qty {final_qty} (Derived from Amt {amt}/Rate {rate})")
+                    
+                    item["Qty"] = float(final_qty)
+                    item["Logic_Note"] = item.get("Logic_Note", "") + " [Math Fix]"
+
+        except Exception as e:
+            # Don't let a math error crash the pipeline
+            continue
+            
+    return items

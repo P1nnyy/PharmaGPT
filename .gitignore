@@ -39,6 +39,8 @@ temp/
 outputs/
 *.sqlite
 *.db
+*.sqlite3
+data/chroma_db/
 
 # --- Invoice Extractor Specific ---
 # Exclude raw image uploads from git if stored locally outside of test assets
