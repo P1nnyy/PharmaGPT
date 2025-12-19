@@ -41,7 +41,11 @@ outputs/
 *.sqlite
 *.db
 *.sqlite3
-data/chroma_db/
+data/*
+!data/.gitkeep
+!data/chroma_db/
+data/chroma_db/*
+!data/chroma_db/.gitkeep
 
 # --- Invoice Extractor Specific ---
 # Exclude raw image uploads from git if stored locally outside of test assets

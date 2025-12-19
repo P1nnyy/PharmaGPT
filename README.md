@@ -1,58 +1,61 @@
-# PharmaCouncil Invoice Extraction System 🏥
+# Invoice Extractor (PharmaCouncil) 🏥
 
-## Overview
-The **PharmaCouncil Invoice Extraction System** is an advanced detailed-oriented document processing pipeline designed specifically for the complex and noisy format of pharmaceutical invoices. Unlike unexpected OCR tools, this system employs a **Swarm Architecture** of specialized AI agents to ensure financial accuracy, utilizing a **Self-Correcting Feedback Loop** to reconcile line-item data against the invoice's grand total.
+> **An Agentic Swarm Architecture for High-Precision Pharmaceutical Invoice Processing**
 
-## Architecture: The Swarm 🐝
-
-The system is built on a Directed Acyclic Graph (DAG) workflow (using LangGraph) where multiple specialized nodes collaborate to process a single document.
-
-### 1. Surveyor Node
-- **Role**: The Architect.
-- **Function**: Scans the document to identify layout zones (Header, Footer, Main Table, Tax Breakdown). Isolate specific coordinates for downstream workers.
-
-### 2. Worker Node (The Anchor)
-- **Role**: The Extractor.
-- **Function**: Executes parallel extraction tasks on identified zones.
-- **Critical Logic**: Captures the **"Stated Grand Total"** as the immutable Anchor of Truth.
-
-### 3. Auditor Node
-- **Role**: The Deduplicator.
-- **Function**: Merges parallel extraction fragments, filters noise (e.g., repeating sub-headers), and ensures schema compliance.
-
-### 4. Critic Node (The Logic Engine)
-- **Role**: The Judge.
-- **Function**: Performs a ratio analysis: `Grand Total / Sum(Line Items)`.
-    - **Verdict: APPROVE**: Exact match (< 1% variance).
-    - **Verdict: APPLY_MARKUP**: Ratio > 1.0 (Implies Tax Exclusive lines or Freight addition).
-    - **Verdict: APPLY_MARKDOWN**: Ratio < 1.0 (Implies Global Discount).
-    - **Verdict: RETRY_OCR**: Massive mismatch (> 30%).
-
-### 5. Solver Node (Mathematics)
-- **Role**: The Fixer.
-- **Function**: Applies the `correction_factor` derived by the Critic. Mathematically adjusts `Net_Line_Amount` and recalculates the `Landed_Cost_Per_Unit` to ensure the final data is 100% accurate to the penny.
+The **Invoice Extractor** is a specialized document intelligence system designed to solve the "Last Mile" problem in extracting complex, noisy, and mathematically inconsistent pharmaceutical invoices. Unlike standard OCR tools that merely read text, this system **understands** the financial logic of the invoice, employing a **Self-Correcting Feedback Loop** to reconcile extracted line items against the stated grand total with perfect mathematical precision.
 
 ---
 
-## Technology Stack
+## 🚀 Key Features
 
-- **Backend**: Python 3.11+, FastAPI, Uvicorn
-- **AI/LLM**: Google Gemini 2.0 Flash (Vision)
-- **Workflow**: LangGraph (StateGraph)
-- **Database**: Neo4j (Graph Database) for inventory and tracking.
-- **Frontend**: React, Vite, TailwindCSS (Dark Mode SaaS UI)
+*   **Logic-Aware Extraction**: The system doesn't just read; it calculates. If the extracted line items don't sum up to the Grand Total, it investigates why (Discount? Tax? Freight?) and fixes it.
+*   **"Perfect Match" Reconciliation**: A robust normalization engine that detects "Inflation" (Double Tax) or "Deflation" (Missing Discount) and applies specific mathematical corrections to force the data to align with the immutable Anchor (The Stated Total).
+*   **Swarm Architecture**: Uses a graph of specialized AI agents:
+    *   **Surveyor**: Maps the document layout.
+    *   **Worker**: Extracts raw data from parallel zones.
+    *   **Auditor**: Dedupes and cleans data.
+    *   **Critic**: Validates financials and triggers retries.
+    *   **Solver**: Reconciles the final math.
+*   **Inventory Graph**: Persists extracted data (Batch, Expiry, MRP, Landed Cost) into a Neo4j Graph Database for detailed inventory tracking.
 
 ---
 
-## Setup & Installation
+## 🏗️ Architecture
 
-### 1. Prerequisites
-- Python 3.10+
-- Node.js & npm
-- Neo4j Database (Local or Aura)
-- Google Cloud API Key (Gemini)
+The system is built on **LangGraph**, orchestrating a Directed Acyclic Graph (DAG) of agents.
 
-### 2. Environment Variables
+```mermaid
+graph LR
+    Input[Image] --> Surveyor
+    Surveyor --> Worker[Parallel Extraction]
+    Worker --> Mapper[Schema Mapping]
+    Mapper --> Auditor[Deduplication & Sanitization]
+    Auditor --> Critic[Financial Health Check]
+    Critic -- "Approved" --> Solver[Math Reconciliation]
+    Critic -- "Retry" --> Worker
+    Solver --> API[FastAPI Server]
+```
+
+### The "Perfect Match" Engine
+The core innovation is the `reconcile_financials` module in `src/normalization.py`. It solves the common OCR problem where individual lines don't add up to the total:
+1.  **Calculate Gap**: `Sum(Lines) - Grand_Total`
+2.  **Identify Direction**: Is the sum too high (Inflation) or too low (Deflation)?
+3.  **Apply Correction**:
+    *   If **Inflated**, it looks for *Discounts* to reduce the value.
+    *   If **Deflated**, it looks for *Taxes/Freight* to increase the value.
+    *   It applies the **Exact Gap** as a correction factor, ensuring `Sum == Total`.
+
+---
+
+## 🛠️ Setup & Installation
+
+### Prerequisites
+*   Python 3.10+
+*   Node.js & npm (for Frontend)
+*   Neo4j Database (Local or Aura)
+*   Google Gemini API Key
+
+### 1. Environment Variables
 Create a `.env` file in the root directory:
 ```bash
 GOOGLE_API_KEY=your_gemini_key
@@ -61,9 +64,7 @@ NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_password
 ```
 
-### 3. Installation
-
-**Backend:**
+### 2. Backend Setup
 ```bash
 # Create Virtual Environment
 python3 -m venv .venv
@@ -73,7 +74,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Frontend:**
+### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
@@ -81,31 +82,41 @@ npm install
 
 ---
 
-## Running the Application
+## 🏃‍♂️ Usage
 
-### Start the Backend
+### Start the System
+You need to run both the Backend (API) and Frontend (UI).
+
+**Terminal 1: Backend**
 ```bash
-# From project root
 source .venv/bin/activate
 uvicorn src.api.server:app --reload
 ```
-API Documentation available at: `http://localhost:8000/docs`
+*API Docs: http://localhost:8000/docs*
 
-### Start the Frontend
+**Terminal 2: Frontend**
 ```bash
-# From frontend directory
+cd frontend
 npm run dev
 ```
-UI available at: `http://localhost:5173`
+*UI: http://localhost:5173*
 
 ---
 
-## Key Features
+## 📂 Project Structure
 
-- **Reconciliation Engine**: Automatically detects if an invoice is "Tax Inclusive" or "Tax Exclusive" and normalizes the data.
-- **Global Table Persistence**: Stores extracted `Expiry Date`, `Batch No`, `MRP`, and `Landed Cost` into the Graph for inventory valuation.
-- **Draft & Staging**: Invoices can be saved as 'DRAFT' allowing for partial extraction and manual review before committing to inventory.
-- **Excel Export**: Download reconciled data directly to Excel for manual ERP upload.
+```
+.
+├── src/
+│   ├── workflow/          # LangGraph Agent Nodes (Worker, Critic, etc.)
+│   ├── extraction/        # Base Extraction Logic
+│   ├── services/          # Neo4j & Vector Store Services
+│   ├── api/               # FastAPI Endpoints
+│   └── normalization.py   # Core Math & Reconciliation Logic
+├── frontend/              # React + Tailwind Source Code
+├── tests/                 # Unit & Integration Tests
+└── data/                  # Local Data (Ignored by Git)
+```
 
-## License
+## 📄 License
 Proprietary.
