@@ -187,20 +187,17 @@ async def analyze_invoice(file: UploadFile = File(...)):
             normalized_items.append(norm_item)
         
         # 3.b Apply Global Proration (Phase 3)
-        # 3.b Apply Global Proration (Phase 3)
-        global_discount = parse_float(extracted_data.get("Global_Discount_Amount", 0.0))
-        freight = parse_float(extracted_data.get("Freight_Charges", 0.0))
+        # 3.b Apply Global Proration (Phase 3) - Smart Directional Reconciliation
+        # This logic ensures we only Apply Modifiers if they mathematically CLOSE the gap.
+        # It handles "Double Tax" (Inflation) and "Missing Discount" (Deflation) automatically.
         
-        # Sum Split Taxes
-        sgst = parse_float(extracted_data.get("SGST_Amount", 0.0))
-        cgst = parse_float(extracted_data.get("CGST_Amount", 0.0))
-        igst = parse_float(extracted_data.get("IGST_Amount", 0.0))
-        global_tax = sgst + cgst + igst
+        from src.normalization import reconcile_financials
         
-        if global_discount > 0 or freight > 0 or global_tax > 0:
-            from src.normalization import distribute_global_modifiers
-            grand_total = parse_float(extracted_data.get("Invoice_Amount", 0.0))
-            normalized_items = distribute_global_modifiers(normalized_items, global_discount, freight, global_tax, grand_total)
+        # FIX: Use 'Stated_Grand_Total' from schema
+        grand_total = parse_float(extracted_data.get("Stated_Grand_Total") or extracted_data.get("Invoice_Amount", 0.0))
+        
+        # Pass the full data dict as modifiers source (contains Global_Discount_Amount, etc.)
+        normalized_items = reconcile_financials(normalized_items, extracted_data, grand_total)
         
         # 4. Financial Integrity Check
         validation_flags = []

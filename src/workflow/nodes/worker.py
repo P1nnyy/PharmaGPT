@@ -54,10 +54,11 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - **DENSE ROWS**: If you see "Vaporub 5gm" and "Vaporub 10gm" on separate lines, WRITE THEM ON SEPARATE LINES.
             - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
             - **NO MERGING**: Do not merge distinct visual rows.
+            - **COLUMNS**: Aggressively look for "Net Amount", "Total", "Amount", "Value".
             
             Output Format Example:
-            | Description | Pcode | Qty | Rate | Amount |
-            | Vicks 5gm | 80811 | 1 | 100 | 100 |
+            | Description | Pcode | Qty | Rate | Amount | Net Amount |
+            | Vicks 5gm | 80811 | 1 | 100 | 100 | 112 |
             
             Return ONLY the markdown table string. No JSON.
             """
@@ -75,9 +76,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             
             Fields to Extract:
             - **Global_Discount_Amount**: 
-          - Extract specific broad discounts like "Cash Discount", "Less Discount".
-          - **CRITICAL**: IGNORE "Total Scheme Discount" or "Total Item Discount" if it appears to be just a sum of the table column. Only extract if it is an EXTRA discount on the final total.
-        - **Freight_Charges**: Shipping/Transport costs.
+                - SUM of ALL broad discounts in the footer (e.g. "Less 5%", "Cash Discount", "Scheme Discount", "CD", "Trade Discount").
+                - IF multiple discounts exist (e.g. Discount + CD), ADD THEM TOGETHER.
+                - Ignore line-item level discount sums unless they are clearly deducted from the SubTotal.
+            - **Freight_Charges**: Shipping/Transport costs.
             - Round_Off
             - SGST_Amount (Total S.GST from footer summary)
             - CGST_Amount (Total C.GST from footer summary)
@@ -230,6 +232,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             CRITICAL RECOVERY MODE:
             The previous zone-based extraction failed. 
             Now, analyze the ENTIRE document image.
+            {feedback_context}
             
             TASK: EXTRACT ALL TABLES AS RAW MARKDOWN.
             
@@ -238,7 +241,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             2. Convert it VISUALLY into a Pipe-Separated Markdown table.
             3. **Do not merge rows**. Keep every single line item separate.
             4. **DUPLICATES**: If the Exact Same Item appears multiple times, LIST IT MULTIPLE TIMES.
-            5. Capture exact headers like "Pcode", "Rate", "Amount".
+            5. Capture exact headers like "Pcode", "Rate", "Amount", "Net Amount", "Total".
             
             Output ONLY the table.
             """

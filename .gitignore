@@ -1,3 +1,4 @@
+
 # --- System & IDE ---
 .DS_Store
 .idea/
@@ -49,3 +50,8 @@ uploads/
 
 # --- Backup ---
 code backup/
+
+# --- Tests ---
+# Ignore temporary test files created during verification
+tests/test_*.py
+!tests/test_live_integration.py

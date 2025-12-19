@@ -37,18 +37,42 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     # 2. Calculate Line Sum
     line_sum = 0.0
     debug_vals = []
+    
+    # METADATA HEALTH CHECKS
+    zero_mrp_count = 0
+    zero_rate_count = 0
+    total_items = len(lines)
+    
     for i, item in enumerate(lines):
         try:
              # UPDATED: Use Amount (Blind Schema)
              val = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
              line_sum += val
              debug_vals.append((item.get("Product"), val))
+             
+             # Health Check Stats
+             mrp = float(item.get("MRP") or 0)
+             rate = float(item.get("Rate") or 0)
+             
+             if mrp == 0: zero_mrp_count += 1
+             if rate == 0: zero_rate_count += 1
+             
         except:
              pass
     
     logger.info(f"Critic: ALL Items: {debug_vals}")
     
-    # 3. Calculate Ratio (The "Magic Number")
+    # 3. COLUMN HEALTH CHECK (Prioritize Data Quality over Totals)
+    # If > 50% of items are missing MRP, FAIL immediately.
+    if total_items > 0:
+        if (zero_mrp_count / total_items) > 0.5:
+            logger.warning(f"Critic: Critical Data Fault. {zero_mrp_count}/{total_items} items missing MRP.")
+            return {
+                "critic_verdict": "RETRY_OCR",
+                "feedback_logs": ["CRITICAL FAULT: You missed the 'MRP' column. The user requires MRP extraction. Look for headers like 'MRP', 'Max Price', 'Rate' and capture them."]
+            }
+            
+    # 4. Calculate Ratio (The "Magic Number")
     logger.info(f"Critic: Anchor {anchor_total} vs Line Sum {line_sum}")
     
     if line_sum == 0: 

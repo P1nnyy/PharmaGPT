@@ -282,7 +282,23 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
 
     logger.info("Auditor verification complete.")
     
-    return {"line_items": deduped_line_items}
+    # SANITIZE GLOBAL MODIFIERS
+    # Ensure Discount/Freight/Tax are positive (absolute values) to prevent double-negatives in Frontend/Solver
+    cleaned_modifiers = global_modifiers.copy()
+    for key in ["Global_Discount_Amount", "Freight_Charges", "Global_Tax_Amount"]:
+        if key in cleaned_modifiers and cleaned_modifiers[key]:
+             try:
+                 val = float(cleaned_modifiers[key])
+                 # Take absolute value. 
+                 # If OCR reads "-33.00", we want 33.00 (as 'Discount' implies subtraction).
+                 if val < 0:
+                     logger.warning(f"Auditor: Sanitizing Negative Modifier {key}={val} -> {abs(val)}")
+                 
+                 cleaned_modifiers[key] = abs(val)
+             except:
+                 pass
+    
+    return {"line_items": deduped_line_items, "global_modifiers": cleaned_modifiers}
 
 def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """

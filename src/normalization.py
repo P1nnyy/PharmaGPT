@@ -312,69 +312,95 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note
         )
     }
 
-def distribute_global_modifiers(line_items: list, global_discount: float, freight: float, global_tax: float = 0.0, grand_total: float = 0.0) -> list:
+def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: float) -> list:
     """
-    Distributes global discount, freight, and global tax across line items based on value.
-    SMART LOGIC: Checks if adding tax brings the total closer to Grand Total. If not, ignores tax (assumes inclusive).
-    """
-    total_value = sum(float(item.get("Net_Line_Amount", 0)) for item in line_items)
+    SMART DIRECTIONAL RECONCILIATION:
+    Adjusts line items to match Grand Total based on mathematical directionality.
     
-    if total_value == 0:
+    Logic:
+    1. Calc Current Sum.
+    2. Calc Gap = Current Sum - Grand Total.
+    3. If Gap > 0 (Inflation): We need to SUBTRACT. Look for Discounts. IGNORE Tax/Freight.
+    4. If Gap < 0 (Deflation): We need to ADD. Look for Tax/Freight. IGNORE Discounts.
+    5. Distribute the chosen modifier pro-rata.
+    """
+    if not line_items or grand_total <= 0:
+        return line_items
+        
+    current_sum = sum(float(item.get("Net_Line_Amount", 0)) for item in line_items)
+    gap = current_sum - grand_total
+    
+    # Threshold for "Close Enough" (e.g. 0.5% or 1.0)
+    if abs(gap) < max(1.0, grand_total * 0.005):
+        # logger object not strictly available here unless imported. 
+        # But we can import it inside or use print if we trust stdout capture? 
+        # Better: Assume caller (server) handles logging? No, server called this.
+        # Let's import standard logging.
+        import logging
+        logger = logging.getLogger("normalization")
+        logger.info(f"Reconcile: Sum {current_sum:.2f} matches Total {grand_total:.2f}. No changes.")
         return line_items
 
-    # SMART TAX DETECTION
-    # Scenario A: Lines are Net (Inclusive). Sum ~= Grand Total.
-    # Scenario B: Lines are Taxable (Exclusive). Sum + Tax ~= Grand Total.
+    import logging
+    logger = logging.getLogger("normalization")
+    logger.info(f"Reconcile: GAP DETECTED. Sum {current_sum:.2f} vs Total {grand_total:.2f} (Gap {gap:.2f})")
+    logger.info(f"Reconcile: Input Modifiers: {global_modifiers}")
+
+    # Extract Modifiers (Sanitized Absolutes)
+    g_disc = abs(float(global_modifiers.get("Global_Discount_Amount", 0) or 0))
+    g_tax = abs(float(global_modifiers.get("Global_Tax_Amount", 0) or 0) + 
+                float(global_modifiers.get("SGST_Amount", 0) or 0) + 
+                float(global_modifiers.get("CGST_Amount", 0) or 0) + 
+                float(global_modifiers.get("IGST_Amount", 0) or 0))
+    freight = abs(float(global_modifiers.get("Freight_Charges", 0) or 0))
     
-    # Calculate hypothetical totals
-    # (Ignoring discount/freight for a moment to isolate tax behavior, or assuming they apply)
-    # Actually, simpler: Is (Sum + Tax) closer to Grand Total than (Sum)?
-    # We must account for Discount being subtracted.
+    modifier_to_apply = 0.0
+    action = "NONE"
     
-    target = grand_total
-    if target > 0:
-        # Expected Logic: Sum + Tax + Freight - Discount = Grand Total
-        with_tax = total_value + global_tax + freight - global_discount
-        without_tax = total_value + freight - global_discount
+    # DIRECTIONAL LOGIC
+    if gap > 0:
+        # Sum is TOO HIGH (Inflation). We need to REDUCE.
+        logger.info(f"Reconcile: Inflation Detected (Gap +{gap:.2f}). Looking for Reducers...")
         
-        diff_with = abs(with_tax - target)
-        diff_without = abs(without_tax - target)
-        
-        if diff_without < diff_with:
-            # Adding tax makes it WORSE. The lines must already be inclusive.
-            print(f"Normalization: Smart Tax Detection -> IGNORING Global Tax {global_tax} (Lines seem inclusive)")
-            global_tax = 0.0
+        if g_disc > 0:
+            # PERFECT MATCH STRATEGY:
+            # If we have a Global Discount, we assume the ENTIRE Gap is due to that (plus other footer adjustments).
+            # We force the line items to sum exactly to Grand Total by distributing the GAP.
+            modifier_to_apply = -gap 
+            action = "APPLY_DISCOUNT_CORRECTION"
+            logger.info(f"Reconcile: Found Global Discount ({g_disc}). Applying Correction of -{gap:.2f} to match Total.")
         else:
-            print(f"Normalization: Smart Tax Detection -> APPLYING Global Tax {global_tax} (Lines seem exclusive)")
-
-
-    for item in line_items:
-        original_net = float(item.get("Net_Line_Amount", 0))
-        ratio = original_net / total_value
-        
-        # Calculate shares
-        discount_share = global_discount * ratio
-        freight_share = freight * ratio
-        tax_share = global_tax * ratio
-        
-        # Apply to Net Amount
-        # Net = Original - Discount + Freight + Tax
-        new_net = original_net - discount_share + freight_share + tax_share
-        
-        # SAFETY CLAMP: 
-        # If the modification swings the value by more than 20% (likely error in Global Tax extraction),
-        # revert to original net (trusting the Line Item Amount more).
-        if abs(new_net - original_net) > (original_net * 0.20):
-             # Log warning ideally, but for now just clamp
-             # But allow if original was small? No, percent holds.
-             new_net = original_net
-             item["Logic_Note"] += " [Safety: Modifier Ignored]"
-        
-        item["Net_Line_Amount"] = round(new_net, 2)
-        
-        # Recalculate Unit Cost
-        qty = float(item.get("Standard_Quantity", 1) or 1)
-        if qty > 0:
-            item["Final_Unit_Cost"] = round(new_net / qty, 2)
+            logger.warning("Reconcile: No Discount found to reduce inflation. Doing nothing (Safe Mode).")
             
+    elif gap < 0:
+        # Sum is TOO LOW (Deflation). We need to INCREASE.
+        logger.info(f"Reconcile: Deflation Detected (Gap {gap:.2f}). Looking for Adders...")
+        
+        adder_sum = g_tax + freight
+        if adder_sum > 0:
+            # PERFECT MATCH STRATEGY:
+            modifier_to_apply = -gap # gap is negative, so -gap is positive addition
+            action = "APPLY_TAX_FREIGHT_CORRECTION"
+            logger.info(f"Reconcile: Found Tax/Freight ({adder_sum}). Applying Correction of +{abs(gap):.2f} to match Total.")
+        else:
+             logger.warning("Reconcile: No Tax/Freight found to increase value. Doing nothing (Safe Mode).")
+
+    # EXECUTE DISTRIBUTION
+    if modifier_to_apply != 0:
+        for item in line_items:
+            original_net = float(item.get("Net_Line_Amount", 0))
+            ratio = original_net / current_sum if current_sum > 0 else 0
+            
+            share = modifier_to_apply * ratio
+            new_net = original_net + share # Add (modifier might be negative)
+            
+            item["Net_Line_Amount"] = round(new_net, 2)
+            
+            # Recalculate Unit Cost
+            qty = float(item.get("Standard_Quantity", 1) or 1)
+            if qty > 0:
+                item["Final_Unit_Cost"] = round(new_net / qty, 2)
+            
+            item["Logic_Note"] = item.get("Logic_Note", "") + f" [Reconcile: {action}]"
+
     return line_items

@@ -37,7 +37,7 @@ def build_graph():
         
         if verdict in ["APPLY_MARKUP", "APPLY_MARKDOWN"]:
             return "solver"
-        elif verdict == "RETRY_OCR" and state.get("retry_count", 0) < 2:
+        elif verdict == "RETRY_OCR" and state.get("retry_count", 0) < 3:
             return "worker"
         return "end"
 
