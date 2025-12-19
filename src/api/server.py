@@ -2,6 +2,7 @@ import shutil
 import tempfile
 import sys
 import os
+import io
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
@@ -10,8 +11,9 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from src.services.export_service import generate_excel
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 import uvicorn
@@ -199,6 +201,19 @@ async def analyze_invoice(file: UploadFile = File(...)):
         # Pass the full data dict as modifiers source (contains Global_Discount_Amount, etc.)
         normalized_items = reconcile_financials(normalized_items, extracted_data, grand_total)
         
+        # 8. Price Watchdog (History Check)
+        # Check if these prices are higher than previous purchases
+        try:
+            from src.persistence import check_inflation_on_analysis
+            logger.info("Analyzer: Running Price Watchdog...")
+            if driver:
+                normalized_items = check_inflation_on_analysis(driver, normalized_items)
+            else:
+                 logger.warning("Analyzer: No DB Driver available for Price Watchdog.")
+        except Exception as e:
+            logger.error(f"Price Watchdog Failed: {e}")
+            # Non-critical, continue
+
         # 4. Financial Integrity Check
         validation_flags = []
         
@@ -209,6 +224,8 @@ async def analyze_invoice(file: UploadFile = File(...)):
         if stated_total:
             try:
                     stated_val = float(stated_total)
+                    print(f"DEBUG: Stated Total: {stated_val}, Calculated: {calculated_total}")
+                    
                     # Allow for small rounding differences (e.g. +/- 5.00 for rounding off)
                     if abs(calculated_total - stated_val) > 5.0:
                         validation_flags.append(
@@ -252,6 +269,38 @@ async def confirm_invoice(request: ConfirmInvoiceRequest):
         # Note: If frontend edits invoice header, 'request.invoice_data' should reflect that.
         invoice_obj = InvoiceExtraction(**request.invoice_data)
         
+        # --- CORRECTION LEARNING (The Brain) ---
+        # Detect if user changed Quantity significantly, implying Pack Size error.
+        try:
+            from src.services.mistake_memory import MEMORY
+            
+            # Create a map of Raw Items by Product Name to compare
+            raw_map = {item.Standard_Item_Name: item for item in invoice_obj.Line_Items}
+            
+            for confirmed_item in request.normalized_items:
+                name = confirmed_item.get("Standard_Item_Name")
+                confirmed_qty = confirmed_item.get("Standard_Quantity", 0.0)
+                
+                if name in raw_map:
+                    raw_item = raw_map[name]
+                    # AI's guess (Raw_Quantity is what AI saw/extracted)
+                    # Note: We need to check what field 'raw_item' actually has for Qty.
+                    # Based on schema, InvoiceExtraction -> InvoiceItem -> 'Quantity' (str) or 'Standard_Quantity'
+                    ai_qty_val = raw_item.Standard_Quantity or 0.0
+                    
+                    # Logic: If AI said X, but Human changed to Y, and difference is significant
+                    if ai_qty_val > 0 and confirmed_qty > 0 and ai_qty_val != confirmed_qty:
+                        # Pack Size Error Pattern: 
+                        # e.g. AI saw "10" (Strip) but it was "10x10" so real qty is 100? 
+                        # OR AI saw "2" (Boxes) but real qty is "20" (Strips).
+                        
+                        rule = f"CRITICAL: For item '{name}', if Qty is {ai_qty_val}, it really means {confirmed_qty}. Check Pack Size."
+                        MEMORY.add_rule(rule)
+                        logger.info(f"Brain: Learned mistake for '{name}' (AI: {ai_qty_val} -> Human: {confirmed_qty})")
+
+        except Exception as e:
+            logger.error(f"Brain Learning Failed: {e}")
+            
         # 2. Ingest into Neo4j
         # We pass the confirmed normalized_items directly
         ingest_invoice(driver, invoice_obj, request.normalized_items)
@@ -318,6 +367,29 @@ async def get_report(request: Request, invoice_no: str):
         "invoice": invoice_details,
         "line_items": line_items
     })
+
+
+@app.post("/export-excel")
+async def export_excel_endpoint(request: ConfirmInvoiceRequest):
+    """
+    Step 3 (Optional): Generates an Excel report for the current data.
+    """
+    try:
+        # Convert Pydantic models to dict if needed (here request.invoice_data is already dict)
+        excel_bytes = generate_excel(request.invoice_data, request.normalized_items)
+        
+        # Determine filename
+        invoice_no = request.invoice_data.get("Invoice_No", "Unknown")
+        filename = f"Invoice_{invoice_no}.xlsx"
+        
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"Excel Export Failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run("src.api.server:app", host="0.0.0.0", port=8000, reload=True)

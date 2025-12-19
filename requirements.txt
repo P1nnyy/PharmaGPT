@@ -12,3 +12,7 @@ importlib-metadata
 PyYAML
 pandas
 openpyxl
+langgraph
+chromadb
+opencv-python-headless
+sentence-transformers

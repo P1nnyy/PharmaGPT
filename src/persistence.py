@@ -104,7 +104,35 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
         logic_note: $logic_note
     })
     
-    // 4. Connect Graph
+    // 3. Find Last Price (Price Watchdog)
+    WITH i, p, h  // Pass required variables
+    OPTIONAL MATCH (p)<-[:REFERENCES]-(last:Line_Item)
+    WITH i, p, h, last 
+    ORDER BY last.created_at DESC LIMIT 1
+    
+    // logic: if new landing cost > last landing cost, flag it
+    WITH i, p, h, last, 
+         CASE 
+            WHEN last IS NOT NULL AND $landing_cost > last.landing_cost THEN true 
+            ELSE false 
+         END AS is_price_hike
+         
+    // 4. Create Line Item
+    CREATE (l:Line_Item {
+        pack_size: $pack_size,
+        quantity: $quantity,
+        net_amount: $net_amount,
+        batch_no: $batch_no,
+        hsn_code: $hsn_code,
+        mrp: $mrp,
+        expiry_date: $expiry_date,
+        landing_cost: $landing_cost,
+        logic_note: $logic_note,
+        is_price_hike: is_price_hike, // Price Watchdog Flag
+        created_at: timestamp()      // Add timestamp for sorting
+    })
+    
+    // 5. Connect Graph
     MERGE (i)-[:CONTAINS]->(l)
     MERGE (l)-[:REFERENCES]->(p)
     MERGE (l)-[:BELONGS_TO_HSN]->(h)
@@ -123,3 +151,52 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            landing_cost=item.get("Final_Unit_Cost", 0.0), # Updated Mapping
            logic_note=item.get("Logic_Note", "N/A")
     )
+
+    return normalized_items
+
+def get_last_landing_cost(driver, product_name: str) -> float:
+    """
+    Helper to fetch the last known landing cost for a product.
+    Returns 0.0 if not found.
+    """
+    query = """
+    MATCH (p:Product {name: $name})<-[:REFERENCES]-(l:Line_Item)
+    RETURN l.landing_cost as cost 
+    ORDER BY l.created_at DESC LIMIT 1
+    """
+    try:
+        with driver.session() as session:
+            result = session.run(query, name=product_name).single()
+            if result:
+                return float(result["cost"] or 0.0)
+    except Exception:
+        pass
+    return 0.0
+
+def check_inflation_on_analysis(driver, normalized_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Price Watchdog (Read-Only Check).
+    Iterates through extracted items and checks Neo4j for previous higher prices.
+    Injects 'is_price_hike': True/False into the item dict.
+    """
+    if not driver:
+        return normalized_items
+
+    for item in normalized_items:
+        name = item.get("Standard_Item_Name")
+        current_price = item.get("Final_Unit_Cost", 0.0)
+        
+        if name:
+            last_price = get_last_landing_cost(driver, name)
+            
+            # If current price is higher than last price -> Inflation Alert
+            # (tolerance of 1.0 to avoid noise)
+            if last_price > 0 and current_price > (last_price + 1.0):
+                item["is_price_hike"] = True
+                item["last_known_price"] = last_price 
+            else:
+                item["is_price_hike"] = False
+        else:
+            item["is_price_hike"] = False
+                
+    return normalized_items

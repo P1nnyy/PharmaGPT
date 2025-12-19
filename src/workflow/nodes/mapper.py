@@ -32,10 +32,17 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     # Each row is likely a string "Product | Qty | Rate"
     context_text = "\n".join(raw_rows)
     
-    # Load Memory
-    from src.services.mistake_memory import MEMORY
-    rules = MEMORY.get_rules()
-    memory_rules = "\n    ".join([f"- {r}" for r in rules]) if rules else "- No previous mistakes recorded."
+    # Load Memory (Learning System)
+    try:
+        from src.services.mistake_memory import MEMORY
+        rules = MEMORY.get_rules()
+        if rules:
+             memory_rules = "\n    ".join([f"- {r}" for r in rules])
+        else:
+             memory_rules = "- No previous mistakes recorded."
+    except Exception as e:
+        logger.warning(f"Mapper Memory Load Failed: {e}")
+        memory_rules = "- Memory System Unavailable."
     
     prompt = f"""
     You are a DATA STRUCTURE EXPERT.

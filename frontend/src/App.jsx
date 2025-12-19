@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Upload, Check, AlertCircle, Loader2, Save, FileText, Download, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { analyzeInvoice, ingestInvoice } from './services/api';
+import { analyzeInvoice, ingestInvoice, exportInvoice } from './services/api';
 
 
 function App() {
@@ -122,38 +122,39 @@ function App() {
     setErrorMsg('');
   };
 
-  const handleExport = () => {
-    if (!lineItems.length) return;
+  const handleExport = async () => {
+    if (!invoiceData || lineItems.length === 0) {
+      setErrorMsg("Nothing to export!");
+      return;
+    }
 
-    // Flatten data for Excel
-    const dataToExport = lineItems.map((item, index) => ({
-      "Sr No": index + 1,
-      "Supplier": invoiceData?.Supplier_Name || "",
-      "Invoice No": invoiceData?.Invoice_No || "",
-      "Date": invoiceData?.Invoice_Date || "",
-      "Item Name": item.Standard_Item_Name,
-      "HSN Code": item.HSN_Code,
-      "Batch No": item.Batch_No,
-      "Expiry": item.Expiry_Date,
-      "Quantity": item.Standard_Quantity,
-      "Rate": item.Rate, // EXPORT RATE
-      "MRP": item.MRP,
-      "Tax %": item.Raw_GST_Percentage,
-      "Net Amount": item.Net_Line_Amount
-    }));
+    try {
+      setSuccessMsg("Generating Excel...");
 
-    // Create Worksheet
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
+      // Call Backend
+      const blob = await exportInvoice({
+        invoice_data: invoiceData,
+        normalized_items: lineItems
+      });
 
-    // Create Workbook
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Invoice Data");
+      // Trigger Browser Download
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = invoiceData?.Invoice_No ? `Invoice_${invoiceData.Invoice_No}.xlsx` : "Export.xlsx";
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
 
-    // Generate Filename
-    const filename = invoiceData?.Invoice_No ? `Invoice_${invoiceData.Invoice_No}.xlsx` : "Export.xlsx";
+      // Cleanup
+      link.parentNode.removeChild(link);
+      setSuccessMsg("Export Complete!");
+      setTimeout(() => setSuccessMsg(null), 3000);
 
-    // Trigger Download
-    XLSX.writeFile(wb, filename);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg("Export Failed.");
+    }
   };
 
 
@@ -280,11 +281,15 @@ function App() {
                 </div>
               </div>
 
-              {/* TABLE ROWS */}
               <div className="divide-y divide-gray-800">
                 {lineItems.map((item, idx) => {
+                  // Price Watchdog Alert
+                  const rowClass = item.is_price_hike
+                    ? "grid grid-cols-12 gap-6 items-center py-3 bg-red-900/30 px-2 transition-colors border-b border-gray-800/50"
+                    : "grid grid-cols-12 gap-6 items-center py-3 hover:bg-gray-800/30 px-2 transition-colors border-b border-gray-800/50";
+
                   return (
-                    <div key={idx} className="grid grid-cols-12 gap-6 items-center py-3 hover:bg-gray-800/30 px-2 transition-colors border-b border-gray-800/50">
+                    <div key={idx} className={rowClass}>
 
                       {/* 0. Sr No */}
                       <div className="col-span-1 pl-2 text-center text-gray-500 font-mono text-sm">
@@ -342,12 +347,21 @@ function App() {
                       </div>
 
                       {/* 7. Total Cost (Net Amount) */}
-                      <div className="col-span-2 text-right pr-2">
+                      <div className="col-span-2 text-right pr-2 flex items-center justify-end gap-2">
+                        {/* Alert Icon */}
+                        {item.is_price_hike && (
+                          <div className="group relative">
+                            <AlertCircle className="w-5 h-5 text-red-500 animate-pulse cursor-help" />
+                            <span className="absolute bottom-full right-0 w-32 bg-black text-white text-xs p-1 rounded hidden group-hover:block z-50 mb-1">
+                              Price Hike Detected!
+                            </span>
+                          </div>
+                        )}
                         <input
                           type="number"
                           value={item.Net_Line_Amount || 0}
                           onChange={(e) => handleInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
-                          className="w-full bg-transparent outline-none font-mono text-right text-green-400 font-bold focus:text-green-300 text-lg"
+                          className="w-24 bg-transparent outline-none font-mono text-right text-green-400 font-bold focus:text-green-300 text-lg"
                         />
                       </div>
 
