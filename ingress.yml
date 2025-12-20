@@ -1,0 +1,14 @@
+tunnel: 87f642ac-94bc-406d-a86c-bf08e829789a
+credentials-file: /Users/pranavgupta/.cloudflared/87f642ac-94bc-406d-a86c-bf08e829789a.json
+
+ingress:
+  # Python Backend (API)
+  - hostname: api.pharmagpt.co
+    service: http://localhost:8000
+    
+  # React Frontend
+  - hostname: pharmagpt.co
+    service: http://localhost:5173
+    
+  # Catch-all
+  - service: http_status:404

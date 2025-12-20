@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'http://' + window.location.hostname + ':8000';
+const API_BASE_URL = window.location.hostname === 'localhost'
+    ? 'http://localhost:8000'
+    : window.location.hostname.includes('pharmagpt.co')
+        ? 'https://api.pharmagpt.co'
+        : 'http://' + window.location.hostname + ':8000';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
