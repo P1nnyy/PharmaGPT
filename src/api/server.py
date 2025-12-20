@@ -84,8 +84,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # --- CORS Middleware ---
 origins = [
-    "http://localhost:5173",  # Vite Default
+    "http://localhost:5173",
     "http://localhost:3000",
+    "*", 
 ]
 
 app.add_middleware(

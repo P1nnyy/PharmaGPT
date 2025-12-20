@@ -352,6 +352,7 @@ function App() {
                         {item.is_price_hike && (
                           <div className="group relative">
                             <AlertCircle className="w-5 h-5 text-red-500 animate-pulse cursor-help" />
+                            <span className="text-xl">⚠️</span>
                             <span className="absolute bottom-full right-0 w-32 bg-black text-white text-xs p-1 rounded hidden group-hover:block z-50 mb-1">
                               Price Hike Detected!
                             </span>

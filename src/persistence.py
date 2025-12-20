@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+from neo4j import Query
 from src.schemas import InvoiceExtraction, NormalizedLineItem
 from src.normalization import parse_float
 
@@ -152,7 +153,7 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            logic_note=item.get("Logic_Note", "N/A")
     )
 
-    return normalized_items
+
 
 def get_last_landing_cost(driver, product_name: str) -> float:
     """
@@ -173,6 +174,8 @@ def get_last_landing_cost(driver, product_name: str) -> float:
         pass
     return 0.0
 
+from neo4j import GraphDatabase, Query
+
 def check_inflation_on_analysis(driver, normalized_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Price Watchdog (Read-Only Check).
@@ -191,7 +194,7 @@ def check_inflation_on_analysis(driver, normalized_items: List[Dict[str, Any]]) 
             
             # If current price is higher than last price -> Inflation Alert
             # (tolerance of 1.0 to avoid noise)
-            if last_price > 0 and current_price > (last_price + 1.0):
+            if last_price > 0 and current_price > last_price:
                 item["is_price_hike"] = True
                 item["last_known_price"] = last_price 
             else:
