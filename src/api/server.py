@@ -86,6 +86,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 origins = [
     "http://localhost:5173",
     "http://localhost:3000",
+    "https://pharmagpt.co",
+    "https://api.pharmagpt.co",
+    "http://localhost:8000",
+    "http://192.168.1.4:5173",  # Mobile LAN
     "*", 
 ]
 
@@ -129,25 +133,7 @@ class ConfirmInvoiceRequest(BaseModel):
 
 # --- API Endpoints ---
 
-# SECURITY: /logs endpoint removed for production
-# @app.get("/logs")
-# async def get_logs(lines: int = 100):
-#     """
-#     Retrieves the last N lines of the application log.
-#     Useful for debugging without SSH access.
-#     """
-#     log_file = "logs/app.log"
-#     if not os.path.exists(log_file):
-#         return {"error": "Log file not found."}
-#         
-#     try:
-#         with open(log_file, "r") as f:
-#             content = f.readlines()
-#             # Return last N lines
-#             recent = content[-lines:]
-#             return {"logs": recent}
-#     except Exception as e:
-#         return {"error": f"Failed to read logs: {str(e)}"}
+
         
 @app.post("/analyze-invoice", response_model=Dict[str, Any])
 async def analyze_invoice(file: UploadFile = File(...)):
