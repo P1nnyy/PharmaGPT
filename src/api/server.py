@@ -6,12 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
+# Load Env Vars FIRST (Before imports that read os.getenv)
+load_dotenv()
+
 from src.utils.logging_config import setup_logging, get_logger, request_id_ctx
 from src.database.connection import init_driver, close_driver
 from src.api.routes import invoices, suppliers, inventory
 
 # Load Config & Logging
-load_dotenv()
 setup_logging(log_dir="logs", log_file="app.log")
 logger = get_logger("api")
 
