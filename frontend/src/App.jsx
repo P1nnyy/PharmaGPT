@@ -7,6 +7,7 @@ import DataEditor from './components/DataEditor';
 import MobileNavBar from './components/MobileNavBar';
 import HistoryView from './components/History';
 import InventoryView from './components/Inventory';
+import Login from './components/Login';
 
 function App() {
   const [activeTab, setActiveTab] = useState('invoice'); // 'invoice' | 'history' | 'inventory' | 'settings'
@@ -22,11 +23,17 @@ function App() {
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  const [username, setAuthenticatedUser] = useState(null);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  if (!username) {
+    return <Login onLogin={setAuthenticatedUser} />;
+  }
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
