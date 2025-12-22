@@ -128,6 +128,7 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             
             Fields:
             - Supplier_Name
+            - Supplier_Phone (Looking for "Phone", "Mob", "Contact", "Ph")
             - Invoice_No
             - Invoice_Date (YYYY-MM-DD format preferred)
             
@@ -143,6 +144,7 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             Return JSON:
             {{
                 "Supplier_Name": "string",
+                "Supplier_Phone": "string",
                 "Invoice_No": "string",
                 "Invoice_Date": "string"
             }}

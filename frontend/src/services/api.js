@@ -29,6 +29,8 @@ export const ingestInvoice = async (data) => {
     return response.data;
 };
 
+export const saveInvoice = ingestInvoice;
+
 export const exportInvoice = async (data) => {
     const response = await api.post('/export-excel', data, {
         responseType: 'blob', // Important for binary file download

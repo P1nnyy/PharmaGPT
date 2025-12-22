@@ -1,5 +1,6 @@
 import React from 'react';
 import { FileText, Upload, Loader2, RefreshCw } from 'lucide-react';
+// import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 const InvoiceViewer = ({ file, previewUrl, isAnalyzing, onFileChange, onReset }) => {
     return (
@@ -22,14 +23,13 @@ const InvoiceViewer = ({ file, previewUrl, isAnalyzing, onFileChange, onReset })
             </div>
 
             {/* Content */}
-            <div className="flex-1 flex items-center justify-center p-2 md:p-6 overflow-hidden relative">
+            <div className="flex-1 flex items-center justify-center overflow-hidden relative bg-black/20">
                 {previewUrl ? (
-                    <div className="relative w-full h-full flex items-center justify-center group">
-                        {/* Image Container with Zoom hint could go here later */}
+                    <div className="relative w-full h-full flex items-center justify-center p-4">
                         <img
                             src={previewUrl}
                             alt="Invoice Preview"
-                            className="max-w-full max-h-full object-contain shadow-2xl rounded-lg border border-gray-800 transition-transform duration-300"
+                            className="w-full h-full object-contain"
                         />
                     </div>
                 ) : (

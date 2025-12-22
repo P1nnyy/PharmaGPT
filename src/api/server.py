@@ -379,5 +379,48 @@ async def export_excel_endpoint(request: ConfirmInvoiceRequest):
         logger.error(f"Excel Export Failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# --- History & Inventory Endpoints ---
+
+@app.get("/history", response_model=List[Dict[str, Any]])
+async def get_history_endpoint():
+    """
+    Returns grouped invoice history by Supplier.
+    """
+    if not driver:
+         raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        from src.persistence import get_supplier_history
+        return get_supplier_history(driver)
+    except Exception as e:
+        logger.error(f"History Fetch Failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/inventory", response_model=List[Dict[str, Any]])
+async def get_inventory_endpoint():
+    """
+    Returns aggregated inventory (Product Name + MRP).
+    """
+    if not driver:
+         raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        from src.persistence import get_inventory_aggregation
+        return get_inventory_aggregation(driver)
+    except Exception as e:
+        logger.error(f"Inventory Fetch Failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class EnrichmentRequest(BaseModel):
+    supplier_name: str
+
+@app.post("/enrich-supplier")
+async def enrich_supplier_endpoint(request: EnrichmentRequest):
+    """
+    Triggers an Agent to find missing GST/Phone for a Supplier.
+    (Placeholder for Agent Logic - currently just acknowledges)
+    """
+    # TODO: Implement LangGraph Agent here to search Vector Store or Web
+    return {"status": "queued", "message": f"Enrichment started for {request.supplier_name}"}
+
 if __name__ == "__main__":
     uvicorn.run("src.api.server:app", host="0.0.0.0", port=8000, reload=True)

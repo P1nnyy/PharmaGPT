@@ -330,8 +330,10 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     current_sum = sum(float(item.get("Net_Line_Amount", 0)) for item in line_items)
     gap = current_sum - grand_total
     
-    # Threshold for "Close Enough" (e.g. 0.5% or 1.0)
-    if abs(gap) < max(1.0, grand_total * 0.005):
+    # Threshold for "Close Enough"
+    # UPDATED: Tightened to 0.1% (or 0.5 Rs) because Pharma margins are thin.
+    # Previously 0.5% (17 Rs on 3500) masked valid Discount-Tax info.
+    if abs(gap) < max(0.5, grand_total * 0.001):
         # logger object not strictly available here unless imported. 
         # But we can import it inside or use print if we trust stdout capture? 
         # Better: Assume caller (server) handles logging? No, server called this.

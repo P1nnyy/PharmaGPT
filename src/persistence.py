@@ -64,17 +64,26 @@ def _create_draft_tx(tx, invoice_no, supplier, state):
 
 def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
     query = """
-    MERGE (i:Invoice {invoice_number: $invoice_no, supplier_name: $supplier_name})
+    // 1. Merge Supplier
+    MERGE (s:Supplier {name: $supplier_name})
+    
+    // 2. Merge Invoice
+    MERGE (i:Invoice {invoice_number: $invoice_no})
     ON CREATE SET 
+        i.supplier_name = $supplier_name,
         i.status = 'CONFIRMED',
         i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
         i.created_at = timestamp()
     ON MATCH SET
+        i.supplier_name = $supplier_name,
         i.status = 'CONFIRMED',
         i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
         i.updated_at = timestamp()
+        
+    // 3. Link Supplier -> Invoice
+    MERGE (s)-[:ISSUED]->(i)
     """
     tx.run(query, 
            invoice_no=invoice_data.Invoice_No, 
@@ -174,7 +183,6 @@ def get_last_landing_cost(driver, product_name: str) -> float:
         pass
     return 0.0
 
-from neo4j import GraphDatabase, Query
 
 def check_inflation_on_analysis(driver, normalized_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -203,3 +211,100 @@ def check_inflation_on_analysis(driver, normalized_items: List[Dict[str, Any]]) 
             item["is_price_hike"] = False
                 
     return normalized_items
+
+
+# --- History & Inventory Queries ---
+
+def get_supplier_history(driver) -> List[Dict[str, Any]]:
+    """
+    Returns a list of Suppliers, each with their invoices.
+    Structure:
+    [
+      {
+        "name": "Deepak Agencies",
+        "gst": "29...",
+        "phone": "98...",
+        "invoices": [
+           {"invoice_number": "INV-001", "date": "...", "total": 1000.0, "item_count": 5}
+        ]
+      }
+    ]
+    """
+    query = """
+    MATCH (s:Supplier)
+    OPTIONAL MATCH (s)-[:ISSUED]->(i:Invoice)
+    WITH s, i ORDER BY i.created_at DESC
+    WITH s, collect({
+        invoice_number: i.invoice_number,
+        date: i.invoice_date,
+        total: i.grand_total,
+        status: i.status
+    }) as invoices
+    RETURN s.name as name, s.gst as gst, s.phone as phone, invoices
+    ORDER BY name ASC
+    """
+    with driver.session() as session:
+        result = session.run(query)
+        data = []
+        for record in result:
+            row = {
+                "name": record["name"],
+                "gst": record["gst"],
+                "phone": record["phone"],
+                # Filter out null invoices if a supplier exists but has no linked invoices (edge case)
+                "invoices": [inv for inv in record["invoices"] if inv["invoice_number"]]
+            }
+            data.append(row)
+        return data
+
+def get_inventory_aggregation(driver) -> List[Dict[str, Any]]:
+    """
+    Returns inventory aggregated by Product Name + MRP.
+    Calculates Total Quantity (Stock).
+    """
+    query = """
+    MATCH (l:Line_Item)-[:REFERENCES]->(p:Product)
+    WITH p.name as product_name, l.mrp as mrp, sum(l.quantity) as total_qty, collect(l.batch_no) as batches
+    RETURN product_name, mrp, total_qty, batches
+    ORDER BY product_name ASC
+    """
+    with driver.session() as session:
+        result = session.run(query)
+        return [
+            {
+                "product_name": record["product_name"],
+                "mrp": record["mrp"],
+                "total_quantity": record["total_qty"],
+                "batches": list(set(record["batches"])) # Dedupe batches
+            }
+            for record in result
+        ]
+
+def check_inflation_on_analysis(driver, normalized_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Price Watchdog (Read-Only Check).
+    Iterates through extracted items and checks Neo4j for previous higher prices.
+    Injects 'is_price_hike': True/False into the item dict.
+    """
+    if not driver:
+        return normalized_items
+
+    for item in normalized_items:
+        name = item.get("Standard_Item_Name")
+        current_price = item.get("Final_Unit_Cost", 0.0)
+        
+        if name:
+            last_price = get_last_landing_cost(driver, name)
+            
+            # If current price is higher than last price -> Inflation Alert
+            # (tolerance of 1.0 to avoid noise)
+            if last_price > 0 and current_price > last_price:
+                item["is_price_hike"] = True
+                item["last_known_price"] = last_price 
+            else:
+                item["is_price_hike"] = False
+        else:
+            item["is_price_hike"] = False
+                
+    return normalized_items
+
