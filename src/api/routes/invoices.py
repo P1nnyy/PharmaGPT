@@ -1,0 +1,143 @@
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from typing import Dict, Any, List
+import tempfile
+import shutil
+import os
+from src.schemas import InvoiceExtraction
+from src.normalization import normalize_line_item, reconcile_financials, parse_float
+from src.database import ingest_invoice, check_inflation_on_analysis
+from src.database.connection import get_driver 
+from src.workflow.graph import run_extraction_pipeline
+from src.utils.logging_config import get_logger
+from pydantic import BaseModel
+
+logger = get_logger("api.invoices")
+router = APIRouter()
+
+# Template Setup (Assuming templates dir is in src/api/templates)
+# Adjust path relative to this file: src/api/routes/invoices.py -> ../templates
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates"))
+
+class ConfirmInvoiceRequest(BaseModel):
+    invoice_data: Dict[str, Any]
+    normalized_items: List[Dict[str, Any]]
+
+@router.post("/analyze-invoice", response_model=Dict[str, Any])
+async def analyze_invoice(file: UploadFile = File(...)):
+    """
+    Step 1: Analyzes the invoice (OCR + Normalization) but DOES NOT persist to DB.
+    """
+    tmp_path = None
+    try:
+        suffix = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ".tmp"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+        
+        extracted_data = await run_extraction_pipeline(tmp_path)
+        if extracted_data is None:
+            raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
+        
+        invoice_obj = InvoiceExtraction(**extracted_data)
+        normalized_items = []
+        for raw_item in invoice_obj.Line_Items:
+            raw_dict = raw_item.model_dump() if hasattr(raw_item, 'model_dump') else raw_item.dict()
+            norm_item = normalize_line_item(raw_dict, invoice_obj.Supplier_Name)
+            normalized_items.append(norm_item)
+        
+        grand_total = parse_float(extracted_data.get("Stated_Grand_Total") or extracted_data.get("Invoice_Amount", 0.0))
+        normalized_items = reconcile_financials(normalized_items, extracted_data, grand_total)
+        
+        driver = get_driver()
+        if driver:
+             normalized_items = check_inflation_on_analysis(driver, normalized_items)
+        
+        validation_flags = []
+        calculated_total = sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
+        if grand_total > 0 and abs(calculated_total - grand_total) > 5.0:
+             validation_flags.append(f"Critical Mismatch: Calculated ({calculated_total}) != Stated ({grand_total})")
+
+        return {
+            "status": "review_needed",
+            "message": "Analysis complete.",
+            "invoice_data": extracted_data,
+            "normalized_items": normalized_items,
+            "validation_flags": validation_flags
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Analysis Failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+@router.post("/confirm-invoice", response_model=Dict[str, Any])
+async def confirm_invoice(request: ConfirmInvoiceRequest):
+    """
+    Step 2: Persists validated data to Neo4j.
+    """
+    driver = get_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        invoice_obj = InvoiceExtraction(**request.invoice_data)
+        ingest_invoice(driver, invoice_obj, request.normalized_items)
+        
+        return {
+            "status": "success",
+            "message": f"Invoice {invoice_obj.Invoice_No} persisted successfully.",
+            "invoice_number": invoice_obj.Invoice_No
+        }
+    except Exception as e:
+        logger.exception("Confirmation Failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/report/{invoice_no}", response_class=HTMLResponse)
+async def get_report(request: Request, invoice_no: str):
+    driver = get_driver()
+    if not driver:
+         return templates.TemplateResponse("error.html", {"request": request, "message": "Database unavailable"})
+
+    query = """
+    MATCH (i:Invoice {invoice_number: $invoice_no})
+    OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
+    OPTIONAL MATCH (l)-[:REFERENCES]->(p:Product)
+    RETURN i, collect({line: l, product: p, raw_desc: l.raw_description, stated_net: l.stated_net_amount, batch_no: l.batch_no, hsn_code: l.hsn_code}) as items
+    """
+    
+    with driver.session() as session:
+        result = session.run(query, invoice_no=invoice_no).single()
+    
+    if not result:
+        return templates.TemplateResponse("error.html", {"request": request, "message": f"Invoice {invoice_no} not found"})
+
+    invoice_node = result["i"]
+    items = result["items"]
+    
+    invoice_details = dict(invoice_node)
+    line_items = []
+    for item in items:
+        line_data = dict(item["line"]) if item["line"] else {}
+        product_data = dict(item["product"]) if item["product"] else {}
+        
+        line_items.append({
+            **line_data, 
+            "product_name": product_data.get("name", "Unknown"),
+            "raw_product_name": item.get("raw_desc", "N/A"),
+            "stated_net_amount": item.get("stated_net", 0.0),
+            "calculated_tax_amount": line_data.get("calculated_tax_amount", 0.0),
+            "batch_no": item.get("batch_no", ""),
+            "hsn_code": item.get("hsn_code", "")
+        })
+
+    return templates.TemplateResponse("report.html", {
+        "request": request,
+        "invoice": invoice_details,
+        "line_items": line_items
+    })
