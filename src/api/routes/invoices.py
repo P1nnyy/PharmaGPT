@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 import tempfile
 import shutil
 import os
+import uuid
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item, reconcile_financials, parse_float
 from src.database import ingest_invoice, check_inflation_on_analysis
@@ -23,6 +24,7 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(os.path.dirna
 class ConfirmInvoiceRequest(BaseModel):
     invoice_data: Dict[str, Any]
     normalized_items: List[Dict[str, Any]]
+    image_path: str = None
 
 @router.post("/analyze-invoice", response_model=Dict[str, Any])
 async def analyze_invoice(file: UploadFile = File(...)):
@@ -30,11 +32,24 @@ async def analyze_invoice(file: UploadFile = File(...)):
     Step 1: Analyzes the invoice (OCR + Normalization) but DOES NOT persist to DB.
     """
     tmp_path = None
+    saved_image_path = None
     try:
         suffix = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ".tmp"
+        
+        # 1. Save temporarily for processing
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             shutil.copyfileobj(file.file, tmp)
             tmp_path = tmp.name
+            
+        # 2. Save Permanently for History
+        file.file.seek(0)
+        unique_filename = f"{uuid.uuid4()}{suffix}"
+        permanent_path = os.path.join("uploads", "invoices", unique_filename)
+        with open(permanent_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # Store relative path for frontend access (via /static mount)
+        saved_image_path = f"/static/invoices/{unique_filename}"
         
         extracted_data = await run_extraction_pipeline(tmp_path)
         if extracted_data is None:
@@ -64,7 +79,8 @@ async def analyze_invoice(file: UploadFile = File(...)):
             "message": "Analysis complete.",
             "invoice_data": extracted_data,
             "normalized_items": normalized_items,
-            "validation_flags": validation_flags
+            "validation_flags": validation_flags,
+            "image_path": saved_image_path
         }
 
     except HTTPException:
@@ -87,7 +103,7 @@ async def confirm_invoice(request: ConfirmInvoiceRequest):
 
     try:
         invoice_obj = InvoiceExtraction(**request.invoice_data)
-        ingest_invoice(driver, invoice_obj, request.normalized_items)
+        ingest_invoice(driver, invoice_obj, request.normalized_items, request.image_path)
         
         return {
             "status": "success",

@@ -12,7 +12,8 @@ def get_supplier_history(driver) -> List[Dict[str, Any]]:
         invoice_number: i.invoice_number,
         date: i.invoice_date,
         total: i.grand_total,
-        status: i.status
+        status: i.status,
+        image_path: i.image_path
     }) as invoices
     RETURN s.name as name, s.gst as gst, s.phone as phone, invoices
     ORDER BY name ASC

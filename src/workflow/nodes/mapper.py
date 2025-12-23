@@ -79,7 +79,9 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
       - **CRITICAL**: Watch for faint decimal points.
       - **Consistency**: Ideally `Qty * Rate` ~= `Amount`. If `Amount` is wildly different, check if you missed a decimal in Rate or Amount.
       - **Selection**: If "Total" and "Amount" both exist, prefer "Amount" (usually strict final). Avoid "Total" if it looks like Gross/MRP-based.
-    - **MRP**: Max Retail Price.
+    - **MRP**: Max Retail Price (PER UNIT).
+      - **CRITICAL**: Do NOT extract the "Amount" or "Net Total" column as MRP.
+      - MRP should be reasonably close to the Rate (Unit Price).
     
     CRITICAL:
     1. **Merges**: DO NOT merge distinct products. "Vaporub 5gm" and "Vaporub 10gm" are DIFFERENT.

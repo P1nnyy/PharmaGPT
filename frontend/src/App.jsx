@@ -14,6 +14,7 @@ function App() {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [invoiceData, setInvoiceData] = useState(null);
+  const [imagePath, setImagePath] = useState(null);
   const [lineItems, setLineItems] = useState([]);
   const [warnings, setWarnings] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -59,6 +60,7 @@ function App() {
     setFile(selectedFile);
     setPreviewUrl(URL.createObjectURL(selectedFile));
     setInvoiceData(null);
+    setImagePath(null);
     setLineItems([]);
     setWarnings([]);
     setSuccessMsg(null);
@@ -72,6 +74,7 @@ function App() {
     setFile(null);
     setPreviewUrl(null);
     setInvoiceData(null);
+    setImagePath(null);
     setLineItems([]);
     setWarnings([]);
     setSuccessMsg(null);
@@ -81,6 +84,7 @@ function App() {
   const handleAnalysisComplete = (data) => {
     setInvoiceData(data.invoice_data);
     setLineItems(data.normalized_items);
+    setImagePath(data.image_path);
     setWarnings(data.validation_flags || []);
     setIsAnalyzing(false);
   };
@@ -110,7 +114,8 @@ function App() {
       // Construct payload matching backend expectation
       const payload = {
         invoice_data: invoiceData,
-        normalized_items: lineItems
+        normalized_items: lineItems,
+        image_path: imagePath
       };
 
       await saveInvoice(payload);

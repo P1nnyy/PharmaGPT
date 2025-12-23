@@ -266,6 +266,28 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                          
                 item["Qty"] = q_val
                 
+                # 8. MRP Sanity Check (Fixes "MRP = Line Total" Error)
+                # If MRP is exactly equal to the Net Amount (and Qty > 1), it's a column mapping error.
+                check_mrp = float(item.get("MRP") or 0)
+                if check_mrp > 0 and q_val > 1.5:
+                     line_amt = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
+                     # Check if MRP is suspiciously close to the Total Amount
+                     if abs(check_mrp - line_amt) < max(1.0, line_amt * 0.01):
+                         logger.warning(f"Auditor: MRP ({check_mrp}) equals Line Amount. Suspected Column Mapping Error.")
+                         
+                         # Attempt Fix: Set MRP roughly to Rate
+                         check_rate = float(item.get("Rate") or 0)
+                         if check_rate > 0:
+                             # Generally MRP >= Rate. If Rate is available, use it as a safe floor.
+                             # If we assume some margin, maybe Rate * 1.1? But Rate is safer than Amount.
+                             item["MRP"] = check_rate 
+                             item["Logic_Note"] = item.get("Logic_Note", "") + " [MRP Fix: Was Amount]"
+                         else:
+                             # Calculate from Amount/Qty
+                             calc_mrp = line_amt / q_val
+                             item["MRP"] = round(calc_mrp, 2)
+                             item["Logic_Note"] = item.get("Logic_Note", "") + " [MRP Fix: Calc from Amt/Qty]"
+
                 # --- END SANITY CHECKS ---
 
                 deduped_line_items.append(item)

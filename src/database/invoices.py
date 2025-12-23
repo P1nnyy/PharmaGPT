@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 from src.schemas import InvoiceExtraction
 
-def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]]):
+def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]], image_path: str = None):
     """
     Ingests invoice and line item data into Neo4j.
     """
@@ -10,13 +10,13 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
     
     with driver.session() as session:
         # 1. Merge Invoice
-        session.execute_write(_create_invoice_tx, invoice_data, grand_total)
+        session.execute_write(_create_invoice_tx, invoice_data, grand_total, image_path)
         
     # 2. Process Line Items
         for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
             session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item)
 
-def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
+def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float, image_path: str = None):
     query = """
     // 1. Merge Supplier
     MERGE (s:Supplier {name: $supplier_name})
@@ -28,12 +28,14 @@ def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
         i.status = 'CONFIRMED',
         i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
+        i.image_path = $image_path,
         i.created_at = timestamp()
     ON MATCH SET
         i.supplier_name = $supplier_name,
         i.status = 'CONFIRMED',
         i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
+        i.image_path = $image_path,
         i.updated_at = timestamp()
         
     // 3. Link Supplier -> Invoice
@@ -43,7 +45,8 @@ def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float):
            invoice_no=invoice_data.Invoice_No, 
            supplier_name=invoice_data.Supplier_Name,
            invoice_date=invoice_data.Invoice_Date,
-           grand_total=grand_total)
+           grand_total=grand_total,
+           image_path=image_path)
 
 def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: Any):
     query = """

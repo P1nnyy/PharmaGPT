@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
+from fastapi.staticfiles import StaticFiles
+
 # Load Env Vars FIRST (Before imports that read os.getenv)
 load_dotenv()
 
@@ -18,6 +20,10 @@ setup_logging(log_dir="logs", log_file="app.log")
 logger = get_logger("api")
 
 app = FastAPI(title="Invoice Extractor API")
+
+# Mount Static Files (Images)
+os.makedirs("uploads/invoices", exist_ok=True)
+app.mount("/static", StaticFiles(directory="uploads"), name="static")
 
 # --- Middleware ---
 @app.middleware("http")

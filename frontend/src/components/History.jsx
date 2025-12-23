@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Calendar, FileText, ChevronDown, ChevronUp, Phone, MapPin } from 'lucide-react';
+import { Package, Calendar, FileText, ChevronDown, ChevronUp, Phone, MapPin, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 const History = () => {
     const [suppliers, setSuppliers] = useState([]);
@@ -83,21 +84,49 @@ const History = () => {
                         {expandedSupplier === supplier.name && (
                             <div className="bg-slate-900/50 p-3 space-y-2 border-t border-slate-700">
                                 {supplier.invoices.map((inv) => (
-                                    <div key={inv.invoice_number} className="bg-slate-800 p-3 rounded-lg border border-slate-700/50 flex justify-between items-center">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-indigo-300 font-medium">{inv.invoice_number}</span>
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${inv.status === 'CONFIRMED' ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 'border-slate-600 text-slate-400'}`}>
-                                                    {inv.status}
-                                                </span>
+                                    <div key={inv.invoice_number} className="bg-slate-800 p-3 rounded-lg border border-slate-700/50 flex flex-col gap-2">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-indigo-300 font-medium">{inv.invoice_number}</span>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${inv.status === 'CONFIRMED' ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 'border-slate-600 text-slate-400'}`}>
+                                                        {inv.status}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
+                                                    <Calendar className="w-3 h-3" /> {inv.date || "No Date"}
+                                                </div>
                                             </div>
-                                            <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                                                <Calendar className="w-3 h-3" /> {inv.date || "No Date"}
+                                            <div className="text-right">
+                                                <div className="text-slate-200 font-bold">₹{inv.total?.toFixed(2)}</div>
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <div className="text-slate-200 font-bold">₹{inv.total?.toFixed(2)}</div>
-                                        </div>
+
+                                        {inv.image_path && (
+                                            <div className="mt-2 border-t border-slate-700/50 pt-2 bg-black/20 rounded-lg overflow-hidden">
+                                                <TransformWrapper>
+                                                    {({ zoomIn, zoomOut, resetTransform }) => (
+                                                        <>
+                                                            <div className="flex justify-end gap-2 p-2 mb-2">
+                                                                <button onClick={() => zoomIn()} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><ZoomIn className="w-4 h-4" /></button>
+                                                                <button onClick={() => zoomOut()} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><ZoomOut className="w-4 h-4" /></button>
+                                                                <button onClick={() => resetTransform()} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><RotateCcw className="w-4 h-4" /></button>
+                                                            </div>
+                                                            <TransformComponent wrapperClass="w-full !h-auto min-h-[200px] cursor-grab active:cursor-grabbing">
+                                                                <img
+                                                                    src={window.location.hostname.includes('pharmagpt.co')
+                                                                        ? `https://api.pharmagpt.co${inv.image_path}`
+                                                                        : `http://localhost:8000${inv.image_path}`}
+                                                                    alt="Invoice"
+                                                                    className="w-full h-auto rounded-md shadow-lg"
+                                                                    loading="lazy"
+                                                                />
+                                                            </TransformComponent>
+                                                        </>
+                                                    )}
+                                                </TransformWrapper>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
 
