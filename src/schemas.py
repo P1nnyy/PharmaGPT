@@ -8,7 +8,9 @@ class RawLineItem(BaseModel):
     """
     Product: str = Field(..., description="The product description exactly as it appears on the invoice.")
     Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
+    Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
     Batch: Optional[str] = Field(None, description="Batch number.")
+    Section: Optional[str] = Field("Main", description="Section of invoice (e.g. 'Main', 'Sales Return').")
     
     # New Blind Fields
     Amount: Optional[Union[str, float]] = Field(None, description="The neutral column value (Amount/Total) found on the invoice.")
@@ -18,9 +20,13 @@ class RawLineItem(BaseModel):
     HSN: Optional[str] = Field(None, description="HSN/SAC code.")
     
     # Transport Field (Filled by Solver)
-    Net_Line_Amount: Optional[float] = Field(None, description="Calculated Net Amount (Reconciled) from Solver.")
+    Net_Line_Amount: Optional[float] = Field(None, description="Calculated Net Amount (Reconciled) from Solver (PascalCase).")
     Calculated_Cost_Price_Per_Unit: Optional[float] = Field(None, description="Calculated Cost Price Per Unit (Reconciled).")
     Logic_Note: Optional[str] = Field(None, description="Explanation of Solver logic.")
+    
+    # NEW: Snake Case fields (Preferred) - Prevent stripping by Pydantic
+    net_amount: Optional[float] = Field(None, description="Discounted Net Amount from Solver.")
+    landing_cost: Optional[float] = Field(None, description="Discounted Landing Cost from Solver.")
 
 class InvoiceExtraction(BaseModel):
     """

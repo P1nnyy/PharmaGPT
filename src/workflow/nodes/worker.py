@@ -43,24 +43,16 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             2. Extract EVERY row of text you see.
             3. Format as a PIPE-SEPARATED Table (Markdown format).
             4. Include headers if visible.
-            5. Do NOT try to rename columns. Capture exact text like "Pcode", "Qty", "Billed", "Sales Qty", "Rate".
+            5. **Do not merge rows**. Keep every single line item separate.
+            6. **DUPLICATES**: If the Exact Same Item appears multiple times, LIST IT MULTIPLE TIMES.
             
             CRITICAL TABLE PARSING RULES:
-            - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free" or capture as "10+2" in one cell. DO NOT shift data left/right.
-            - **Prices are NOT Quantities**: "MRP" (e.g. 200.00) and "Rate" (e.g. 150.00) are typically larger than "Qty" (e.g. 1, 10). Do not mix them up.
+            - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free".
+            - **Prices are NOT Quantities**: "MRP" (200.00) != "Qty" (10).
+            - **NO PHANTOM ROWS**: Only extract text that is visibly present.
+            - **MERGE MULTI-LINE DESCRIPTIONS**: If a product name spans two lines, keep it on ONE ROW.
             
-            IMPORTANT:
-            - **DUPLICATES**: If the Exact Same Item appears on multiple lines (e.g. "Dolo 650" twice), LIST IT TWICE. Do not combine them.
-            - **DENSE ROWS**: If you see "Vaporub 5gm" and "Vaporub 10gm" on separate lines, WRITE THEM ON SEPARATE LINES.
-            - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
-            - **NO MERGING**: Do not merge distinct visual rows.
-            - **COLUMNS**: Aggressively look for "Net Amount", "Total", "Amount", "Value".
-            
-            Output Format Example:
-            | Description | Pcode | Qty | Rate | Amount | Net Amount |
-            | Vicks 5gm | 80811 | 1 | 100 | 100 | 112 |
-            
-            Return ONLY the markdown table string. No JSON.
+            Output ONLY the markdown table string.
             """
             response = await model.generate_content_async([prompt, image_file])
             text = response.text.strip()
@@ -245,37 +237,34 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             4. **DUPLICATES**: If the Exact Same Item appears multiple times, LIST IT MULTIPLE TIMES.
             5. Capture exact headers like "Pcode", "Rate", "Amount", "Net Amount", "Total".
             
-            Output ONLY the table.
+            Output JSON format:
+            {{
+                "table_markdown": "| ... |",
+                "Stated_Grand_Total": 1234.56
+            }}
             """
             
             response = await model.generate_content_async([prompt, sample_file])
-            text = response.text.strip()
+            text = response.text.replace("```json", "").replace("```", "").strip()
             
-            raw_text_rows = [text] 
+            try:
+                data = json.loads(text)
+                raw_text_rows = [data.get("table_markdown", "")]
+                stated_total = data.get("Stated_Grand_Total", 0.0)
+                
+                global_modifiers = {"Stated_Grand_Total": stated_total}
+                anchor_totals = {"Stated_Grand_Total": stated_total}
+                
+                logger.info(f"Worker (Recovery): Extracted Anchor Total: {stated_total}")
+            except:
+                # Fallback if model just returns text (legacy behavior)
+                logger.warning("Worker (Recovery): Failed to parse JSON. Treating output as raw table.")
+                raw_text_rows = [text]
+                global_modifiers = {}
+                anchor_totals = {}
             
             # Skip old logic
             line_item_fragments = []
-            # Assumption: Invoice items are listed in order. If HSN is missing, it's likely same as above.
-            logger.info("DEBUG: Starting HSN Forward Fill...")
-            print("DEBUG: Starting HSN Forward Fill...")
-            
-            last_valid_hsn = None
-            for i, item in enumerate(line_item_fragments):
-                curr_hsn = item.get("HSN")
-                desc = item.get("Product")
-                
-                logger.info(f"DEBUG: Item {i} '{desc}' | HSN: {curr_hsn} | Last: {last_valid_hsn}")
-                
-                if curr_hsn and str(curr_hsn).strip().lower() not in ["", "none", "null", "n/a"]:
-                    last_valid_hsn = curr_hsn
-                elif last_valid_hsn:
-                    # Fill missing HSN from previous valid one
-                    item["HSN"] = last_valid_hsn
-                    logger.info(f"Worker: Forward Filled HSN {last_valid_hsn} for '{desc}'")
-                    print(f"DEBUG: Filled HSN {last_valid_hsn} for {desc}")
-
-            global_modifiers = {} 
-            anchor_totals = {}
             error_logs = []
             
         else:

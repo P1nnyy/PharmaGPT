@@ -54,6 +54,20 @@ async def analyze_invoice(file: UploadFile = File(...)):
         extracted_data = await run_extraction_pipeline(tmp_path)
         if extracted_data is None:
             raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
+            
+        # SANITIZATION (Prevent Pydantic Crash on Missing Data)
+        # Ensure all line items have a valid Product string.
+        if "Line_Items" in extracted_data:
+            valid_items = []
+            for item in extracted_data["Line_Items"]:
+                if not item: continue
+                # Fix missing Product
+                if not item.get("Product"):
+                    item["Product"] = "Unknown Item (Missing Name)"
+                
+                # Ensure fields are compatible (handle None explicitly if needed)
+                valid_items.append(item)
+            extracted_data["Line_Items"] = valid_items
         
         invoice_obj = InvoiceExtraction(**extracted_data)
         normalized_items = []
@@ -157,3 +171,51 @@ async def get_report(request: Request, invoice_no: str):
         "invoice": invoice_details,
         "line_items": line_items
     })
+
+@router.get("/invoices/{invoice_no}/items", response_model=Dict[str, Any])
+async def get_invoice_items_json(invoice_no: str):
+    """
+    Returns invoice details and line items as JSON (for Frontend Modal).
+    """
+    driver = get_driver()
+    if not driver:
+         raise HTTPException(status_code=503, detail="Database unavailable")
+
+    query = """
+    MATCH (i:Invoice {invoice_number: $invoice_no})
+    OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
+    OPTIONAL MATCH (l)-[:REFERENCES]->(p:Product)
+    RETURN i, collect({line: l, product: p, raw_desc: l.raw_description, stated_net: l.stated_net_amount, batch_no: l.batch_no, hsn_code: l.hsn_code}) as items
+    """
+    
+    with driver.session() as session:
+        result = session.run(query, invoice_no=invoice_no).single()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_no} not found")
+
+    invoice_node = result["i"]
+    items = result["items"]
+    
+    invoice_details = dict(invoice_node)
+    line_items = []
+    for item in items:
+        if not item["line"]: continue
+        
+        line_data = dict(item["line"])
+        product_data = dict(item["product"]) if item["product"] else {}
+        
+        line_items.append({
+            **line_data, 
+            "product_name": product_data.get("name", "Unknown"),
+            "raw_product_name": item.get("raw_desc", "N/A"),
+            "stated_net_amount": item.get("stated_net", 0.0),
+            "calculated_tax_amount": line_data.get("calculated_tax_amount", 0.0),
+            "batch_no": item.get("batch_no", ""),
+            "hsn_code": item.get("hsn_code", "")
+        })
+
+    return {
+        "invoice": invoice_details,
+        "line_items": line_items
+    }

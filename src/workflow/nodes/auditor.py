@@ -30,6 +30,38 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     if not image_path or not line_items:
         return {"error_logs": ["Auditor: Missing input data."]}
 
+    # 0. Separate Sales Returns (User Request: Treat as Global Discount)
+    # Items marked as 'is_sales_return' are REMOVED from the list but their value is added to Discount.
+    sales_return_items = []
+    processing_items = []
+    return_value_sum = 0.0
+    
+    sales_return_items = []
+    processing_items = []
+    return_value_sum = 0.0
+    
+    for item in line_items:
+        # Check Flag OR Section
+        should_return = item.get("is_sales_return") is True
+        if item.get("Section") and str(item.get("Section")).lower() in ["sales return", "return", "credit note"]:
+            should_return = True
+            
+        if should_return:
+            sales_return_items.append(item)
+            try:
+                val = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
+                return_value_sum += val
+            except:
+                pass
+        else:
+            processing_items.append(item)
+            
+    if sales_return_items:
+        logger.info(f"Auditor: Detected {len(sales_return_items)} Sales Return Items. Total Value: {return_value_sum}. Converting to Global Discount.")
+        # Add to Global Discount
+        current_discount = float(global_modifiers.get("Global_Discount_Amount") or 0)
+        global_modifiers["Global_Discount_Amount"] = current_discount + return_value_sum
+
     # Deduplication Logic (Prevent Value Overflow from overlapping zones)
     unique_items_map = {}
     deduped_line_items = []
@@ -38,13 +70,19 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     raw_sources = state.get("raw_text_rows", [])
     is_single_source = (len(raw_sources) <= 1)
     
-    for item in line_items:
+    for item in processing_items:
         try:
             # 1. Scalable Noise Filter
             # UPDATED: Use Amount
             n_val = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
             q_val = float(item.get("Qty") or 0)
+            prod_name = str(item.get("Product", "")).strip()
             
+            # BLOCK Empty Names immediately
+            if not prod_name or len(prod_name) < 2:
+                logger.info(f"Auditor: Dropping item with empty/short name: '{prod_name}' (Amt: {n_val})")
+                continue
+
             # Allow items if they have a valid Batch Number, even if value is 0
             has_batch = item.get("Batch") and item.get("Batch") not in ["", "None", "N/A", None]
             
@@ -52,9 +90,17 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 continue # Skip noise
                 
             # 2. Keyword Blacklist (Safety Net)
-            desc_lower = str(item.get("Product", "")).lower()
-            blacklist = ["total", "subtotal", "grand total", "amount", "output", "input", "gst", "freight", "discount", "round off", "net amount", "taxable value", "output cgst", "output sgst"]
-            logger.info(f"Auditor Check: '{desc_lower}'") 
+            desc_lower = prod_name.lower()
+            # UPDATED: Removed "total" to prevent false positives like "REVITAL TOTAL" or "BEMINAL TOTAL".
+            # Only block specific footer keywords.
+            blacklist = ["subtotal", "grand total", "net amount", "taxable value", "output cgst", "output sgst", "round off"]
+            
+            # Additional check: If "total" is the ENTIRE description, drop it. But if it's "Product Total", keep it.
+            if desc_lower.strip() == "total":
+                 logger.info(f"Auditor: Dropping generic 'Total' row")
+                 continue
+
+            logger.info(f"Auditor Check: '{desc_lower}')") 
             if any(bad_word in desc_lower for bad_word in blacklist):
                 logger.info(f"Auditor: Dropping Blacklisted Item '{desc_lower}'")
                 continue
@@ -92,7 +138,7 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             # 3. Fuzzy Deduplication (SequenceMatcher)
             # Strategy: Compare against ALL existing uniques for >0.9 similarity
             # If match found, Merge (Keep Max). If not, Append.
-            desc_norm = str(item.get("Product", "")).strip().lower()
+            desc_norm = prod_name.lower()
             
             # 2b. Batch Scavenger & Scheme Filter
             # "One man's trash is another man's treasure."
@@ -180,29 +226,56 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                      val_ex = float(existing_item.get("Amount") or existing_item.get("Stated_Net_Amount") or 0)
                      
                      if q_curr == q_ex and abs(val_curr - val_ex) < 1.0:
-                         # Identical Item Found
-                         
-                         if is_single_source:
-                             # SINGLE SOURCE -> Duplicate implies intentional split (e.g. 10+2 scheme) -> KEEP SEPARATE
-                             # User Request: "remove that qty adding logic... model listed all those items thrice in the correct order, but inflated the first item price"
-                             logger.info(f"Auditor: Single Source Duplicate '{desc_norm}' -> KEEPING SEPARATE (User Preference)")
-                             merged = False # Do NOT merge. Keep as distinct row.
-                             
-                         else:
-                             # MULTI SOURCE -> Duplicate implies OCR Overlap (Redundant) -> DROP
-                             merged = True
-                             logger.info(f"Auditor: Dropping Exact Duplicate '{desc_norm}' (Redundant OCR from overlapping zones)")
+                         # Identical Item Found -> DUPLICATE
+                         # We always merge identical items (Same Batch, Same Qty, Same Price)
+                         # because distinct line items usually differ in Batch or Price.
+                         merged = True
+                         logger.info(f"Auditor: Dropping Exact Duplicate '{desc_norm}' (Redundant/Hallucinated)")
                      else:
                          # Same Batch, Different Values -> Real Split Entry? -> KEEP BOTH
-                         merged = False 
-                         logger.info(f"Auditor: Same Batch but Different Values ({val_curr} vs {val_ex}) -> KEEPING BOTH")
+                         # UNLESS one is clearly a Tax/Fragment (e.g. < 20% of the other)
+                         max_val = max(val_curr, val_ex)
+                         min_val = min(val_curr, val_ex)
+                         
+                         if max_val > 0 and (min_val / max_val) < 0.20:
+                             logger.info(f"Auditor: Dropping Phantom Fragment {min_val} (vs {max_val}). Likely Tax Component.")
+                             
+                             # If we are dropping the NEW item, verify Qty?
+                             if val_curr < val_ex:
+                                 # Drop NEW item (Merged=True means "Don't Append")
+                                 merged = True
+                             else:
+                                 # Drop EXISTING item (Replace it with new item? Or invalid state?)
+                                 # To keep current, we need to remove existing from deduped list.
+                                 # Strategy: Update Existing Item to be the Max Value one.
+                                 existing_item["Amount"] = max_val
+                                 logger.info(f"Auditor: Upgrading valid item to max value {max_val}")
+                                 merged = True # Drop current as we merged it
+                                 
+                         else:
+                             merged = False 
+                             logger.info(f"Auditor: Same Batch but Different Values ({val_curr} vs {val_ex}) -> KEEPING BOTH")
                 
                 elif ratio > 0.94 and batch_match: 
                     # Fuzzy match + Batch match (N/A)
                     if is_single_source:
-                        # SINGLE SOURCE -> Don't trust fuzzy dedupe if the OCR gave us two lines.
-                        merged = False
-                        logger.info(f"Auditor: Fuzzy Match '{desc_norm}' (Ratio {ratio:.2f}) -> KEEPING SEPARATE (Single Source)")
+                        # SINGLE SOURCE "Smart Trust" Logic:
+                        # If descriptions are fuzzy match, we usually keep them (dense rows).
+                        # BUT if the Values (Qty + Amount) are IDENTICAL, it's likely a jitter duplicate -> MERGE.
+                        
+                        val_curr = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
+                        val_ex = float(existing_item.get("Amount") or existing_item.get("Stated_Net_Amount") or 0)
+                        q_curr = float(item.get("Qty") or 0)
+                        q_ex = float(existing_item.get("Qty") or 0)
+                        
+                        values_match = (abs(val_curr - val_ex) < 1.0) and (q_curr == q_ex)
+                        
+                        if values_match:
+                             merged = True
+                             logger.info(f"Auditor: Fuzzy Match '{desc_norm}' (Ratio {ratio:.2f}) + Identical Values -> DROPPING DUPLICATE (Single Source Jitter)")
+                        else:
+                             merged = False
+                             logger.info(f"Auditor: Fuzzy Match '{desc_norm}' (Ratio {ratio:.2f}) but Diff Values ({val_curr} vs {val_ex}) -> KEEPING SEPARATE (Valid Dense Row)")
                     else:
                         # If Quantities identical, Drop. Else Keep.
                          q_curr = float(item.get("Qty") or 0)
@@ -288,6 +361,15 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                              item["MRP"] = round(calc_mrp, 2)
                              item["Logic_Note"] = item.get("Logic_Note", "") + " [MRP Fix: Calc from Amt/Qty]"
 
+                # 9. Huge MRP Check (Fixes "HSN in MRP" Error)
+                # e.g. MRP 3004 (HSN) vs Rate 100.
+                check_rate_final = float(item.get("Rate") or 0)
+                if check_mrp > 0 and check_rate_final > 0 and check_mrp > check_rate_final * 8:
+                     # Threshold 8x to be safe (Pharma margins are high but not 800%)
+                     logger.warning(f"Auditor: MRP ({check_mrp}) is > 8x Rate ({check_rate_final}). Likely HSN/Code. Resetting to Rate.")
+                     item["MRP"] = check_rate_final
+                     item["Logic_Note"] = item.get("Logic_Note", "") + " [MRP Fix: High Value]"
+
                 # --- END SANITY CHECKS ---
 
                 deduped_line_items.append(item)
@@ -354,7 +436,7 @@ def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[st
                 # We no longer strictly require "clean integers" because we will enforce rounding.
                 if calc_qty > 0:
                     
-                    final_qty = math.ceil(calc_qty)
+                    final_qty = round(calc_qty, 2)
                     
                     logger.info(f"Auditor: Math Reconstruction for '{item.get('Product')}'. Extracted Qty {qty_extracted} (Inconsistent) -> Calculated Qty {final_qty} (Derived from Amt {amt}/Rate {rate} & Ceiled)")
                     

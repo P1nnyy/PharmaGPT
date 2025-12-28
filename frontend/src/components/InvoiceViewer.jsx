@@ -1,6 +1,6 @@
 import React from 'react';
 import { FileText, Upload, Loader2, RefreshCw } from 'lucide-react';
-// import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 const InvoiceViewer = ({ file, previewUrl, isAnalyzing, onFileChange, onReset }) => {
     return (
@@ -26,11 +26,21 @@ const InvoiceViewer = ({ file, previewUrl, isAnalyzing, onFileChange, onReset })
             <div className="flex-1 flex items-center justify-center overflow-hidden relative bg-black/20">
                 {previewUrl ? (
                     <div className="relative w-full h-full flex items-center justify-center p-4">
-                        <img
-                            src={previewUrl}
-                            alt="Invoice Preview"
-                            className="w-full h-full object-contain"
-                        />
+                        <TransformWrapper
+                            initialScale={1}
+                            minScale={0.5}
+                            maxScale={4}
+                            centerOnInit={true}
+                            wheel={{ step: 0.2 }} // Faster zoom on mouse wheel
+                        >
+                            <TransformComponent wrapperClass="w-full h-full" contentClass="w-full h-full flex items-center justify-center">
+                                <img
+                                    src={previewUrl}
+                                    alt="Invoice Preview"
+                                    className="max-w-full max-h-full object-contain"
+                                />
+                            </TransformComponent>
+                        </TransformWrapper>
                     </div>
                 ) : (
                     <label className="flex flex-col items-center justify-center w-full h-full border-2 border-dashed border-gray-800 rounded-xl cursor-pointer hover:bg-gray-900/50 hover:border-indigo-500/50 transition-all group">

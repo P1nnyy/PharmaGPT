@@ -63,7 +63,8 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
             {
                 "zone_id": "table_1", 
                 "type": "primary_table", 
-                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+                "description": "Main product grid with columns Item, Qty, Rate, Amount",
+                "estimated_row_count": 10
             },
             {
                 "zone_id": "footer_1",

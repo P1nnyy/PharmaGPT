@@ -14,7 +14,7 @@ const NavButton = ({ icon: Icon, label, active, onClick }) => (
 
 const MobileNavBar = ({ activeTab, onTabChange, onCameraClick }) => {
     return (
-        <div className="h-[60px] bg-slate-900 border-t border-slate-800 flex justify-around items-center px-2 z-50 fixed bottom-0 left-0 right-0">
+        <div className="h-[60px] bg-slate-900 border-t border-slate-800 flex justify-around items-center px-2 z-[999] fixed bottom-0 left-0 right-0 shadow-2xl">
 
             <NavButton
                 icon={LayoutGrid}

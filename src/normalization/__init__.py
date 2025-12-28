@@ -64,9 +64,19 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
         
         # REQUIRED FOR FRONTEND / SERVER SCHEMA
         "Standard_Quantity": parse_quantity(raw_item.get("Qty")),
-        "Net_Line_Amount": parse_float(raw_item.get("Amount")), 
         
-        "Final_Unit_Cost": (parse_float(raw_item.get("Amount")) / (parse_quantity(raw_item.get("Qty")) or 1.0)) if raw_item.get("Qty") else 0.0,
+        # UPDATED: Respect Solver's "net_amount" if it ran (Discounted)
+        "Net_Line_Amount": raw_item.get("net_amount") if raw_item.get("net_amount") is not None else parse_float(raw_item.get("Amount")), 
+        
+        # UPDATED: Respect Solver's "landing_cost"
+        "Final_Unit_Cost": (
+            raw_item.get("landing_cost") 
+            if raw_item.get("landing_cost") is not None 
+            else (
+                (parse_float(raw_item.get("Amount")) / (parse_quantity(raw_item.get("Qty")) or 1.0)) 
+                if raw_item.get("Qty") else 0.0
+            )
+        ),
         "Logic_Note": "Pre-Solver Extraction",
         
         # Metadata Populated

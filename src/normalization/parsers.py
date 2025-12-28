@@ -69,4 +69,4 @@ def parse_quantity(value: Union[str, float, None]) -> int:
         if match:
             total_qty = float(match.group())
             
-    return math.ceil(total_qty)
+    return float(total_qty)

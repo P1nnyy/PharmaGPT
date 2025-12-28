@@ -182,7 +182,7 @@ function App() {
               isSaving={isSaving}
               isAnalyzing={isAnalyzing}
               onHeaderChange={handleHeaderChange}
-              onLineItemChange={handleLineItemChange}
+              onInputChange={handleLineItemChange}
               setLineItems={setLineItems}
               setIsSaving={setIsSaving}
               setSuccessMsg={setSuccessMsg}

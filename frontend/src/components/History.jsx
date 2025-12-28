@@ -6,6 +6,9 @@ const History = () => {
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedSupplier, setExpandedSupplier] = useState(null);
+    const [viewingInvoice, setViewingInvoice] = useState(null);
+    const [modalLoading, setModalLoading] = useState(false);
+    const [modalData, setModalData] = useState(null);
 
     useEffect(() => {
         fetchHistory();
@@ -13,7 +16,6 @@ const History = () => {
 
     const fetchHistory = async () => {
         try {
-            // In production, use the actual API URL
             const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
                 ? 'https://api.pharmagpt.co'
                 : 'http://localhost:8000';
@@ -24,7 +26,7 @@ const History = () => {
                 setSuppliers(data);
             } else {
                 console.error("History API returned non-array:", data);
-                setSuppliers([]); // Fallback to empty to prevent crash
+                setSuppliers([]); // Fallback
             }
         } catch (err) {
             console.error("Failed to fetch history:", err);
@@ -32,6 +34,31 @@ const History = () => {
             setLoading(false);
         }
     };
+
+    const fetchInvoiceItems = async (invoiceNo) => {
+        setViewingInvoice(invoiceNo);
+        setModalLoading(true);
+        setModalData(null);
+        try {
+            const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
+                ? 'https://api.pharmagpt.co'
+                : 'http://localhost:8000';
+
+            const res = await fetch(`${API_BASE_URL}/invoices/${invoiceNo}/items`);
+            if (res.ok) {
+                const data = await res.json();
+                setModalData(data.line_items || []);
+            } else {
+                console.error("Failed to fetch items");
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setModalLoading(false);
+        }
+    };
+
+
 
     const toggleSupplier = (name) => {
         if (expandedSupplier === name) {
@@ -46,8 +73,68 @@ const History = () => {
     }
 
     return (
-        <div className="p-4 h-[calc(100vh-80px)] overflow-y-auto pb-24">
+        <div className="p-4 h-[calc(100vh-80px)] overflow-y-auto pb-24 relative">
             <h2 className="text-xl font-bold text-slate-100 mb-4">Supplier History</h2>
+
+            {/* Modal Overlay */}
+            {viewingInvoice && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-700 w-full max-w-4xl max-h-[80vh] rounded-xl flex flex-col shadow-2xl relative">
+                        {/* Modal Header */}
+                        <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-xl">
+                            <div>
+                                <h3 className="text-lg font-bold text-white">Invoice Items</h3>
+                                <p className="text-xs text-slate-400 font-mono">#{viewingInvoice}</p>
+                            </div>
+                            <button
+                                onClick={() => setViewingInvoice(null)}
+                                className="p-2 hover:bg-slate-700 rounded-full transition-colors text-slate-400 hover:text-white"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-auto p-4">
+                            {modalLoading ? (
+                                <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
+                                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <p className="text-sm">Loading details...</p>
+                                </div>
+                            ) : modalData && modalData.length > 0 ? (
+                                <div className="overflow-x-auto rounded-lg border border-slate-700">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-800 text-slate-400 font-medium uppercase text-xs">
+                                            <tr>
+                                                <th className="p-3">Product</th>
+                                                <th className="p-3 text-center">Qty</th>
+                                                <th className="p-3 text-right">Rate</th>
+                                                <th className="p-3 text-right">Amount</th>
+                                                <th className="p-3 text-right">Batch</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-700 bg-slate-900/50">
+                                            {modalData.map((item, idx) => (
+                                                <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                                                    <td className="p-3 font-medium text-slate-200">{item.product_name}</td>
+                                                    <td className="p-3 text-center text-indigo-300 font-mono">{item.quantity}</td>
+                                                    <td className="p-3 text-right text-slate-400 font-mono">₹{(item.landing_cost || 0).toFixed(2)}</td>
+                                                    <td className="p-3 text-right text-emerald-400 font-mono font-bold">₹{(item.net_amount || 0).toFixed(2)}</td>
+                                                    <td className="p-3 text-right text-xs text-slate-500 font-mono">{item.batch_no || "-"}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="text-center py-10 text-slate-500">
+                                    <p>No items found for this invoice.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="space-y-3">
                 {suppliers.map((supplier) => (
@@ -89,9 +176,16 @@ const History = () => {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-indigo-300 font-medium">{inv.invoice_number}</span>
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${inv.status === 'CONFIRMED' ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 'border-slate-600 text-slate-400'}`}>
-                                                        {inv.status}
-                                                    </span>
+                                                    {/* Changed: Replaced Confirmed Badge with View Items Button */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            fetchInvoiceItems(inv.invoice_number);
+                                                        }}
+                                                        className="px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-medium transition-colors flex items-center gap-1"
+                                                    >
+                                                        <FileText className="w-3 h-3" /> View Items
+                                                    </button>
                                                 </div>
                                                 <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
                                                     <Calendar className="w-3 h-3" /> {inv.date || "No Date"}

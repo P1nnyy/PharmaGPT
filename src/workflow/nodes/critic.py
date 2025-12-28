@@ -22,6 +22,18 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     # Ensure Anchor agent saved 'Stated_Grand_Total' into global_modifiers or anchor_totals
     # User requested global_modifiers access, checking both for robustness
     anchor_curr = state.get("global_modifiers", {}).get("Stated_Grand_Total", 0.0)
+    
+    # NEW: Row Count Estimation (from Surveyor)
+    estimated_rows = 0
+    extraction_plan = state.get("extraction_plan", [])
+    for zone in extraction_plan:
+        if zone.get("type") == "primary_table" and zone.get("estimated_row_count"):
+            estimated_rows += int(zone.get("estimated_row_count"))
+            
+    logger.info(f"Critic: Estimated Rows from Surveyor: {estimated_rows}")
+    if estimated_rows == 0:
+        logger.warning("Critic: No Estimated Row Count found. Hallucination Check 3 will be skipped.")
+            
     if not anchor_curr:
         anchor_curr = state.get("anchor_totals", {}).get("Stated_Grand_Total", 0.0)
         
@@ -65,12 +77,59 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     # 3. COLUMN HEALTH CHECK (Prioritize Data Quality over Totals)
     # If > 50% of items are missing MRP, FAIL immediately.
     if total_items > 0:
+        # CHECK 1: Missing Product Names (Blocking)
+        missing_names = [item for item in lines if not item.get("Product") or item.get("Product") == "None"]
+        if missing_names:
+            logger.warning(f"Critic: Found {len(missing_names)} items with MISSING PRODUCT NAMES.")
+            # Construct specific feedback
+            bad_values = [str(item.get("Amount", "Unknown")) for item in missing_names]
+            return {
+                "critic_verdict": "RETRY_OCR",
+                "feedback_logs": [f"CRITICAL FAULT: You extracted items with amounts {bad_values} but missed the 'Product' Description. You MUST extract the Product Name for every row."]
+            }
+
         if (zero_mrp_count / total_items) > 0.5:
             logger.warning(f"Critic: Critical Data Fault. {zero_mrp_count}/{total_items} items missing MRP.")
             return {
                 "critic_verdict": "RETRY_OCR",
                 "feedback_logs": ["CRITICAL FAULT: You missed the 'MRP' column. The user requires MRP extraction. Look for headers like 'MRP', 'Max Price', 'Rate' and capture them."]
             }
+            
+        # CHECK 2: Duplicates Check (Post-Auditor)
+        # If Auditor missed them, and Sum > Anchor, we have a problem.
+        seen_sigs = set()
+        duplicates = []
+        for item in lines:
+            # Signature: Name + Amount
+            sig = (str(item.get("Product")).strip().lower(), float(item.get("Amount") or 0))
+            if sig in seen_sigs:
+                duplicates.append(item.get("Product"))
+            else:
+                seen_sigs.add(sig)
+        
+        # We only flag duplicates if the Numbers don't match. 
+        # If Sum == Anchor, duplicates might be valid (e.g. 2x same item billed).
+        # But we check this in the Ratio logic below.
+        
+    # CHECK 3: Hallucination / Row Count Mismatch (User Complaint: 13 rows -> 25 extracted)
+    if total_items > 5 and estimated_rows > 0:
+        # Threshold: If extracted is > 1.5x Estimated.
+        # e.g. Est 13 -> Max 19. If 25 -> RETRY.
+        if total_items > (estimated_rows * 1.5):
+            logger.warning(f"Critic: Row Count Mismatch! Extracted {total_items} vs Estimated {estimated_rows}.")
+            return {
+                "critic_verdict": "RETRY_OCR",
+                "feedback_logs": [f"CRITICAL: You extracted {total_items} items, but the document only seems to have approx {estimated_rows}. You are likely Hallucinating/Splitting rows. MERGE multi-line descriptions."]
+            }
+            
+    # CHECK 4: Under-Extraction Check
+    # If Extracted count is significantly LESS than Estimated (e.g. 13 Est -> 8 Extracted), it's a miss.
+    if estimated_rows > 3 and total_items < (estimated_rows * 0.8):
+        logger.warning(f"Critic: Under-Extraction! Extracted {total_items} vs Estimated {estimated_rows}.")
+        return {
+            "critic_verdict": "RETRY_OCR",
+            "feedback_logs": [f"CRITICAL: You only extracted {total_items} items, but the document seems to have approx {estimated_rows}. You missed rows. Check for dense rows or low-contrast text."]
+        }
             
     # 4. Calculate Ratio (The "Magic Number")
     logger.info(f"Critic: Anchor {anchor_total} vs Line Sum {line_sum}")
@@ -86,8 +145,16 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     # 4. Universal Decision Matrix
     feedback_msg = ""
     
-    if diff_percent < 1.0:
-        logger.info(f"Critic: Match Exact (or close). APPROVE.")
+    # NEW: If Duplicates exist AND Sum > Total (Over-sum), it's definitely a duplication error.
+    if duplicates and ratio < 0.99:
+         logger.warning(f"Critic: Duplicates Detected {duplicates} and Over-sum. RETRY.")
+         return {
+            "critic_verdict": "RETRY_OCR",
+            "feedback_logs": [f"CRITICAL ERROR: You extracted duplicate items {duplicates} which caused the Total to exceed the Invoice Value. Remove duplicates."]
+         }
+    
+    if diff_percent < 0.1:
+        logger.info(f"Critic: Match Exact (within 0.1%). APPROVE.")
         
         # On APPROVE, we must Construct Final Output (Headers + Lines)
         # because we skip the Solver node.
@@ -101,6 +168,14 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             "final_output": final_output
         } 
         
+    # Check for Global Modifiers presence to confirm intent
+    g_mods = state.get("global_modifiers", {})
+    has_discount = float(g_mods.get("Global_Discount_Amount") or 0) > 0
+    
+    if has_discount and ratio < 1.0:
+         logger.info(f"Critic: Global Discount Detected + Over-sum (Ratio {ratio:.4f}). Sending to Solver.")
+         return {"critic_verdict": "APPLY_MARKDOWN", "correction_factor": ratio}
+
     elif ratio > 1.0 and ratio < 1.30:
         # Sum is LESS than Total (e.g. 875 vs 920). 
         # This implies Global Tax or Freight was added at the bottom.
