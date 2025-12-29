@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Camera, Settings, History, Package } from 'lucide-react';
+import { LayoutGrid, Camera, Settings, History, Package, Files } from 'lucide-react';
 
 const NavButton = ({ icon: Icon, label, active, onClick }) => (
     <button
@@ -18,16 +18,16 @@ const MobileNavBar = ({ activeTab, onTabChange, onCameraClick }) => {
 
             <NavButton
                 icon={LayoutGrid}
-                label="Invoice"
-                active={activeTab === 'invoice'}
-                onClick={() => onTabChange('invoice')}
+                label="Scan"
+                active={activeTab === 'scan'}
+                onClick={() => onTabChange('scan')}
             />
 
             <NavButton
-                icon={History}
-                label="History"
-                active={activeTab === 'history'}
-                onClick={() => onTabChange('history')}
+                icon={Files}
+                label="Invoices"
+                active={activeTab === 'invoices'}
+                onClick={() => onTabChange('invoices')}
             />
 
             <div className="relative -top-5">
@@ -40,18 +40,26 @@ const MobileNavBar = ({ activeTab, onTabChange, onCameraClick }) => {
             </div>
 
             <NavButton
+                icon={History}
+                label="History"
+                active={activeTab === 'history'}
+                onClick={() => onTabChange('history')}
+            />
+
+            <NavButton
                 icon={Package}
                 label="Inventory"
                 active={activeTab === 'inventory'}
                 onClick={() => onTabChange('inventory')}
             />
 
-            <NavButton
-                icon={Settings}
-                label="More"
-                active={activeTab === 'settings'}
-                onClick={() => onTabChange('settings')}
-            />
+            {/* Optional: Put Settings in a 'More' menu or keep if space allows. 
+                With 5 items + Camera, space is tight. 
+                Let's replace Inventory with Settings or keep Inventory?
+                Prompt said "match these 4 new tabs". 
+                Scan, History, Invoices, Inventory. 
+                Slightly crowded but feasible on modern phones.
+            */}
         </div>
     );
 };

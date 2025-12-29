@@ -1,35 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Calendar, FileText, ChevronDown, ChevronUp, Phone, MapPin, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { FileText, Calendar, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 const History = () => {
-    const [suppliers, setSuppliers] = useState([]);
+    const [activityLog, setActivityLog] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [expandedSupplier, setExpandedSupplier] = useState(null);
     const [viewingInvoice, setViewingInvoice] = useState(null);
     const [modalLoading, setModalLoading] = useState(false);
     const [modalData, setModalData] = useState(null);
 
     useEffect(() => {
-        fetchHistory();
+        fetchActivity();
     }, []);
 
-    const fetchHistory = async () => {
+    const fetchActivity = async () => {
         try {
             const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
                 ? 'https://api.pharmagpt.co'
                 : 'http://localhost:8000';
 
-            const res = await fetch(`${API_BASE_URL}/history`);
+            const res = await fetch(`${API_BASE_URL}/activity-log`);
             const data = await res.json();
             if (Array.isArray(data)) {
-                setSuppliers(data);
+                setActivityLog(data);
             } else {
-                console.error("History API returned non-array:", data);
-                setSuppliers([]); // Fallback
+                console.error("Activity API returned non-array:", data);
+                setActivityLog([]);
             }
         } catch (err) {
-            console.error("Failed to fetch history:", err);
+            console.error("Failed to fetch activity log:", err);
         } finally {
             setLoading(false);
         }
@@ -58,23 +57,13 @@ const History = () => {
         }
     };
 
-
-
-    const toggleSupplier = (name) => {
-        if (expandedSupplier === name) {
-            setExpandedSupplier(null);
-        } else {
-            setExpandedSupplier(name);
-        }
-    };
-
     if (loading) {
-        return <div className="p-4 text-center text-slate-400">Loading History...</div>;
+        return <div className="p-4 text-center text-slate-400">Loading Timeline...</div>;
     }
 
     return (
         <div className="p-4 h-[calc(100vh-80px)] overflow-y-auto pb-24 relative">
-            <h2 className="text-xl font-bold text-slate-100 mb-4">Supplier History</h2>
+            <h2 className="text-xl font-bold text-slate-100 mb-6">Recent Activity</h2>
 
             {/* Modal Overlay */}
             {viewingInvoice && (
@@ -136,101 +125,76 @@ const History = () => {
                 </div>
             )}
 
-            <div className="space-y-3">
-                {suppliers.map((supplier) => (
-                    <div key={supplier.name} className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
-                        {/* Header */}
-                        <div
-                            onClick={() => toggleSupplier(supplier.name)}
-                            className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-750 transition-colors"
-                        >
-                            <div>
-                                <h3 className="text-lg font-semibold text-white">{supplier.name}</h3>
-                                <div className="flex items-center gap-3 mt-1 text-sm text-slate-400">
-                                    <span className="flex items-center gap-1">
-                                        <FileText className="w-3 h-3" /> {supplier.invoices.length} Invoices
-                                    </span>
-                                    {supplier.phone && (
-                                        <span className="flex items-center gap-1">
-                                            <Phone className="w-3 h-3" /> {supplier.phone}
-                                        </span>
-                                    )}
-                                </div>
-                                {/* GST Badge */}
-                                {supplier.gst && (
-                                    <div className="mt-2 inline-block px-2 py-0.5 bg-slate-900 border border-slate-700 rounded text-xs text-slate-500 font-mono">
-                                        GST: {supplier.gst}
+            {/* Timeline List */}
+            <div className="space-y-6">
+                {activityLog.length === 0 ? (
+                    <div className="text-center text-slate-500 py-10">No invoices found. Upload one to get started!</div>
+                ) : (
+                    activityLog.map((inv) => (
+                        <div key={inv.invoice_number} className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-sm relative group">
+                            <div className="flex flex-col md:flex-row">
+                                {/* Image Preview Section (Left/Top) */}
+                                {inv.image_path && (
+                                    <div className="w-full md:w-48 h-48 md:h-auto bg-black/20 relative border-b md:border-b-0 md:border-r border-slate-700/50 flex flex-col justify-center">
+                                        <TransformWrapper>
+                                            {({ zoomIn, zoomOut, resetTransform }) => (
+                                                <>
+                                                    <TransformComponent wrapperClass="!w-full !h-full cursor-grab active:cursor-grabbing content-center">
+                                                        <img
+                                                            src={window.location.hostname.includes('pharmagpt.co')
+                                                                ? `https://api.pharmagpt.co${inv.image_path}`
+                                                                : `http://localhost:8000${inv.image_path}`}
+                                                            alt="Invoice"
+                                                            className="max-h-full max-w-full object-contain mx-auto"
+                                                            loading="lazy"
+                                                        />
+                                                    </TransformComponent>
+                                                    {/* Floating Controls */}
+                                                    <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded-lg p-1">
+                                                        <button onClick={() => zoomIn()} className="p-1 hover:text-white text-slate-400"><ZoomIn className="w-3 h-3" /></button>
+                                                        <button onClick={() => zoomOut()} className="p-1 hover:text-white text-slate-400"><ZoomOut className="w-3 h-3" /></button>
+                                                        <button onClick={() => resetTransform()} className="p-1 hover:text-white text-slate-400"><RotateCcw className="w-3 h-3" /></button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </TransformWrapper>
                                     </div>
                                 )}
-                            </div>
 
-                            {expandedSupplier === supplier.name ? <ChevronUp className="text-indigo-400" /> : <ChevronDown className="text-slate-500" />}
-                        </div>
-
-                        {/* Expanded Body */}
-                        {expandedSupplier === supplier.name && (
-                            <div className="bg-slate-900/50 p-3 space-y-2 border-t border-slate-700">
-                                {supplier.invoices.map((inv) => (
-                                    <div key={inv.invoice_number} className="bg-slate-800 p-3 rounded-lg border border-slate-700/50 flex flex-col gap-2">
-                                        <div className="flex justify-between items-center">
+                                {/* Content Section */}
+                                <div className="flex-1 p-5 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex justify-between items-start mb-2">
                                             <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-indigo-300 font-medium">{inv.invoice_number}</span>
-                                                    {/* Changed: Replaced Confirmed Badge with View Items Button */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            fetchInvoiceItems(inv.invoice_number);
-                                                        }}
-                                                        className="px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-medium transition-colors flex items-center gap-1"
-                                                    >
-                                                        <FileText className="w-3 h-3" /> View Items
-                                                    </button>
-                                                </div>
-                                                <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                                                    <Calendar className="w-3 h-3" /> {inv.date || "No Date"}
+                                                <h3 className="font-bold text-lg text-white">{inv.supplier_name}</h3>
+                                                <div className="flex items-center gap-2 text-sm text-slate-400 mt-1">
+                                                    <span className="font-mono bg-slate-700/50 px-1.5 py-0.5 rounded text-slate-300">#{inv.invoice_number}</span>
+                                                    <span>•</span>
+                                                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {inv.date}</span>
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="text-slate-200 font-bold">₹{inv.total?.toFixed(2)}</div>
+                                                <div className="text-xl font-bold text-emerald-400">₹{inv.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                                                <div className={`text-xs font-mono uppercase mt-1 px-2 py-0.5 rounded inline-block ${inv.status === 'CONFIRMED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'}`}>
+                                                    {inv.status}
+                                                </div>
                                             </div>
                                         </div>
-
-                                        {inv.image_path && (
-                                            <div className="mt-2 border-t border-slate-700/50 pt-2 bg-black/20 rounded-lg overflow-hidden">
-                                                <TransformWrapper>
-                                                    {({ zoomIn, zoomOut, resetTransform }) => (
-                                                        <>
-                                                            <div className="flex justify-end gap-2 p-2 mb-2">
-                                                                <button onClick={() => zoomIn()} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><ZoomIn className="w-4 h-4" /></button>
-                                                                <button onClick={() => zoomOut()} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><ZoomOut className="w-4 h-4" /></button>
-                                                                <button onClick={() => resetTransform()} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><RotateCcw className="w-4 h-4" /></button>
-                                                            </div>
-                                                            <TransformComponent wrapperClass="w-full !h-auto min-h-[200px] cursor-grab active:cursor-grabbing">
-                                                                <img
-                                                                    src={window.location.hostname.includes('pharmagpt.co')
-                                                                        ? `https://api.pharmagpt.co${inv.image_path}`
-                                                                        : `http://localhost:8000${inv.image_path}`}
-                                                                    alt="Invoice"
-                                                                    className="w-full h-auto rounded-md shadow-lg"
-                                                                    loading="lazy"
-                                                                />
-                                                            </TransformComponent>
-                                                        </>
-                                                    )}
-                                                </TransformWrapper>
-                                            </div>
-                                        )}
                                     </div>
-                                ))}
 
-                                {(!supplier.gst || !supplier.phone) && (
-                                    <div className="hidden"></div>
-                                )}
+                                    <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-end">
+                                        <button
+                                            onClick={() => fetchInvoiceItems(inv.invoice_number)}
+                                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/20"
+                                        >
+                                            <FileText className="w-4 h-4" /> View Line Items
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                        )}
-                    </div>
-                ))}
+                        </div>
+                    ))
+                )}
             </div>
         </div>
     );

@@ -8,7 +8,7 @@ import os
 import uuid
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item, reconcile_financials, parse_float
-from src.database import ingest_invoice, check_inflation_on_analysis
+from src.database import ingest_invoice, check_inflation_on_analysis, get_recent_activity
 from src.database.connection import get_driver 
 from src.workflow.graph import run_extraction_pipeline
 from src.utils.logging_config import get_logger
@@ -219,3 +219,20 @@ async def get_invoice_items_json(invoice_no: str):
         "invoice": invoice_details,
         "line_items": line_items
     }
+
+@router.get("/activity-log", response_model=List[Dict[str, Any]])
+async def get_activity_log():
+    """
+    Returns a flat list of recent invoice activity for the Timeline View.
+    """
+    driver = get_driver()
+    if not driver:
+        # Fallback for UI if DB is down
+        return []
+
+    try:
+        activity = get_recent_activity(driver)
+        return activity
+    except Exception as e:
+        logger.error(f"Failed to fetch activity log: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch activity log")

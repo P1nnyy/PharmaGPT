@@ -145,3 +145,41 @@ def check_inflation_on_analysis(driver, normalized_items: List[Dict[str, Any]]) 
             item["is_price_hike"] = False
                 
     return normalized_items
+
+def get_recent_activity(driver) -> List[Dict[str, Any]]:
+    """
+    Fetches a flat list of all invoices for the timeline view.
+    Sorted by created_at DESC (newest first).
+    """
+    query = """
+    MATCH (i:Invoice)
+    OPTIONAL MATCH (s:Supplier)-[:ISSUED]->(i)
+    RETURN 
+        i.invoice_number as invoice_number,
+        i.invoice_date as date,
+        i.grand_total as total,
+        i.status as status,
+        i.image_path as image_path,
+        s.name as supplier_name,
+        i.created_at as created_at
+    ORDER BY i.created_at DESC
+    LIMIT 50
+    """
+    try:
+        with driver.session() as session:
+            result = session.run(query)
+            activity_log = []
+            for record in result:
+                activity_log.append({
+                    "invoice_number": record["invoice_number"],
+                    "date": record["date"],
+                    "total": record["total"],
+                    "status": record["status"],
+                    "image_path": record["image_path"],
+                    "supplier_name": record["supplier_name"] or "Unknown",
+                    "created_at": record["created_at"]
+                })
+            return activity_log
+    except Exception as e:
+        print(f"Error fetching recent activity: {e}")
+        return []

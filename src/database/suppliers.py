@@ -22,12 +22,17 @@ def get_supplier_history(driver) -> List[Dict[str, Any]]:
         result = session.run(query)
         data = []
         for record in result:
+            valid_invoices = [inv for inv in record["invoices"] if inv["invoice_number"]]
+            
+            # Calculate Total Spend
+            total_spend = sum(float(inv["total"] or 0) for inv in valid_invoices)
+
             row = {
                 "name": record["name"],
                 "gst": record["gst"],
                 "phone": record["phone"],
-                # Filter out null invoices
-                "invoices": [inv for inv in record["invoices"] if inv["invoice_number"]]
+                "total_spend": total_spend,
+                "invoices": valid_invoices
             }
             data.append(row)
         return data
