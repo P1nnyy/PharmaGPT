@@ -143,12 +143,17 @@ function App() {
       {/* MOBILE HEADER */}
       {isMobile && (
         <MobileHeader
-          onMenuClick={() => setIsSidebarOpen(true)}
+          onMenuClick={() => {
+            console.log("MOBILE MENU CLICKED");
+            setIsSidebarOpen(true);
+          }}
           onCameraClick={() => setActiveTab('scan')}
         />
       )}
 
       {/* SIDEBAR (Desktop Fixed, Mobile Drawer) */}
+      {/* DEBUG LOG */}
+      {/* console.log("App Render: isMobile=", isMobile, "isSidebarOpen=", isSidebarOpen) */}
       <Sidebar
         activeTab={activeTab}
         onTabChange={handleTabChange}

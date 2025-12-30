@@ -53,7 +53,10 @@ def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     # Reconstruct Final Output
     # We need to merge the Headers/Footers (Global Modifiers) with the reconciled Line Items
     headers = state.get("global_modifiers", {})
+    metadata = state.get("header_data", {})
+    
     final_json = headers.copy()
+    final_json["metadata"] = metadata
     final_json["Line_Items"] = updated_lines
     
     return {

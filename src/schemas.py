@@ -8,7 +8,6 @@ class RawLineItem(BaseModel):
     """
     Product: str = Field(..., description="The product description exactly as it appears on the invoice.")
     Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
-    Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
     Batch: Optional[str] = Field(None, description="Batch number.")
     Section: Optional[str] = Field("Main", description="Section of invoice (e.g. 'Main', 'Sales Return').")
     
@@ -28,6 +27,20 @@ class RawLineItem(BaseModel):
     net_amount: Optional[float] = Field(None, description="Discounted Net Amount from Solver.")
     landing_cost: Optional[float] = Field(None, description="Discounted Landing Cost from Solver.")
 
+class SupplierMetadata(BaseModel):
+    """
+    Detailed metadata for the supplier, extracted specifically from the header/footer.
+    Used for Upsert logic to ensure we never lose contact details.
+    """
+    Supplier_Name: Optional[str] = Field(None, description="Name of the supplier.")
+    Address: Optional[str] = Field(None, description="Full text address of the supplier.")
+    Phone_Primary: Optional[str] = Field(None, description="Primary contact number (Mobile/Landline).")
+    Phone_Secondary: Optional[str] = Field(None, description="Secondary contact number if available.")
+    Email: Optional[str] = Field(None, description="Email address.")
+    GSTIN: Optional[str] = Field(None, description="GST Identification Number.")
+    Drug_License_20B: Optional[str] = Field(None, description="Drug License Number (Form 20B).")
+    Drug_License_21B: Optional[str] = Field(None, description="Drug License Number (Form 21B).")
+
 class InvoiceExtraction(BaseModel):
     """
     Represents the full data structure extracted from an invoice document.
@@ -36,6 +49,12 @@ class InvoiceExtraction(BaseModel):
     Supplier_Name: Optional[str] = Field("Unknown", description="Name of the supplier (e.g. 'Deepak Agencies').")
     Invoice_No: Optional[str] = Field(None, description="Invoice number.")
     Invoice_Date: Optional[str] = Field(None, description="Date of invoice.")
+    Supplier_Phone: Optional[str] = Field(None, description="Supplier Phone Number.")
+    Supplier_GST: Optional[str] = Field(None, description="Supplier GST Number.")
+    
+    # NEW: Dedicated Metadata Container
+    metadata: Optional[SupplierMetadata] = Field(None, description="Detailed supplier metadata from Header Agent.")
+
     Line_Items: List[RawLineItem] = Field(default_factory=list, description="List of line items extracted from the invoice tables.")
     Stated_Grand_Total: Union[str, float, None] = Field(None, description="The Total Amount Payable or Grand Total as stated on the invoice.")
     

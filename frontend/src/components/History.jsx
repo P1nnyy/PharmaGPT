@@ -1,13 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Calendar, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { FileText, Clock, ChevronDown, Image } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 const History = () => {
     const [activityLog, setActivityLog] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [viewingInvoice, setViewingInvoice] = useState(null);
-    const [modalLoading, setModalLoading] = useState(false);
-    const [modalData, setModalData] = useState(null);
+    const [expandedIds, setExpandedIds] = useState(new Set());
+
+    const formatTimestamp = (timestamp, isExpanded = false) => {
+        if (!timestamp) return 'N/A';
+        const date = new Date(timestamp);
+        const now = new Date();
+        const isToday = date.toDateString() === now.toDateString();
+
+        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        if (isExpanded) {
+            return `${dateStr}, ${timeStr}`;
+        }
+        return isToday ? timeStr : dateStr;
+    };
 
     useEffect(() => {
         fetchActivity();
@@ -24,176 +37,137 @@ const History = () => {
             if (Array.isArray(data)) {
                 setActivityLog(data);
             } else {
-                console.error("Activity API returned non-array:", data);
                 setActivityLog([]);
             }
         } catch (err) {
-            console.error("Failed to fetch activity log:", err);
+            console.error(err);
         } finally {
             setLoading(false);
         }
     };
 
-    const fetchInvoiceItems = async (invoiceNo) => {
-        setViewingInvoice(invoiceNo);
-        setModalLoading(true);
-        setModalData(null);
-        try {
-            const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
-                ? 'https://api.pharmagpt.co'
-                : 'http://localhost:8000';
-
-            const res = await fetch(`${API_BASE_URL}/invoices/${invoiceNo}/items`);
-            if (res.ok) {
-                const data = await res.json();
-                setModalData(data.line_items || []);
-            } else {
-                console.error("Failed to fetch items");
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setModalLoading(false);
+    const toggleExpand = (id) => {
+        const newExpanded = new Set(expandedIds);
+        if (newExpanded.has(id)) {
+            newExpanded.delete(id);
+        } else {
+            newExpanded.add(id);
         }
+        setExpandedIds(newExpanded);
     };
 
-    if (loading) {
-        return <div className="p-4 text-center text-slate-400">Loading Timeline...</div>;
-    }
+    if (loading) return <div className="p-8 text-center text-slate-500">Loading History...</div>;
 
     return (
-        <div className="p-4 h-[calc(100vh-80px)] overflow-y-auto pb-24 relative">
-            <h2 className="text-xl font-bold text-slate-100 mb-6">Recent Activity</h2>
+        <div className="p-4 md:p-8 max-w-5xl mx-auto h-[calc(100vh-80px)] overflow-y-auto pb-24">
+            <h2 className="text-2xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+                <Clock className="w-6 h-6 text-blue-500" />
+                History
+            </h2>
 
-            {/* Modal Overlay */}
-            {viewingInvoice && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-slate-900 border border-slate-700 w-full max-w-4xl max-h-[80vh] rounded-xl flex flex-col shadow-2xl relative">
-                        {/* Modal Header */}
-                        <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-xl">
-                            <div>
-                                <h3 className="text-lg font-bold text-white">Invoice Items</h3>
-                                <p className="text-xs text-slate-400 font-mono">#{viewingInvoice}</p>
-                            </div>
-                            <button
-                                onClick={() => setViewingInvoice(null)}
-                                className="p-2 hover:bg-slate-700 rounded-full transition-colors text-slate-400 hover:text-white"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        {/* Modal Body */}
-                        <div className="flex-1 overflow-auto p-4">
-                            {modalLoading ? (
-                                <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
-                                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                                    <p className="text-sm">Loading details...</p>
-                                </div>
-                            ) : modalData && modalData.length > 0 ? (
-                                <div className="overflow-x-auto rounded-lg border border-slate-700">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-slate-800 text-slate-400 font-medium uppercase text-xs">
-                                            <tr>
-                                                <th className="p-3">Product</th>
-                                                <th className="p-3 text-center">Qty</th>
-                                                <th className="p-3 text-right">Rate</th>
-                                                <th className="p-3 text-right">Amount</th>
-                                                <th className="p-3 text-right">Batch</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-700 bg-slate-900/50">
-                                            {modalData.map((item, idx) => (
-                                                <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
-                                                    <td className="p-3 font-medium text-slate-200">{item.product_name}</td>
-                                                    <td className="p-3 text-center text-indigo-300 font-mono">{item.quantity}</td>
-                                                    <td className="p-3 text-right text-slate-400 font-mono">₹{(item.landing_cost || 0).toFixed(2)}</td>
-                                                    <td className="p-3 text-right text-emerald-400 font-mono font-bold">₹{(item.net_amount || 0).toFixed(2)}</td>
-                                                    <td className="p-3 text-right text-xs text-slate-500 font-mono">{item.batch_no || "-"}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            ) : (
-                                <div className="text-center py-10 text-slate-500">
-                                    <p>No items found for this invoice.</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Timeline List */}
-            <div className="space-y-6">
+            <div className="space-y-3">
                 {activityLog.length === 0 ? (
-                    <div className="text-center text-slate-500 py-10">No invoices found. Upload one to get started!</div>
+                    <div className="text-center text-slate-500 py-10">No recent activity found.</div>
                 ) : (
-                    activityLog.map((inv) => (
-                        <div key={inv.invoice_number} className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-sm relative group">
-                            <div className="flex flex-col md:flex-row">
-                                {/* Image Preview Section (Left/Top) */}
-                                {inv.image_path && (
-                                    <div className="w-full md:w-48 h-48 md:h-auto bg-black/20 relative border-b md:border-b-0 md:border-r border-slate-700/50 flex flex-col justify-center">
-                                        <TransformWrapper>
-                                            {({ zoomIn, zoomOut, resetTransform }) => (
-                                                <>
-                                                    <TransformComponent wrapperClass="!w-full !h-full cursor-grab active:cursor-grabbing content-center">
-                                                        <img
-                                                            src={window.location.hostname.includes('pharmagpt.co')
-                                                                ? `https://api.pharmagpt.co${inv.image_path}`
-                                                                : `http://localhost:8000${inv.image_path}`}
-                                                            alt="Invoice"
-                                                            className="max-h-full max-w-full object-contain mx-auto"
-                                                            loading="lazy"
-                                                        />
-                                                    </TransformComponent>
-                                                    {/* Floating Controls */}
-                                                    <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded-lg p-1">
-                                                        <button onClick={() => zoomIn()} className="p-1 hover:text-white text-slate-400"><ZoomIn className="w-3 h-3" /></button>
-                                                        <button onClick={() => zoomOut()} className="p-1 hover:text-white text-slate-400"><ZoomOut className="w-3 h-3" /></button>
-                                                        <button onClick={() => resetTransform()} className="p-1 hover:text-white text-slate-400"><RotateCcw className="w-3 h-3" /></button>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </TransformWrapper>
-                                    </div>
-                                )}
+                    activityLog.map((item, index) => {
+                        const isExpanded = expandedIds.has(item.invoice_number);
+                        const contactInfo = item.supplier_phone || item.supplier_gst || 'N/A';
 
-                                {/* Content Section */}
-                                <div className="flex-1 p-5 flex flex-col justify-between">
-                                    <div>
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <h3 className="font-bold text-lg text-white">{inv.supplier_name}</h3>
-                                                <div className="flex items-center gap-2 text-sm text-slate-400 mt-1">
-                                                    <span className="font-mono bg-slate-700/50 px-1.5 py-0.5 rounded text-slate-300">#{inv.invoice_number}</span>
-                                                    <span>•</span>
-                                                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {inv.date}</span>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-xl font-bold text-emerald-400">₹{inv.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                                                <div className={`text-xs font-mono uppercase mt-1 px-2 py-0.5 rounded inline-block ${inv.status === 'CONFIRMED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'}`}>
-                                                    {inv.status}
-                                                </div>
-                                            </div>
+                        return (
+                            <div key={item.invoice_number} className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden transition-all duration-200 hover:border-slate-700">
+                                {/* Main Row */}
+                                <div
+                                    onClick={() => toggleExpand(item.invoice_number)}
+                                    className="flex items-center p-4 cursor-pointer gap-4"
+                                >
+                                    {/* Sr No */}
+                                    <div className="text-slate-500 font-mono text-sm w-6">
+                                        {String(index + 1).padStart(2, '0')}
+                                    </div>
+
+                                    {/* Supplier Name & Contact */}
+                                    <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+                                        <div className="font-semibold text-slate-200 truncate text-base">
+                                            {item.supplier_name}
+                                        </div>
+                                        <div className="text-slate-500 text-xs md:text-sm truncate flex items-center gap-2">
+                                            <span className="hidden md:inline text-slate-600">•</span>
+                                            {contactInfo}
                                         </div>
                                     </div>
 
-                                    <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-end">
-                                        <button
-                                            onClick={() => fetchInvoiceItems(inv.invoice_number)}
-                                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/20"
-                                        >
-                                            <FileText className="w-4 h-4" /> View Line Items
-                                        </button>
+                                    {/* Date/Time Display */}
+                                    <div className="text-slate-400 text-xs md:text-sm font-medium whitespace-nowrap mr-2">
+                                        {formatTimestamp(item.created_at)}
+                                    </div>
+
+                                    {/* Expand Icon */}
+                                    <div className={`text-slate-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                                        <ChevronDown className="w-5 h-5" />
                                     </div>
                                 </div>
+
+                                {/* Expanded Section */}
+                                {isExpanded && (
+                                    <div className="bg-slate-950/30 border-t border-slate-800 p-4 animate-in slide-in-from-top-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-6">
+
+                                            {/* Date */}
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Uploaded</span>
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Uploaded</span>
+                                                <span className="text-slate-300 text-sm font-medium">
+                                                    {formatTimestamp(item.created_at, true)}
+                                                </span>
+                                            </div>
+
+                                            {/* Saved By */}
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Saved By</span>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
+                                                        PG
+                                                    </div>
+                                                    <span className="text-slate-300 text-sm font-medium">Pranav Gupta</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Amount */}
+                                            <div className="flex flex-col text-right ml-auto mr-4">
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Amount</span>
+                                                <span className="text-emerald-400 font-mono font-medium">
+                                                    ₹{item.total?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+
+                                            {/* Split Circle Action Icon */}
+                                            <button
+                                                className="relative w-12 h-12 rounded-full overflow-hidden shadow-lg hover:scale-105 transition-transform group shrink-0"
+                                                onClick={(e) => { e.stopPropagation(); alert(`Viewing invoice ${item.invoice_number}`); }}
+                                                title="View Details"
+                                            >
+                                                {/* Left Half - Image Icon */}
+                                                <div className="absolute inset-y-0 left-0 w-1/2 bg-blue-600 flex items-center justify-center text-white">
+                                                    <Image className="w-4 h-4" />
+                                                </div>
+
+                                                {/* Right Half - Bar/Content Icon */}
+                                                <div className="absolute inset-y-0 right-0 w-1/2 bg-indigo-600 flex items-center justify-center text-white">
+                                                    <FileText className="w-4 h-4" />
+                                                </div>
+
+                                                {/* Divisive Line */}
+                                                <div className="absolute inset-y-0 left-1/2 w-px bg-white/20"></div>
+
+                                                {/* Shine Effect */}
+                                                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
         </div>

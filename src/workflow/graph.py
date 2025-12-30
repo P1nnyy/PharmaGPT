@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from src.workflow.state import InvoiceState
-from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics
+from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics, header_agent
 from src.utils.logging_config import get_logger
 
 # Setup Logging
@@ -9,13 +9,14 @@ logger = get_logger(__name__)
 def build_graph():
     """
     Constructs the Invoice Extraction Graph.
-    Flow: START -> Surveyor -> Worker -> Mapper -> Auditor -> Detective -> END
+    Flow: START -> Surveyor -> (Worker | HeaderAgent) -> Mapper -> Auditor -> Detective -> END
     """
     workflow = StateGraph(InvoiceState)
     
     # Add Nodes
     workflow.add_node("surveyor", surveyor.survey_document)
     workflow.add_node("worker", worker.execute_extraction)
+    workflow.add_node("header_agent", header_agent.extract_header_metadata)
     workflow.add_node("mapper", mapper.execute_mapping)
     workflow.add_node("auditor", auditor.audit_extraction)
     workflow.add_node("detective", detective.detective_work)
@@ -24,8 +25,15 @@ def build_graph():
     
     # Define Edges
     workflow.add_edge(START, "surveyor")
+    
+    # Parallel Branching
     workflow.add_edge("surveyor", "worker")
+    workflow.add_edge("surveyor", "header_agent")
+    
+    # Convergence
     workflow.add_edge("worker", "mapper")
+    workflow.add_edge("header_agent", "mapper")
+    
     workflow.add_edge("mapper", "auditor")
     workflow.add_edge("auditor", "detective")
     workflow.add_edge("detective", "critic")
@@ -71,6 +79,7 @@ async def run_extraction_pipeline(image_path: str):
         "image_path": image_path,
         "extraction_plan": [],
         "line_item_fragments": [],
+        "header_data": {},
         "global_modifiers": {},
         "final_output": {},
         "error_logs": []
@@ -86,9 +95,11 @@ async def run_extraction_pipeline(image_path: str):
     if not final_output:
         logger.warning("Pipeline ended without Final Output. Constructing from State (Best Effort).")
         headers = result_state.get("global_modifiers", {})
+        metadata = result_state.get("header_data", {})
         lines = result_state.get("line_items") or result_state.get("line_item_fragments", [])
         
         final_output = headers.copy()
+        final_output["metadata"] = metadata
         final_output["Line_Items"] = lines
         
     error_logs = result_state.get("error_logs", [])

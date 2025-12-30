@@ -43,7 +43,14 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
             action = "APPLY_DISCOUNT_CORRECTION"
             logger.info(f"Reconcile: Found Global Discount ({g_disc}). Applying Correction of -{gap:.2f} to match Total.")
         else:
-            logger.warning("Reconcile: No Discount found to reduce inflation. Doing nothing (Safe Mode).")
+            # Check for Implicit Discount (Small Gap < 5%)
+            gap_percentage = gap / grand_total if grand_total > 0 else 0
+            if gap_percentage < 0.05:
+                modifier_to_apply = -gap
+                action = "APPLY_IMPLICIT_DISCOUNT"
+                logger.info(f"Reconcile: Implicit Discount Detected ({gap_percentage:.1%}). No explicit discount found, but gap is small. Force Reconciling.")
+            else:
+                logger.warning(f"Reconcile: No Discount found and gap ({gap_percentage:.1%}) is too large for implicit correction. Doing nothing (Safe Mode).")
             
     elif gap < 0:
         # Deflation. Increase.

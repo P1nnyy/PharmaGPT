@@ -17,9 +17,40 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
             session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item)
 
 def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float, image_path: str = None):
+    # Prepare Metadata Params
+    meta = invoice_data.metadata
+    
+    # Use explicit fallback vars
+    _address = meta.Address if meta else None
+    _phone_pri = meta.Phone_Primary if meta else invoice_data.Supplier_Phone
+    _phone_sec = meta.Phone_Secondary if meta else None
+    _email = meta.Email if meta else None
+    _gst = meta.GSTIN if meta else invoice_data.Supplier_GST
+    _dl_20b = meta.Drug_License_20B if meta else None
+    _dl_21b = meta.Drug_License_21B if meta else None
+
     query = """
-    // 1. Merge Supplier
+    // 1. Merge Supplier (Strict Upsert)
     MERGE (s:Supplier {name: $supplier_name})
+    ON CREATE SET 
+        s.phone = $supplier_phone,
+        s.phone_secondary = $phone_secondary,
+        s.gst = $supplier_gst,
+        s.address = $address,
+        s.email = $email,
+        s.dl_20b = $dl_20b,
+        s.dl_21b = $dl_21b,
+        s.created_at = timestamp()
+    ON MATCH SET 
+        // Only overwrite if new data is present (COALESCE preferred)
+        s.phone = COALESCE($supplier_phone, s.phone),
+        s.phone_secondary = COALESCE($phone_secondary, s.phone_secondary),
+        s.gst = COALESCE($supplier_gst, s.gst),
+        s.address = COALESCE($address, s.address),
+        s.email = COALESCE($email, s.email),
+        s.dl_20b = COALESCE($dl_20b, s.dl_20b),
+        s.dl_21b = COALESCE($dl_21b, s.dl_21b),
+        s.updated_at = timestamp()
     
     // 2. Merge Invoice
     MERGE (i:Invoice {invoice_number: $invoice_no})
@@ -44,6 +75,13 @@ def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float, 
     tx.run(query, 
            invoice_no=invoice_data.Invoice_No, 
            supplier_name=invoice_data.Supplier_Name,
+           supplier_phone=_phone_pri,
+           phone_secondary=_phone_sec,
+           supplier_gst=_gst,
+           address=_address,
+           email=_email,
+           dl_20b=_dl_20b,
+           dl_21b=_dl_21b,
            invoice_date=invoice_data.Invoice_Date,
            grand_total=grand_total,
            image_path=image_path)
@@ -161,6 +199,8 @@ def get_recent_activity(driver) -> List[Dict[str, Any]]:
         i.status as status,
         i.image_path as image_path,
         s.name as supplier_name,
+        s.phone as supplier_phone,
+        s.gst as supplier_gst,
         i.created_at as created_at
     ORDER BY i.created_at DESC
     LIMIT 50
@@ -177,6 +217,8 @@ def get_recent_activity(driver) -> List[Dict[str, Any]]:
                     "status": record["status"],
                     "image_path": record["image_path"],
                     "supplier_name": record["supplier_name"] or "Unknown",
+                    "supplier_phone": record["supplier_phone"],
+                    "supplier_gst": record["supplier_gst"],
                     "created_at": record["created_at"]
                 })
             return activity_log

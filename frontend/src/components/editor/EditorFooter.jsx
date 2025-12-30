@@ -1,7 +1,7 @@
 import React from 'react';
 import { Download, Save, Loader2 } from 'lucide-react';
 
-const EditorFooter = ({ lineItems, isSaving, onExport, onConfirm }) => {
+const EditorFooter = ({ lineItems, isSaving, onExport, onConfirm, readOnly }) => {
     if (lineItems.length === 0) return null;
 
     return (
@@ -26,14 +26,17 @@ const EditorFooter = ({ lineItems, isSaving, onExport, onConfirm }) => {
                         <span className="md:hidden">Excel</span>
                     </button>
 
-                    <button
-                        onClick={onConfirm}
-                        disabled={isSaving}
-                        className="flex-[2] md:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all disabled:opacity-50 disabled:scale-95"
-                    >
-                        {isSaving ? <Loader2 className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
-                        <span>Save Invoice</span>
-                    </button>
+
+                    {!readOnly && (
+                        <button
+                            onClick={onConfirm}
+                            disabled={isSaving}
+                            className="flex-[2] md:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all disabled:opacity-50 disabled:scale-95"
+                        >
+                            {isSaving ? <Loader2 className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
+                            <span>Save Invoice</span>
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

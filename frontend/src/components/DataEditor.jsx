@@ -16,7 +16,8 @@ const DataEditor = ({
     onInputChange,
     onAddRow,
     onConfirm,
-    onExport
+    onExport,
+    readOnly = false
 }) => {
 
     if (!invoiceData && !isAnalyzing) {
@@ -53,6 +54,7 @@ const DataEditor = ({
                 isSaving={isSaving}
                 onExport={onExport}
                 onConfirm={onConfirm}
+                readOnly={readOnly}
             />
         </div>
     );

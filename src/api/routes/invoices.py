@@ -26,6 +26,9 @@ class ConfirmInvoiceRequest(BaseModel):
     normalized_items: List[Dict[str, Any]]
     image_path: str = None
 
+from src.workflow.nodes.contact_hunter import extract_supplier_details
+import asyncio
+
 @router.post("/analyze-invoice", response_model=Dict[str, Any])
 async def analyze_invoice(file: UploadFile = File(...)):
     """
@@ -51,9 +54,21 @@ async def analyze_invoice(file: UploadFile = File(...)):
         # Store relative path for frontend access (via /static mount)
         saved_image_path = f"/static/invoices/{unique_filename}"
         
-        extracted_data = await run_extraction_pipeline(tmp_path)
+        # Parallel Execution: Main Extraction + Contact Hunter
+        extraction_task = run_extraction_pipeline(tmp_path)
+        contact_task = extract_supplier_details(tmp_path)
+        
+        results = await asyncio.gather(extraction_task, contact_task)
+        extracted_data = results[0]
+        contact_details = results[1]
+        
         if extracted_data is None:
             raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
+
+        # Merge Contact Details
+        if contact_details:
+            extracted_data["Supplier_Phone"] = contact_details.get("Supplier_Phone")
+            extracted_data["Supplier_GST"] = contact_details.get("Supplier_GST")
             
         # SANITIZATION (Prevent Pydantic Crash on Missing Data)
         # Ensure all line items have a valid Product string.
@@ -172,7 +187,7 @@ async def get_report(request: Request, invoice_no: str):
         "line_items": line_items
     })
 
-@router.get("/invoices/{invoice_no}/items", response_model=Dict[str, Any])
+@router.get("/invoices/{invoice_no}/items")
 async def get_invoice_items_json(invoice_no: str):
     """
     Returns invoice details and line items as JSON (for Frontend Modal).

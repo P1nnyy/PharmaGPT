@@ -21,6 +21,10 @@ class InvoiceState(TypedDict):
     # Default behavior is replace/overwrite, which is what we want for this stage
     line_items: List[Dict[str, Any]]
     
+    # NEW: Specialized Metadata from Header Agent
+    # Merges dictionary updates
+    header_data: Annotated[Dict[str, Any], lambda x, y: {**x, **y}]
+    
     anchor_totals: Dict[str, float]  # Stores "Grand Total" from Footer Agent (The Truth)
     critic_verdict: str              # Decision: "APPROVE", "APPLY_MARKUP", "APPLY_MARKDOWN", "RETRY_OCR"
     correction_factor: float         # Ratio to apply for markup/markdown
