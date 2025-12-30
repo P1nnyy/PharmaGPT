@@ -1,5 +1,5 @@
 tunnel: invoice-app
-credentials-file: /root/.cloudflared/cert.json 
+credentials-file: /Users/pranavgupta/.cloudflared/87f642ac-94bc-406d-a86c-bf08e829789a.json 
 
 ingress:
   - hostname: pharmagpt.co

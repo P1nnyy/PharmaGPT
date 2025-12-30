@@ -1,21 +1,29 @@
-const express = require('express');
-const multer = require('multer');
-const axios = require('axios');
-const path = require('path');
-const cors = require('cors');
-const fs = require('fs');
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+import express from 'express';
+import multer from 'multer';
+import axios from 'axios';
+import path from 'path';
+import cors from 'cors';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import FormData from 'form-data';
+import dotenv from 'dotenv'; // need to import dotenv
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load env vars
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 8000;
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:5000';
+// We will use 5001 if 5000 is taken (waiting for lsof result, but safer to assume 5001)
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:5001';
 
 // --- Middleware ---
-app.use(cors({ origin: '*' })); // Allow all origins for dev
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 // --- File Upload Setup ---
-// Configure Multer to save to 'uploads/' directly (sharing volume with Python)
 const uploadDir = path.join(__dirname, '../../uploads/invoices');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -26,8 +34,6 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        // Keep original extension, add UUID-like prefix if needed, but for now 
-        // we'll rely on the existing logic or simple timestamp
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         const ext = path.extname(file.originalname);
         cb(null, uniqueSuffix + ext);
@@ -37,62 +43,22 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 // --- Static Files ---
-// Serve 'uploads' directory at /static to match previous Python behavior
 app.use('/static', express.static(path.join(__dirname, '../../uploads')));
 
 // --- Routes ---
-
-/**
- * Health Check
- */
 app.get('/', (req, res) => {
     res.json({ status: 'ok', service: 'Node.js Gateway' });
 });
 
-/**
- * Endpoint: /analyze-invoice
- * Receives file from Frontend -> Saves to Disk -> Calls Python Service
- */
 app.post('/analyze-invoice', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const filePath = req.file.path; // Absolute path on disk
+        const filePath = req.file.path;
         console.log(`[Node] Received File: ${filePath}`);
 
-        // Call Python Service
-        // We act as a proxy. Since Python expects a file upload, we can re-stream it
-        // Or, since they share the disk, we can just send the PATH.
-        // However, the existing Python /analyze-invoice expects multipart/form-data.
-        // To minimize Python changes, let's re-stream the file.
-
-        const formData = new FormData();
-        const fileStream = fs.createReadStream(filePath);
-
-        // Note: In Node, FormData requires special handling or us of 'form-data' package
-        // But since we are using 'axios', we can just pass the stream if we import 'form-data'
-        // Let's use the 'form-data' library which usually comes with axios or needs install. 
-        // Wait, 'axios' can handle streams but needs 'form-data' lib for multipart.
-
-        // Simpler approach for Hybrid: Modify Python to accept a file PATH?
-        // Or just install 'form-data'. 
-        // Let's try to pass the file stream.
-
-        // Actually, to avoid "form-data" dependency valid issues, let's try just piping the request?
-        // No, 'multer' already consumed the stream. We have the file on disk.
-
-        // Let's use 'form-data' package logic (we might need to install it if axios doesn't bundle it, usually better to install).
-        // Since I didn't install 'form-data' explicitly (only express multer axios), I'll try to rely on 'axios' auto handling or fallback to installing it.
-        // Actually, let's just make the Python endpoint accept a 'file_path' text field OR a file.
-        // BUT, for minimal friction, I will execute a direct POST using 'form-data' package which is standard.
-        // I'll assume I need to install 'form-data' -> I should do that.
-
-        // TEMPORARY: I'll try to just install 'form-data' now to be safe.
-        // For now, I'll write this file assuming I have it.
-
-        const FormData = require('form-data');
         const form = new FormData();
         form.append('file', fs.createReadStream(filePath));
 
@@ -104,7 +70,6 @@ app.post('/analyze-invoice', upload.single('file'), async (req, res) => {
             maxContentLength: Infinity
         });
 
-        // Return Python's response to Frontend
         res.json(pythonResponse.data);
 
     } catch (error) {
@@ -116,12 +81,8 @@ app.post('/analyze-invoice', upload.single('file'), async (req, res) => {
     }
 });
 
-/**
- * Proxy All Other Requests (Activity Log, Confirm, Reports)
- * We can catch-all and forward.
- */
+// Proxy Catch-All
 app.use(async (req, res) => {
-    // Skip static/uploads which are handled above
     if (req.path.startsWith('/static')) return;
 
     try {
@@ -131,13 +92,9 @@ app.use(async (req, res) => {
         const config = {
             method: req.method,
             url: url,
-            headers: { ...req.headers, host: 'localhost:5000' }, // Reset host
+            headers: { ...req.headers, host: `localhost:5001` }, // Update host check
             data: req.body
         };
-
-        // Remove content-length/type if strictly proxying (axios handles it)
-        // But for getting JSON bodies, express.json() consumed it.
-        // If it's a GET, data is underfined.
 
         const response = await axios(config);
         res.status(response.status).json(response.data);
