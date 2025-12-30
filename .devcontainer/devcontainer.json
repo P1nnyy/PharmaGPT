@@ -1,0 +1,29 @@
+{
+	"name": "Invoice Extractor Dev",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "app",
+	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "lts"
+		},
+		"ghcr.io/devcontainers/features/git:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"dbaeumer.vscode-eslint",
+				"esbenp.prettier-vscode",
+				"humao.rest-client"
+			]
+		}
+	},
+	"forwardPorts": [
+		8000,
+		5173,
+		7474,
+		7687
+	],
+	"postCreateCommand": "npm install && cd frontend && npm install",
+	"remoteUser": "vscode"
+}

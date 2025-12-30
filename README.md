@@ -49,9 +49,10 @@ The core innovation is the `reconcile_financials` module in `src/normalization.p
 
 ## 🛠️ Setup & Installation
 
+## 🛠️ Setup & Installation
+
 ### Prerequisites
-*   Python 3.10+
-*   Node.js & npm (for Frontend)
+*   Node.js & npm (v18+)
 *   Neo4j Database (Local or Aura)
 *   Google Gemini API Key
 
@@ -66,18 +67,18 @@ NEO4J_PASSWORD=your_password
 
 ### 2. Backend Setup
 ```bash
-# Create Virtual Environment
-python3 -m venv .venv
-source .venv/bin/activate
-
 # Install Dependencies
-pip install -r requirements.txt
+npm install
+
+# Start Server
+npm start
 ```
 
 ### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
+npm run dev
 ```
 
 ---
@@ -89,10 +90,16 @@ You need to run both the Backend (API) and Frontend (UI).
 
 **Terminal 1: Backend**
 ```bash
-source .venv/bin/activate
-uvicorn src.api.server:app --reload
+npm start
 ```
-*API Docs: http://localhost:8000/docs*
+*API Docs: Not available (Python FastAPI had auto-docs, Express does not by default)*
+
+**Terminal 2: Frontend**
+```bash
+cd frontend
+npm run dev
+```
+*UI: http://localhost:5173*
 
 **Terminal 2: Frontend**
 ```bash
