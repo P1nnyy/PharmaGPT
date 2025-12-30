@@ -1,0 +1,11 @@
+tunnel: invoice-app
+credentials-file: /root/.cloudflared/cert.json 
+
+ingress:
+  - hostname: pharmagpt.co
+    service: http://127.0.0.1:5173
+  - hostname: www.pharmagpt.co
+    service: http://127.0.0.1:5173
+  - hostname: api.pharmagpt.co
+    service: http://127.0.0.1:8000
+  - service: http_status:404
