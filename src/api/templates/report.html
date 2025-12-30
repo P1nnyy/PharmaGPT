@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Report - {{ invoice.invoice_number }}</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+
+        .header {
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #343a40;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        .total {
+            font-weight: bold;
+            text-align: right;
+            margin-top: 10px;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>Clean Invoice Report</h1>
+        <p><strong>Supplier:</strong> {{ invoice.supplier_name }}</p>
+        <p><strong>Invoice No:</strong> {{ invoice.invoice_number }}</p>
+        <p><strong>Date:</strong> {{ invoice.invoice_date }}</p>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Raw Product Name</th> <!-- New Audit Column -->
+                <th>Batch No</th>
+                <th>HSN Code</th>
+                <th>Product Name</th>
+                <th>Pack Size</th>
+                <th>Qty</th>
+                <th>Cost Price</th>
+                <th>Taxable Value</th>
+                <th>Tax Amount</th>
+                <th>Net Amount</th>
+                <th>Stated Net Amount (Raw)</th> <!-- New Audit Column -->
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in line_items %}
+            <tr>
+                <td style="color: #666; font-style: italic;">{{ item.raw_product_name }}</td> <!-- Audit Data -->
+                <td>{{ item.batch_no }}</td>
+                <td>{{ item.hsn_code }}</td>
+                <td>{{ item.product_name }}</td>
+                <td>{{ item.pack_size }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.cost_price }}</td>
+                <td>{{ item.taxable_value }}</td>
+                <td>{{ item.calculated_tax_amount }}</td>
+                <td>{{ item.net_amount }}</td>
+                <td style="color: #666; font-style: italic;">{{ item.stated_net_amount }}</td> <!-- Audit Data -->
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="total">
+        Grand Total: {{ invoice.grand_total }}
+    </div>
+
+</body>
+
+</html>

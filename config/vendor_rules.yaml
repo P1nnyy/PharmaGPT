@@ -1,0 +1,40 @@
+global_column_aliases:
+  Batch_No:
+    - "Batch No"
+    - "Batch"
+    - "Lot No"
+    - "Product Batch No"
+  Quantity:
+    - "Qty"
+    - "Quantity"
+    - "Nos"
+    - "Pack"
+    - "Strips"
+  Rate:
+    - "Rate/Doz"
+    - "Rate"
+    - "Unit Price"
+    - "PTR"
+  HSN_Code:
+    - "HSN"
+    - "HSN Code"
+    - "H.S.N"
+    - "HSN/SAC"
+    - "HSN CODE PACK"
+
+vendors:
+  "emm vee traders":
+    calculation_rules:
+      rate_divisor: 12.0
+  "c m associates":
+    calculation_rules: {}
+  "sood medicos":
+    calculation_rules: {}
+  "rakesh & co":
+    calculation_rules: {}
+  "abrol pharma":
+    calculation_rules: {}
+  "atul agencies":
+    calculation_rules: {}
+  "abka medicos":
+    calculation_rules: {}

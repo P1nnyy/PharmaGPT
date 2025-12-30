@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+neo4j
+python-dotenv
+jinja2
+requests
+httpx
+pytest
+google-generativeai
+python-multipart
+importlib-metadata
+PyYAML
+pandas
+openpyxl

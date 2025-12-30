@@ -1,0 +1,109 @@
+# config/column_aliases.yaml
+# AGGREGATED COLUMN SYNONYMS FROM ANALYZED SOURCES
+# Used by Harvester Agent to map Invoice Headers to Schema Fields
+
+global_column_aliases:
+
+  # 1. Product Name
+  Original_Product_Description:
+    - "Particulars"                # Source: Sood, C M Associates
+    - "Product Name"               # Source: Deepak, Jeevan
+    - "Item Name"                  # Source: Abrol, Abka
+    - "Item Description"           # Source: Jeevan Medicos
+    - "Description"
+    - "Product"                    # Source: Rakesh, Enn Pee, Atul
+    - "SKU Description"            # Source: Emm Vee
+    - "Desc."
+
+  # 2. Batch Number
+  Batch_No:
+    - "Batch No."                  # Source: Rakesh, Abrol, Atul
+    - "Batch No"                   # Source: C M Associates
+    - "Batch"                      # Source: Jeevan, Enn Pee, Deepak
+    - "BATCH NO"                   # Source: Abka
+    - "Lot No"
+    - "Lot"
+    # Note: "PCode" is strictly excluded based on business rules.
+
+  # 3. Quantity
+  Raw_Quantity:
+    - "Qty"                        # Source: Emm Vee, Deepak
+    - "Qty."                       # Source: Rakesh, Sood, Atul
+    - "QTY"                        # Source: Abrol, Abka
+    - "Quantity"
+    - "QTY. + FREE"                # Source: Sood (Merged Column)
+    - "Total Qty"                  # Source: C M Associates
+    - "Pcs"                        # Source: C M Associates
+    - "Nos"
+    - "Pack"                       # Some vendors put Qty in 'Pack' column (Deepak ambiguity)
+
+  # 4. HSN Code
+  Raw_HSN_Code:
+    - "HSN"                        # Source: Rakesh, Jeevan, Deepak
+    - "HSN Code"                   # Source: Sood
+    - "HSN CODE PACK"              # Source: Abrol, Abka (Merged Column)
+    - "H.S.N"
+    - "HSN/SAC"
+
+  # 5. Financial Anchor (Line Amount)
+  # The Blind Harvester targets this to get the "Total" before verification
+  Invoice_Line_Amount:
+    - "Amount"                     # Source: Abrol, Rakesh, Deepak, Enn Pee, Atul
+    - "Net Amount"                 # Source: Emm Vee, Abka
+    - "Net Amt"                    # Source: C M Associates
+    - "Net Payable"
+    - "Value"                      # Source: Sood
+    - "Gross Amt"                  # Source: Jeevan (Rightmost column)
+    - "Gross Value"
+    - "Total"
+    - "Landing Cost"               # Source: User Request (Net Amount for Item)
+
+  # 6. Unit Rate
+  # Useful for debugging, though Solver derives final cost
+  Raw_Rate:
+    - "Rate"                       # Universal
+    - "Rate/Doz"                   # Source: Emm Vee (Critical for Dozen logic)
+    - "Net Rate"                   # Source: Sood
+    - "PTR"
+    - "Unit Price"
+    - "Price"
+
+  # 7. MRP (Maximum Retail Price)
+  Raw_MRP:
+    - "MRP"                        # Source: Emm Vee, Rakesh, Atul
+    - "M.R.P"                      # Source: Sood, Deepak
+    - "MRP."                       # Source: Sood
+    - "New MRP"                    # Source: Abrol
+    - "Max Price"
+
+  # 8. Expiry Date
+  Raw_Expiry_Date:
+    - "Exp"                        # Source: Rakesh, Enn Pee, Deepak
+    - "Exp."                       # Source: Abrol
+    - "Exp Dt"                     # Source: Jeevan
+    - "Expiry"
+    - "Use Before"
+
+  # 9. Pack Size (Context for Qty)
+  Pack_Size:
+    - "Pack"                       # Source: Rakesh, Deepak
+    - "PKG"                        # Source: Jeevan
+    - "Pack Size"
+
+  # 10. Discount Headers (Context for Critic)
+  Discount_Header:
+    - "Disc"
+    - "Dis"                        # Source: Sood, Atul
+    - "Dis1"                       # Source: Deepak
+    - "Dis2"                       # Source: Deepak
+    - "Sch. Disc."                 # Source: Emm Vee
+    - "T.D%"                       # Source: Enn Pee (Trade Discount)
+    - "CD"                         # Cash Discount
+
+  # 11. Tax Headers (Context for Critic)
+  Tax_Header:
+    - "GST %"                      # Source: Jeevan
+    - "Rate GST %"                 # Source: Sood
+    - "SGST"
+    - "CGST"
+    - "IGST"
