@@ -40,6 +40,7 @@ class InvoiceExtraction(BaseModel):
     CGST_Amount: Union[str, float, None] = Field(None, description="Total CGST Amount from footer.")
     IGST_Amount: Union[str, float, None] = Field(None, description="Total IGST Amount from footer.")
     Round_Off: Union[str, float, None] = Field(None)
+    image_path: Optional[str] = Field(None, description="Relative path to the stored invoice image.")
 
 class NormalizedLineItem(BaseModel):
     """
@@ -62,3 +63,23 @@ class NormalizedLineItem(BaseModel):
     Rate: Optional[float] = Field(None, description="Unit Price (Rate).")
     Expiry_Date: Optional[str] = Field(None, description="Expiry date.")
     Batch_No: Optional[str] = Field(None)
+
+class SupplierExtraction(BaseModel):
+    """
+    Dedicated schema for detailed supplier information.
+    """
+    Supplier_Name: str = Field(..., description="Name of the seller/supplier.")
+    Address: Optional[str] = Field(None, description="Full address of the supplier.")
+    GSTIN: Optional[str] = Field(None, description="GST Number (GSTIN).")
+    DL_No: Optional[str] = Field(None, description="Drug License Number.")
+    Phone_Number: Optional[str] = Field(None, description="Contact phone numbers.")
+    Email: Optional[str] = Field(None, description="Email address.")
+
+class User(BaseModel):
+    """
+    Represents a Google OAuth User.
+    """
+    google_id: str = Field(..., description="Unique Google User ID.")
+    email: str = Field(..., description="User's email address.")
+    name: str = Field(..., description="Full name from Google Profile.")
+    picture: Optional[str] = Field(None, description="URL to profile picture.")

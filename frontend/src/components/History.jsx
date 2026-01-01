@@ -132,6 +132,18 @@ const History = () => {
                                                 </div>
                                             </div>
 
+                                            {/* Supplier Details (New) */}
+                                            <div className="flex flex-col max-w-[200px]">
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Address</span>
+                                                <span className="text-slate-300 text-xs font-medium truncate" title={item.supplier_address}>
+                                                    {item.supplier_address || 'N/A'}
+                                                </span>
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mt-1">DL No.</span>
+                                                <span className="text-slate-300 text-xs font-medium">
+                                                    {item.supplier_dl || 'N/A'}
+                                                </span>
+                                            </div>
+
                                             {/* Amount */}
                                             <div className="flex flex-col text-right ml-auto mr-4">
                                                 <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Amount</span>

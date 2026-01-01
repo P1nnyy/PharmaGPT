@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from src.workflow.state import InvoiceState
-from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics
+from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics, supplier_extractor
 from src.utils.logging_config import get_logger
 
 # Setup Logging
@@ -21,10 +21,17 @@ def build_graph():
     workflow.add_node("detective", detective.detective_work)
     workflow.add_node("critic", critic.critique_extraction)
     workflow.add_node("solver", mathematics.apply_correction)
+    workflow.add_node("supplier_extractor", supplier_extractor.extract_supplier_details)
     
     # Define Edges
     workflow.add_edge(START, "surveyor")
     workflow.add_edge("surveyor", "worker")
+    
+    # Parallel Supplier Extraction (Start from Surveyor or Start? Start is fine, but Surveyor gives us image path reliably)
+    # Let's run it parallel to Worker. Surveyor -> Supplier Extractor
+    workflow.add_edge("surveyor", "supplier_extractor")
+    workflow.add_edge("supplier_extractor", END) # It's a sidequest, effectively.
+    
     workflow.add_edge("worker", "mapper")
     workflow.add_edge("mapper", "auditor")
     workflow.add_edge("auditor", "detective")
@@ -58,17 +65,18 @@ def build_graph():
 # Global Compilation (Compile once on startup)
 APP = build_graph()
 
-async def run_extraction_pipeline(image_path: str):
+async def run_extraction_pipeline(image_path: str, user_email: str):
     """
     Entry point to run the new graph-based pipeline.
     Initializes state and invokes the graph.
     """
-    logger.info(f"Starting Extraction Graph for {image_path}")
+    logger.info(f"Starting Extraction Graph for {image_path} (User: {user_email})")
     
     # APP is already compiled globally
     
     initial_state = {
         "image_path": image_path,
+        "user_email": user_email,
         "extraction_plan": [],
         "line_item_fragments": [],
         "global_modifiers": {},
@@ -90,6 +98,12 @@ async def run_extraction_pipeline(image_path: str):
         
         final_output = headers.copy()
         final_output["Line_Items"] = lines
+        
+    # MERGE Supplier Details into Final Output
+    supplier_details = result_state.get("supplier_details")
+    if supplier_details:
+        logger.info(f"Merging Supplier Details into Output: {supplier_details}")
+        final_output["supplier_details"] = supplier_details
         
     error_logs = result_state.get("error_logs", [])
     

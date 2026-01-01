@@ -41,12 +41,14 @@ const DataEditor = ({
                 successMsg={successMsg}
                 errorMsg={errorMsg}
                 onHeaderChange={onHeaderChange}
+                readOnly={readOnly}
             />
 
             <EditorTable
                 lineItems={lineItems}
                 onInputChange={onInputChange}
                 onAddRow={onAddRow}
+                readOnly={readOnly}
             />
 
             <EditorFooter

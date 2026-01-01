@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load env vars BEFORE imports that might use them
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -26,7 +26,7 @@ logger = get_logger("api")
 
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item, parse_float
-from src.persistence import ingest_invoice
+from src.persistence import ingest_invoice, get_activity_log, get_inventory
 from src.workflow.graph import run_extraction_pipeline
 
 # Basic validation that API Key exists (optional but good practice)
@@ -38,7 +38,13 @@ if not API_KEY:
 if not API_KEY:
     logger.warning("GOOGLE_API_KEY or GEMINI_API_KEY not found in environment variables.")
 
+from fastapi.staticfiles import StaticFiles
+
 app = FastAPI(title="Invoice Extractor API")
+
+# Mount Static Directory
+os.makedirs("static/invoices", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- Middleware ---
 @app.middleware("http")
@@ -120,12 +126,137 @@ def shutdown_event():
 
 # --- Request Models ---
 
+# --- Auth & Session Configuration ---
+from authlib.integrations.starlette_client import OAuth
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request as StarletteRequest
+from jose import jwt, JWTError
+from datetime import datetime, timedelta
+
+# User Configuration from Env
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_change_me_in_prod")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 Days
+
+if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+    logger.warning("Google OAuth credentials missing. Auth routes will fail.")
+
+# Setup Session Middleware (Required for Authlib 'state' management)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+
+# Setup OAuth
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={
+        'scope': 'openid email profile'
+    }
+)
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# --- Request Models ---
+
 class ConfirmInvoiceRequest(BaseModel):
     invoice_data: Dict[str, Any]
     normalized_items: List[Dict[str, Any]]
 
 # --- API Endpoints ---
 
+@app.get("/auth/google/login")
+async def login(request: Request):
+    # Absolute URL for callback
+    # For local: http://localhost:5001/auth/google/callback
+    # For prod: Use https if available
+    redirect_uri = request.url_for('auth_callback')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth/google/callback")
+async def auth_callback(request: Request):
+    if not driver:
+         raise HTTPException(status_code=503, detail="Database unavailable")
+         
+    try:
+        from src.persistence import upsert_user
+        
+        token = await oauth.google.authorize_access_token(request)
+        user = token.get('userinfo')
+        if not user:
+            # Try parsing id_token manually if userinfo not in token dict 
+            # (depends on authlib version/provider)
+            user = await oauth.google.parse_id_token(request, token)
+            
+        if not user:
+             raise HTTPException(status_code=400, detail="Failed to retrieve user info")
+             
+        # 1. Upsert User in DB
+        user_data = {
+            "google_id": user.get("sub"),
+            "email": user.get("email"),
+            "name": user.get("name"),
+            "picture": user.get("picture")
+        }
+        upsert_user(driver, user_data)
+        
+        # 2. Create Session Token (JWT)
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.get("email")},
+            expires_delta=access_token_expires
+        )
+        
+        # 3. Redirect to Frontend with Token
+        # Dev: http://localhost:5173
+        # Prod: https://pharmagpt.co (or derived from referer/config)
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        
+        # We redirect to root /?token=... to avoid need for React Router
+        response = HTMLResponse(f"""
+        <script>
+            window.location.href = "{frontend_url}/?token={access_token}";
+        </script>
+        """)
+        return response
+        
+    except Exception as e:
+        logger.error(f"Auth Callback Failed: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+
+# --- Dependencies ---
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordBearer
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+async def get_current_user_email(token: str = Depends(oauth2_scheme)):
+    """
+    Decodes JWT and returns email.
+    If fails, raises 401. STRICT MODE.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+             raise HTTPException(status_code=401, detail="Invalid credentials")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+        
 @app.get("/logs")
 async def get_logs(lines: int = 100):
     """
@@ -146,34 +277,52 @@ async def get_logs(lines: int = 100):
         return {"error": f"Failed to read logs: {str(e)}"}
         
 @app.post("/analyze-invoice", response_model=Dict[str, Any])
-async def analyze_invoice(file: UploadFile = File(...)):
+async def analyze_invoice(file: UploadFile = File(...), user_email: str = Depends(get_current_user_email)):
     """
     Step 1: Analyzes the invoice (OCR + Normalization) but DOES NOT persist to DB.
     Returns the raw and normalized data for frontend verification.
     """
-    tmp_path = None
+    processing_path = None
     try:
-        # Scope 1: File Save
-        print(f"Received file: {file.filename}")
-        suffix = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ".tmp"
+        # Scope 1: File Save PERMANENTLY locally (for History View)
+        # Note: In production this should be S3. Here we use local filesystem in /static.
+        print(f"Received file: {file.filename} from {user_email}")
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            shutil.copyfileobj(file.file, tmp)
-            tmp_path = tmp.name
-        print(f"Saved temp file to: {tmp_path}")
+        file_ext = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ".png"
+        file_id = uuid.uuid4().hex
+        filename = f"{file_id}{file_ext}"
+        
+        # Save to static directory directly
+        save_dir = "static/invoices"
+        os.makedirs(save_dir, exist_ok=True)
+        processing_path = os.path.join(save_dir, filename)
+        
+        with open(processing_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        print(f"Saved invoice image to: {processing_path}")
+        
+        # This relative path is what we store in DB and send to frontend
+        static_path = f"/static/invoices/{filename}"
         
     except Exception as e:
          raise HTTPException(status_code=500, detail=f"File save failed: {str(e)}")
 
-    # Scope 2: Extraction (Outside the with block)
+    # Scope 2: Extraction
     try:
         # 2. Extract Data using Gemini Vision + Agents (LangGraph)
         print("Starting extraction pipeline...")
-        extracted_data = await run_extraction_pipeline(tmp_path)
+        # PASS USER CONTEXT
+        # Note: processing_path is absolute or relative to pwd, compatible with vision tools
+        extracted_data = await run_extraction_pipeline(processing_path, user_email)
         print("Extraction pipeline completed.")
         
         if extracted_data is None:
             raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
+            
+        # INJECT IMAGE PATH INTO EXTRACTED DATA
+        # This ensures it travels back to frontend and then back to confirm-invoice
+        extracted_data["image_path"] = static_path
         
         # 3. Normalize Line Items
         # Hydrate into Pydantic model
@@ -216,12 +365,12 @@ async def analyze_invoice(file: UploadFile = File(...)):
                         )
             except ValueError:
                     pass # Stated total might be non-numeric, ignore check
-
+        
         # Return data for Review (No DB persistence yet)
         return {
             "status": "review_needed",
             "message": "Analysis complete. Please review and confirm.",
-            "invoice_data": extracted_data, # Return raw extraction as dict
+            "invoice_data": extracted_data, # Return raw extraction as dict (now includes image_path)
             "normalized_items": normalized_items,
             "validation_flags": validation_flags
         }
@@ -233,14 +382,12 @@ async def analyze_invoice(file: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Cleanup temp file
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    # finally:
+        # DO NOT DELETE FILE - We need it for history now!
 
 
 @app.post("/confirm-invoice", response_model=Dict[str, Any])
-async def confirm_invoice(request: ConfirmInvoiceRequest):
+async def confirm_invoice(request: ConfirmInvoiceRequest, user_email: str = Depends(get_current_user_email)):
     """
     Step 2: Receives the verified (and potentially edited) data and persists it to Neo4j.
     """
@@ -253,8 +400,11 @@ async def confirm_invoice(request: ConfirmInvoiceRequest):
         invoice_obj = InvoiceExtraction(**request.invoice_data)
         
         # 2. Ingest into Neo4j
+        # Extract supplier details if available
+        supplier_details = request.invoice_data.get("supplier_details")
+        
         # We pass the confirmed normalized_items directly
-        ingest_invoice(driver, invoice_obj, request.normalized_items)
+        ingest_invoice(driver, invoice_obj, request.normalized_items, user_email=user_email, supplier_details=supplier_details)
         
         return {
             "status": "success",
@@ -270,19 +420,19 @@ async def confirm_invoice(request: ConfirmInvoiceRequest):
 
 
 @app.get("/report/{invoice_no}", response_class=HTMLResponse)
-async def get_report(request: Request, invoice_no: str):
+async def get_report(request: Request, invoice_no: str, user_email: str = Depends(get_current_user_email)):
     if not driver:
          return templates.TemplateResponse("error.html", {"request": request, "message": "Database unavailable"})
 
     query = """
-    MATCH (i:Invoice {invoice_number: $invoice_no})
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
     OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
     OPTIONAL MATCH (l)-[:REFERENCES]->(p:Product)
     RETURN i, collect({line: l, product: p, raw_desc: l.raw_description, stated_net: l.stated_net_amount, batch_no: l.batch_no, hsn_code: l.hsn_code}) as items
     """
     
     with driver.session() as session:
-        result = session.run(query, invoice_no=invoice_no).single()
+        result = session.run(query, invoice_no=invoice_no, user_email=user_email).single()
     
     if not result:
         return templates.TemplateResponse("error.html", {"request": request, "message": f"Invoice {invoice_no} not found"})
@@ -318,6 +468,77 @@ async def get_report(request: Request, invoice_no: str):
         "invoice": invoice_details,
         "line_items": line_items
     })
+
+@app.get("/activity-log")
+async def read_activity_log(user_email: str = Depends(get_current_user_email)):
+    if not driver:
+        return [] 
+    try:
+        data = get_activity_log(driver, user_email=user_email)
+        return data
+    except Exception as e:
+        logger.error(f"Failed to fetch activity log: {e}")
+        return []
+
+@app.get("/inventory")
+async def read_inventory(user_email: str = Depends(get_current_user_email)):
+    if not driver:
+        return []
+    try:
+        data = get_inventory(driver, user_email=user_email)
+        return data
+    except Exception as e:
+        logger.error(f"Failed to fetch inventory: {e}")
+        return []
+
+@app.get("/history")
+async def read_history(user_email: str = Depends(get_current_user_email)):
+    if not driver:
+        return []
+    try:
+        from src.persistence import get_grouped_invoice_history
+        data = get_grouped_invoice_history(driver, user_email=user_email)
+        return data
+    except Exception as e:
+        logger.error(f"Failed to fetch history: {e}")
+        return []
+
+@app.get("/invoices/{invoice_number}/items")
+async def read_invoice_items(invoice_number: str, user_email: str = Depends(get_current_user_email)):
+    if not driver:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    
+    # Import locally to avoid circular imports if any, or just ensure it's imported at top
+    from src.persistence import get_invoice_details
+    
+    try:
+        data = get_invoice_details(driver, invoice_number, user_email=user_email)
+        if not data:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        return data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch invoice details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/auth/me")
+async def get_current_user_profile(user_email: str = Depends(get_current_user_email)):
+    """
+    Returns the full profile of the currently logged-in user.
+    """
+    if not driver:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+        
+    query = "MATCH (u:User {email: $email}) RETURN u"
+    with driver.session() as session:
+        result = session.run(query, email=user_email).single()
+        
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    return dict(result["u"])
 
 if __name__ == "__main__":
     uvicorn.run("src.api.server:app", host="0.0.0.0", port=5001, reload=True)

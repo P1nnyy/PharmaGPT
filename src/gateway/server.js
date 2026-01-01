@@ -64,7 +64,8 @@ app.post('/analyze-invoice', upload.single('file'), async (req, res) => {
 
         const pythonResponse = await axios.post(`${PYTHON_SERVICE_URL}/analyze-invoice`, form, {
             headers: {
-                ...form.getHeaders()
+                ...form.getHeaders(),
+                Authorization: req.headers.authorization // Forward Auth Token
             },
             maxBodyLength: Infinity,
             maxContentLength: Infinity

@@ -34,3 +34,9 @@ class InvoiceState(TypedDict):
     
     # Smart Feedback from Critic/Auditor to Worker (for Retries)
     feedback_logs: Annotated[List[str], operator.add]
+    
+    # NEW: Dedicated Supplier Details (Parallel Pipeline)
+    supplier_details: Dict[str, Any]
+    
+    # Context
+    user_email: str

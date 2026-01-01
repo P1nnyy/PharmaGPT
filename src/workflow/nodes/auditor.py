@@ -192,10 +192,24 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                              # MULTI SOURCE -> Duplicate implies OCR Overlap (Redundant) -> DROP
                              merged = True
                              logger.info(f"Auditor: Dropping Exact Duplicate '{desc_norm}' (Redundant OCR from overlapping zones)")
+                     elif q_curr == q_ex:
+                         # Same Batch, Same Qty, Different Values.
+                         # This implies we read the same item twice (maybe once from Scheme table with Amount=0 or Rate vs Amount).
+                         # Strategy: Prefer the one with Higher Amount (assuming real line item has value > scheme listing).
+                         
+                         merged = True
+                         if val_curr > val_ex:
+                             # Current is better. Replace Existing with Current.
+                             # But we are iterating, so we can't easily replace "existing_item" in place effectively using 'merged=True' logic which usually drops current.
+                             # So we must COPY current into existing.
+                             existing_item.update(item)
+                             logger.info(f"Auditor: Same Batch+Qty but Different Values ({val_curr} vs {val_ex}) -> Keeping Current (Higher Value)")
+                         else:
+                             logger.info(f"Auditor: Same Batch+Qty but Different Values ({val_curr} vs {val_ex}) -> Keeping Existing (Higher/Equal Value)")
                      else:
-                         # Same Batch, Different Values -> Real Split Entry? -> KEEP BOTH
+                         # Same Batch, Different Qty -> Real Split Entry? -> KEEP BOTH
                          merged = False 
-                         logger.info(f"Auditor: Same Batch but Different Values ({val_curr} vs {val_ex}) -> KEEPING BOTH")
+                         logger.info(f"Auditor: Same Batch but Different Qty ({q_curr} vs {q_ex}) -> KEEPING BOTH")
                 
                 elif ratio > 0.94 and batch_match: 
                     # Fuzzy match + Batch match (N/A)
@@ -303,9 +317,15 @@ def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
 def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Enforces the invariant: Quantity * Rate = Amount.
-    If the extracted Qty violates this, but Amount/Rate yields a clean integer,
-    we overwrite Qty with the calculated value.
-    This fixes Swaps, Typos (e.g. 'l'->1), and Alignment errors globally.
+    
+    UPDATED STRATEGY:
+    1. Trust OCR 'Quantity' if it exists and is a valid number.
+    2. If Qty * Rate != Amount:
+       a. If Qty is 'solid' (exists, integer-like), ASSUME Rate IS WRONG (or missing tax/discount). 
+          Update Rate = Amount / Qty.
+       b. If Qty is missing/zero, BUT Rate and Amount exist, CALCULATE Qty = Amount / Rate.
+    
+    This prevents "Exploding Quantity" bugs where a wrong low Rate causes Qty to be calculated as 43, 100, etc.
     """
     for item in items:
         try:
@@ -313,34 +333,44 @@ def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[st
             rate = float(item.get("Rate") or 0)
             amt = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
             
-            # Skip if Rate is missing or zero (cannot divide)
-            if rate <= 0:
+            # 1. Sanity Check: If Amount is missing, we can't do much math.
+            if amt <= 0.1:
                 continue
-                
-            # 1. Check for Math Mismatch
-            # Discrepancy > 5% implies the Extracted Qty is likely wrong 
-            # (assuming Amount and Rate are correct, which is statistically safer)
+
+            # 2. Check for Math Mismatch
+            # Expected = Qty * Rate
             expected_amt = qty_extracted * rate
+            
+            # Allow 5% variance or 2.0 absolute error
             is_mismatch = abs(expected_amt - amt) > max(2.0, amt * 0.05)
             
             if is_mismatch:
-                # 2. Attempt Reconstruction
-                calc_qty = amt / rate
+                # CASE A: OCR Qty Exists -> Trust Qty, Fix Rate
+                if qty_extracted > 0.1:
+                    new_rate = amt / qty_extracted
+                    logger.info(f"Auditor: Math Mismatch for '{item.get('Product')}'. Trusting OCR Qty {qty_extracted}. Adjusting Rate {rate} -> {new_rate:.2f} (derived from Amt {amt})")
+                    item["Rate"] = new_rate
+                    item["Logic_Note"] = item.get("Logic_Note", "") + " [Rate Fix]"
                 
-                # 3. Check Plausibility of Calculated Qty
-                # User Rule: Always Round UP to nearest integer. (1.5 -> 2, 1.86 -> 2)
-                # We no longer strictly require "clean integers" because we will enforce rounding.
-                if calc_qty > 0:
-                    
-                    final_qty = math.ceil(calc_qty)
-                    
-                    logger.info(f"Auditor: Math Reconstruction for '{item.get('Product')}'. Extracted Qty {qty_extracted} (Inconsistent) -> Calculated Qty {final_qty} (Derived from Amt {amt}/Rate {rate} & Ceiled)")
-                    
-                    item["Qty"] = float(final_qty)
-                    item["Logic_Note"] = item.get("Logic_Note", "") + " [Math Fix]"
+                # CASE B: OCR Qty Missing -> Trust Rate, Fix Qty
+                elif rate > 0.1:
+                     calc_qty = amt / rate
+                     # Round to nearest integer (assuming units)
+                     final_qty = round(calc_qty) 
+                     if final_qty < 1: final_qty = 1
+                     
+                     # Safety: Don't create huge quantities from tiny rates unless plausible
+                     if final_qty > 100 and amt < 5000:
+                         logger.warning(f"Auditor: Calculated Qty {final_qty} seems excessive for Amt {amt}. Capping/Warning.")
+                         # Fallback: maybe just set to 1? Or keep as is with warning.
+                         
+                     logger.info(f"Auditor: Missing Qty for '{item.get('Product')}'. Calculated {final_qty} from Amt {amt} / Rate {rate}")
+                     item["Qty"] = float(final_qty)
+                     item["Logic_Note"] = item.get("Logic_Note", "") + " [Calc Qty]"
 
         except Exception as e:
             # Don't let a math error crash the pipeline
+            logger.warning(f"Auditor Math Error: {e}")
             continue
             
     return items

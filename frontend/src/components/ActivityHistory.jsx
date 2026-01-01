@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Clock, ChevronDown, Image } from 'lucide-react';
+import { getActivityLog, getInvoiceDetails } from '../services/api';
 import AnalysisModal from './AnalysisModal';
 
 const ActivityHistory = () => {
@@ -23,14 +24,7 @@ const ActivityHistory = () => {
         setSelectedImagePath(item.image_path); // Use path from list initially
 
         try {
-            const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
-                ? 'https://api.pharmagpt.co'
-                : 'http://localhost:8000';
-
-            const res = await fetch(`${API_BASE_URL}/invoices/${item.invoice_number}/items`);
-            if (!res.ok) throw new Error("Failed to fetch invoice details");
-
-            const data = await res.json();
+            const data = await getInvoiceDetails(item.invoice_number);
 
             // MAP BACKEND (snake_case) -> FRONTEND (PascalCase)
             const rawInvoice = data.invoice || {};
@@ -93,19 +87,15 @@ const ActivityHistory = () => {
 
     const fetchActivity = async () => {
         try {
-            const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
-                ? 'https://api.pharmagpt.co'
-                : 'http://localhost:8000';
+            const data = await getActivityLog();
 
-            const res = await fetch(`${API_BASE_URL}/activity-log`);
-            const data = await res.json();
             if (Array.isArray(data)) {
                 setActivityLog(data);
             } else {
                 setActivityLog([]);
             }
         } catch (err) {
-            console.error(err);
+            console.error("Failed to fetch activity log:", err);
         } finally {
             setLoading(false);
         }
@@ -151,13 +141,39 @@ const ActivityHistory = () => {
                                     </div>
 
                                     {/* Supplier Name & Contact */}
-                                    <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
-                                        <div className="font-semibold text-slate-200 truncate text-base">
+                                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 pl-2">
+                                        <div className="font-semibold text-slate-200 truncate text-base leading-tight">
                                             {item.supplier_name}
                                         </div>
-                                        <div className="text-slate-500 text-xs md:text-sm truncate flex items-center gap-2">
-                                            <span className="hidden md:inline text-slate-600">•</span>
-                                            {contactInfo}
+
+                                        {/* Contact Info - Explicitly on new line, aligned left */}
+                                        <div className="flex flex-col items-start gap-1">
+                                            {/* Priority: Phone > DL > GST */}
+                                            {(() => {
+                                                if (item.supplier_phone) {
+                                                    return (
+                                                        <div className="text-slate-500 text-xs flex items-center gap-1.5">
+                                                            <span className="text-slate-600 font-medium">Ph:</span>
+                                                            <span className="font-mono text-slate-400">{item.supplier_phone}</span>
+                                                        </div>
+                                                    );
+                                                } else if (item.supplier_dl) {
+                                                    return (
+                                                        <div className="text-slate-500 text-xs flex items-center gap-1.5">
+                                                            <span className="text-slate-600 font-medium">DL:</span>
+                                                            <span className="font-mono text-slate-400">{item.supplier_dl}</span>
+                                                        </div>
+                                                    );
+                                                } else if (item.supplier_gst) {
+                                                    return (
+                                                        <div className="text-slate-500 text-xs flex items-center gap-1.5">
+                                                            <span className="text-slate-600 font-medium">GST:</span>
+                                                            <span className="font-mono text-slate-400">{item.supplier_gst}</span>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
                                     </div>
 
@@ -179,12 +195,30 @@ const ActivityHistory = () => {
 
                                             {/* Date */}
                                             <div className="flex flex-col">
-                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Uploaded</span>
-                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Uploaded</span>
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mb-1">Uploaded</span>
                                                 <span className="text-slate-300 text-sm font-medium">
                                                     {formatTimestamp(item.created_at, true)}
                                                 </span>
                                             </div>
+
+                                            {/* Supplier Details (Expanded) */}
+                                            {(item.supplier_dl || item.supplier_address) && (
+                                                <div className="flex flex-col max-w-[200px]">
+                                                    <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mb-1">Supplier Info</span>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        {item.supplier_dl && (
+                                                            <div className="text-[10px] text-slate-400">
+                                                                <span className="text-slate-500">DL:</span> {item.supplier_dl}
+                                                            </div>
+                                                        )}
+                                                        {item.supplier_address && (
+                                                            <div className="text-[10px] text-slate-400 leading-tight line-clamp-2" title={item.supplier_address}>
+                                                                {item.supplier_address}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Saved By */}
                                             <div className="flex flex-col">

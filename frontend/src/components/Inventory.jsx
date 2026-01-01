@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Search, Filter } from 'lucide-react';
+import { getInventory } from '../services/api';
 
 const Inventory = () => {
     const [items, setItems] = useState([]);
@@ -22,12 +23,8 @@ const Inventory = () => {
 
     const fetchInventory = async () => {
         try {
-            const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
-                ? 'https://api.pharmagpt.co'
-                : 'http://localhost:8000';
+            const data = await getInventory();
 
-            const res = await fetch(`${API_BASE_URL}/inventory`);
-            const data = await res.json();
             if (Array.isArray(data)) {
                 setItems(data);
                 setFilteredItems(data);

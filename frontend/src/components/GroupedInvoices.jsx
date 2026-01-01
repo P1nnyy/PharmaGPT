@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Folder, FileText, Image, X } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { getInvoiceHistory } from '../services/api';
 
 const GroupedInvoices = () => {
     const [suppliers, setSuppliers] = useState([]);
@@ -14,12 +15,7 @@ const GroupedInvoices = () => {
 
     const fetchHistory = async () => {
         try {
-            const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
-                ? 'https://api.pharmagpt.co'
-                : 'http://localhost:8000';
-
-            const res = await fetch(`${API_BASE_URL}/history`);
-            const data = await res.json();
+            const data = await getInvoiceHistory();
             if (Array.isArray(data)) {
                 setSuppliers(data);
             } else {
@@ -68,7 +64,7 @@ const GroupedInvoices = () => {
                                         <img
                                             src={window.location.hostname.includes('pharmagpt.co')
                                                 ? `https://api.pharmagpt.co${viewingImage}`
-                                                : `http://localhost:8000${viewingImage}`}
+                                                : `http://localhost:5001${viewingImage}`}
                                             alt="Invoice Preview"
                                             className="max-h-[85vh] w-auto rounded shadow-2xl"
                                         />
@@ -112,8 +108,49 @@ const GroupedInvoices = () => {
                             {/* Child Rows (Invoices) */}
                             {expandedSupplier === supplier.name && (
                                 <div className="bg-slate-950/50 border-t border-slate-800 animate-in slide-in-from-top-2 duration-200">
-                                    {/* Header Row */}
-                                    <div className="grid grid-cols-12 gap-4 px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800/50">
+                                    {/* Mobile View (Card Layout) */}
+                                    <div className="md:hidden">
+                                        {supplier.invoices.map((inv, index) => (
+                                            <div key={inv.invoice_number} className="p-4 border-b border-slate-800 last:border-0 hover:bg-slate-900/50 transition-colors">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs text-slate-500 font-mono mb-1">
+                                                            #{inv.invoice_number}
+                                                        </span>
+                                                        <span className="text-sm text-slate-300">
+                                                            {inv.date || '-'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="font-medium text-emerald-400 font-mono text-base">
+                                                            ₹{inv.total?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-800/50">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
+                                                            PG
+                                                        </div>
+                                                        <span className="text-xs text-slate-400">Pranav Gupta</span>
+                                                    </div>
+
+                                                    {inv.image_path && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setViewingImage(inv.image_path); }}
+                                                            className="flex items-center gap-1.5 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-blue-400 transition-colors"
+                                                        >
+                                                            <Image className="w-3 h-3" /> View Source
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop View (Grid Layout) */}
+                                    <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800/50">
                                         <div className="col-span-1">#</div>
                                         <div className="col-span-3">Invoice No</div>
                                         <div className="col-span-2">Date</div>
@@ -121,51 +158,52 @@ const GroupedInvoices = () => {
                                         <div className="col-span-3 text-right">Amount</div>
                                     </div>
 
-                                    {/* Invoice Rows */}
-                                    {supplier.invoices.map((inv, index) => (
-                                        <div key={inv.invoice_number} className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-800 last:border-0 hover:bg-slate-900/50 transition-colors items-center group">
-                                            <div className="col-span-1 text-slate-600 text-sm font-mono">
-                                                {supplier.invoices.length > 1 ? String(index + 1).padStart(2, '0') : ''}
-                                            </div>
-
-                                            <div className="col-span-3">
-                                                <div className="font-mono text-slate-300 text-sm truncate" title={inv.invoice_number}>
-                                                    {inv.invoice_number}
+                                    <div className="hidden md:block">
+                                        {supplier.invoices.map((inv, index) => (
+                                            <div key={inv.invoice_number} className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-800 last:border-0 hover:bg-slate-900/50 transition-colors items-center group">
+                                                <div className="col-span-1 text-slate-600 text-sm font-mono">
+                                                    {supplier.invoices.length > 1 ? String(index + 1).padStart(2, '0') : ''}
                                                 </div>
-                                            </div>
 
-                                            <div className="col-span-2 text-slate-400 text-sm">
-                                                {inv.date || '-'}
-                                            </div>
-
-                                            <div className="col-span-3">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
-                                                        PG
+                                                <div className="col-span-3">
+                                                    <div className="font-mono text-slate-300 text-sm truncate" title={inv.invoice_number}>
+                                                        {inv.invoice_number}
                                                     </div>
-                                                    <span className="text-sm text-slate-400">Pranav Gupta</span>
+                                                </div>
+
+                                                <div className="col-span-2 text-slate-400 text-sm">
+                                                    {inv.date || '-'}
+                                                </div>
+
+                                                <div className="col-span-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
+                                                            PG
+                                                        </div>
+                                                        <span className="text-sm text-slate-400">Pranav Gupta</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="col-span-3 flex items-center justify-end gap-4">
+                                                    <span className="font-medium text-slate-300 font-mono">
+                                                        ₹{inv.total?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                    </span>
+
+                                                    {inv.image_path ? (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setViewingImage(inv.image_path); }}
+                                                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                                            title="View Original Invoice"
+                                                        >
+                                                            <Image className="w-4 h-4" />
+                                                        </button>
+                                                    ) : (
+                                                        <div className="w-7"></div>
+                                                    )}
                                                 </div>
                                             </div>
-
-                                            <div className="col-span-3 flex items-center justify-end gap-4">
-                                                <span className="font-medium text-slate-300 font-mono">
-                                                    ₹{inv.total?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                                </span>
-
-                                                {inv.image_path ? (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); setViewingImage(inv.image_path); }}
-                                                        className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                                                        title="View Original Invoice"
-                                                    >
-                                                        <Image className="w-4 h-4" />
-                                                    </button>
-                                                ) : (
-                                                    <div className="w-7"></div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>

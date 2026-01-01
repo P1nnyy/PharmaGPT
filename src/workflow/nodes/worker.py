@@ -56,6 +56,11 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - **NO MERGING**: Do not merge distinct visual rows.
             - **COLUMNS**: Aggressively look for "Net Amount", "Total", "Amount", "Value".
             
+            NEGATIVE CONSTRAINTS (CRITICAL):
+            - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.
+            - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
+            - **IGNORE "Bank Details"**: Do not extract bank info as rows.
+            
             Output Format Example:
             | Description | Pcode | Qty | Rate | Amount | Net Amount |
             | Vicks 5gm | 80811 | 1 | 100 | 100 | 112 |
@@ -242,6 +247,11 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             3. **Do not merge rows**. Keep every single line item separate.
             4. **DUPLICATES**: If the Exact Same Item appears multiple times, LIST IT MULTIPLE TIMES.
             5. Capture exact headers like "Pcode", "Rate", "Amount", "Net Amount", "Total".
+            
+            NEGATIVE CONSTRAINTS (CRITICAL):
+            - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.
+            - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
+            - **IGNORE "Bank Details"**: Do not extract bank info as rows.
             
             Output ONLY the table.
             """

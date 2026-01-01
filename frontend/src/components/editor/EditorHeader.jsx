@@ -7,7 +7,8 @@ const EditorHeader = ({
     warnings,
     successMsg,
     errorMsg,
-    onHeaderChange
+    onHeaderChange,
+    readOnly = false
 }) => {
     const [isHeaderExpanded, setIsHeaderExpanded] = React.useState(false);
 
@@ -62,8 +63,9 @@ const EditorHeader = ({
                                     type="text"
                                     value={invoiceData.Supplier_Name}
                                     onChange={(e) => onHeaderChange('Supplier_Name', e.target.value)}
-                                    className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder-gray-600"
+                                    className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder-gray-600 disabled:opacity-75 disabled:cursor-not-allowed"
                                     placeholder="Supplier Name"
+                                    disabled={readOnly}
                                 />
                             </div>
                             <div className="space-y-1">
@@ -72,8 +74,9 @@ const EditorHeader = ({
                                     type="text"
                                     value={invoiceData.Supplier_Phone || ''}
                                     onChange={(e) => onHeaderChange('Supplier_Phone', e.target.value)}
-                                    className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder-gray-600"
+                                    className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder-gray-600 disabled:opacity-75"
                                     placeholder={invoiceData.Invoice_No || "Phone Number"}
+                                    disabled={readOnly}
                                 />
                             </div>
                             <div className="space-y-1">
@@ -83,8 +86,9 @@ const EditorHeader = ({
                                         type="text"
                                         value={invoiceData.Invoice_Date}
                                         onChange={(e) => onHeaderChange('Invoice_Date', e.target.value)}
-                                        className="w-full bg-gray-900/50 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder-gray-600"
+                                        className="w-full bg-gray-900/50 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder-gray-600 disabled:opacity-75"
                                         placeholder="DD/MM/YYYY"
+                                        disabled={readOnly}
                                     />
                                     <Calendar className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
                                 </div>

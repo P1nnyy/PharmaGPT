@@ -12,3 +12,6 @@ importlib-metadata
 PyYAML
 pandas
 openpyxl
+authlib
+python-jose[cryptography]
+itsdangerous

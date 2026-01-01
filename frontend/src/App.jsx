@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { analyzeInvoice, saveInvoice } from './services/api';
+import { analyzeInvoice, saveInvoice, getUserProfile, setAuthToken } from './services/api';
+import { Loader2 } from 'lucide-react';
 
 // ... (imports remain)
 import InvoiceViewer from './components/InvoiceViewer';
@@ -32,7 +33,8 @@ function App() {
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  const [username, setAuthenticatedUser] = useState(null);
+  const [user, setUser] = useState(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -40,8 +42,55 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  if (!username) {
-    return <Login onLogin={setAuthenticatedUser} />;
+  // --- Auth Initialization ---
+  useEffect(() => {
+    const initAuth = async () => {
+      // 1. Check URL for Token (OAuth Callback)
+      const params = new URLSearchParams(window.location.search);
+      const tokenFromUrl = params.get('token');
+
+      if (tokenFromUrl) {
+        console.log("Found Token in URL, logging in...");
+        setAuthToken(tokenFromUrl);
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      // 2. Fetch Profile if Token exists (in memory/localstorage from setAuthToken)
+      try {
+        // Just checking getProfile will verify token valid
+        // NOTE: setAuthToken handles localStorage read on import, but consistent here
+        const savedToken = localStorage.getItem('auth_token');
+        if (savedToken) {
+          // Ensure it's set in axios
+          setAuthToken(savedToken);
+          const profile = await getUserProfile();
+          setUser(profile);
+        }
+      } catch (err) {
+        console.error("Auth Validation Failed:", err);
+        // If 401, clear token
+        setAuthToken(null);
+        setUser(null);
+      } finally {
+        setIsLoadingAuth(false);
+      }
+    };
+
+    initAuth();
+  }, []);
+
+
+  if (isLoadingAuth) {
+    return (
+      <div className="h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
   }
 
   const handleTabChange = (tab) => {
@@ -160,6 +209,11 @@ function App() {
         isMobile={isMobile}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        user={user}
+        onLogout={() => {
+          setAuthToken(null);
+          setUser(null);
+        }}
       />
 
       {/* MAIN CONTENT AREA */}
