@@ -1,6 +1,10 @@
-from typing import List, Dict, Any
-from src.schemas import InvoiceExtraction, NormalizedLineItem
 from src.normalization import parse_float
+import os
+import json
+from src.utils.logging_config import get_logger
+from src.services.embeddings import generate_embedding
+
+logger = get_logger(__name__)
 
 def upsert_user(driver, user_data: Dict[str, Any]):
     """
@@ -43,6 +47,29 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
     # 3. Process Line Items
         for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
             session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item, user_email)
+            
+        # 4. Save Invoice Example for RAG (Few-Shot)
+        # Only if raw_text is available
+        if invoice_data.raw_text:
+            logger.info("Generating Vector Embedding for Invoice Example...")
+            try:
+                # Prepare JSON Payload (Full Extraction)
+                # We save the verified extraction as the 'ground truth' for this text
+                json_payload = invoice_data.model_dump_json() if hasattr(invoice_data, 'model_dump_json') else invoice_data.json()
+                
+                # Generate Embedding
+                embedding = generate_embedding(invoice_data.raw_text)
+                
+                if embedding:
+                    session.execute_write(
+                        _create_invoice_example_tx, 
+                        invoice_data.Supplier_Name, 
+                        invoice_data.raw_text, 
+                        json_payload, 
+                        embedding
+                    )
+            except Exception as e:
+                logger.error(f"Failed to save Invoice Example: {e}")
 
 def _merge_supplier_tx(tx, name, details, user_email):
     query = """
@@ -138,14 +165,14 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     MATCH (u:User {email: $user_email})
     MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
     
-    // 1. Merge Product (Scoped to User Inventory)
-    MERGE (p:Product {name: $standard_item_name})
-    MERGE (u)-[:OWNS]->(p)
+    // 1. Merge Global Product (Shared Catalog)
+    // Instead of User-Owned Product, we map to a Global Product based on name
+    MERGE (gp:GlobalProduct {name: $standard_item_name})
     
-    // 2. Merge HSN Node (Shared/System level usually, but okay to link if needed)
+    // 2. Merge HSN Node
     MERGE (h:HSN {code: $hsn_code})
     
-    // 3. Create Line Item
+    // 3. Create Line Item (Specific Variant / Instance)
     CREATE (l:Line_Item {
         pack_size: $pack_size,
         quantity: $quantity,
@@ -160,7 +187,7 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     
     // 4. Connect Graph
     MERGE (i)-[:CONTAINS]->(l)
-    MERGE (l)-[:REFERENCES]->(p)
+    MERGE (l)-[:IS_VARIANT_OF]->(gp)
     MERGE (l)-[:BELONGS_TO_HSN]->(h)
     """
     
@@ -207,9 +234,9 @@ def get_inventory(driver, user_email: str):
     Fetches aggregated inventory data for the dashboard, scoped to User.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(p:Product)
-    OPTIONAL MATCH (l:Line_Item)-[:REFERENCES]->(p)
-    RETURN p.name as product_name, 
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)-[:CONTAINS]->(l:Line_Item)
+    MATCH (l)-[:IS_VARIANT_OF]->(gp:GlobalProduct)
+    RETURN gp.name as product_name, 
            sum(l.quantity) as total_quantity, 
            max(l.mrp) as mrp
     ORDER BY total_quantity DESC
@@ -226,7 +253,7 @@ def get_invoice_details(driver, invoice_no, user_email: str):
     MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
     OPTIONAL MATCH (u)-[:OWNS]->(s:Supplier {name: i.supplier_name})
     OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
-    OPTIONAL MATCH (l)-[:REFERENCES]->(p:Product)
+    OPTIONAL MATCH (l)-[:IS_VARIANT_OF]->(p:GlobalProduct)
     RETURN i, s, collect({
         line: l, 
         product: p 
@@ -317,3 +344,66 @@ def get_grouped_invoice_history(driver, user_email: str):
             })
             
     return data
+
+def _create_invoice_example_tx(tx, supplier_name: str, raw_text: str, json_payload: str, embedding: List[float]):
+    """
+    Creates an InvoiceExample node linked to the Supplier.
+    Stores the raw text, verified JSON, and the vector embedding.
+    """
+    query = """
+    MATCH (s:Supplier {name: $supplier_name})
+    
+    CREATE (e:InvoiceExample {
+        raw_text: $raw_text,
+        json_payload: $json_payload,
+        created_at: timestamp()
+    })
+    
+    # Store embedding as a Vector property (Neo4j 5.x+)
+    SET e.embedding = $embedding
+    
+    # Link to Supplier (One Supplier has many Examples)
+    MERGE (s)-[:HAS_EXAMPLE]->(e)
+    """
+    tx.run(query, 
+           supplier_name=supplier_name, 
+           raw_text=raw_text, 
+           json_payload=json_payload, 
+           embedding=embedding)
+
+def init_vector_index(driver):
+    """
+    Creates Vector Indexes for Invoice Examples and HSN Codes.
+    Run this on startup.
+    """
+    # 1. Invoice Examples Index
+    q1 = """
+    CREATE VECTOR INDEX invoice_examples_index IF NOT EXISTS
+    FOR (n:InvoiceExample)
+    ON (n.embedding)
+    OPTIONS {indexConfig: {
+      `vector.dimensions`: 768,
+      `vector.similarity_function`: 'cosine'
+    }}
+    """
+    
+    # 2. HSN Vector Index
+    q2 = """
+    CREATE VECTOR INDEX hsn_vector_index IF NOT EXISTS
+    FOR (n:HSN)
+    ON (n.embedding)
+    OPTIONS {indexConfig: {
+      `vector.dimensions`: 768,
+      `vector.similarity_function`: 'cosine'
+    }}
+    """
+    
+    try:
+        with driver.session() as session:
+            session.run(q1)
+            logger.info("Vector Index 'invoice_examples_index' initialization checked.")
+            
+            session.run(q2)
+            logger.info("Vector Index 'hsn_vector_index' initialization checked.")
+    except Exception as e:
+        logger.error(f"Failed to create Vector Indexes: {e}")

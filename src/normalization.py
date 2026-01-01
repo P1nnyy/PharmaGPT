@@ -34,13 +34,64 @@ def load_and_transform_catalog() -> Dict[str, Tuple[str, str]]:
 PRODUCT_MAPPING = load_and_transform_catalog()
 VENDOR_RULES = load_vendor_rules()
 
-# Initialize Vector Store
-try:
-    from src.services.hsn_vector_store import HSNVectorStore
-    GLOBAL_VECTOR_STORE = HSNVectorStore()
-except Exception as e:
-    print(f"Warning: Vector Store failed to load: {e}")
-    GLOBAL_VECTOR_STORE = None
+from src.services.embeddings import generate_embedding
+from neo4j import GraphDatabase
+import os
+
+# Neo4j Config
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
+
+_DRIVER = None
+
+def get_hsn_driver():
+    global _DRIVER
+    if _DRIVER is None:
+        try:
+            _DRIVER = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            _DRIVER.verify_connectivity()
+        except Exception as e:
+            print(f"HSN Search: DB Connection Failed: {e}")
+            return None
+    return _DRIVER
+
+def search_hsn_neo4j(description: str, threshold: float = 0.85) -> str:
+    """
+    Searches for HSN code in Neo4j using vector similarity.
+    Assumes (:HSN) nodes have a 'description' and 'embedding' property.
+    And a vector index named 'hsn_vector_index'.
+    """
+    if not description:
+        return None
+        
+    driver = get_hsn_driver()
+    if not driver:
+        return None
+        
+    try:
+        embedding = generate_embedding(description)
+        if not embedding:
+            return None
+            
+        # Query for nearest neighbor
+        query = """
+        CALL db.index.vector.queryNodes('hsn_vector_index', 1, $embedding)
+        YIELD node, score
+        WHERE score > $threshold
+        RETURN node.code as hsn_code
+        """
+        
+        with driver.session() as session:
+            result = session.run(query, embedding=embedding, threshold=threshold).single()
+            if result:
+                return result["hsn_code"]
+    except Exception as e:
+        # Fails silently to allow fallback to OCR
+        # print(f"HSN Vector Search Error: {e}")
+        pass
+        
+    return None
 
 def parse_float(value: Union[str, float, None]) -> float:
     """
@@ -269,9 +320,10 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note
     if lookup_key in BULK_HSN_MAP:
         final_hsn = BULK_HSN_MAP[lookup_key]
         
-    # Priority B: Vector Search
-    elif GLOBAL_VECTOR_STORE and not final_hsn:
-        vector_match = GLOBAL_VECTOR_STORE.search_hsn(raw_desc, threshold=0.75)
+    # Priority B: Vector Search (Neo4j)
+    elif not final_hsn:
+        # Use our new Neo4j search function
+        vector_match = search_hsn_neo4j(raw_desc, threshold=0.80)
         if vector_match:
             final_hsn = vector_match
             

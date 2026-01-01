@@ -41,6 +41,7 @@ class InvoiceExtraction(BaseModel):
     IGST_Amount: Union[str, float, None] = Field(None, description="Total IGST Amount from footer.")
     Round_Off: Union[str, float, None] = Field(None)
     image_path: Optional[str] = Field(None, description="Relative path to the stored invoice image.")
+    raw_text: Optional[str] = Field(None, description="Raw OCR Text for Vector Storage (RAG).")
 
 class NormalizedLineItem(BaseModel):
     """

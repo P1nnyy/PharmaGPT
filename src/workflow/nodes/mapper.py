@@ -4,8 +4,16 @@ import os
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
+from src.services.embeddings import generate_embedding
+from neo4j import GraphDatabase
+import os
 
 logger = get_logger("mapper")
+
+# Neo4j Config (Ad-hoc connection for Mapper RAG)
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
 # Initialize Gemini
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -36,6 +44,47 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     from src.services.mistake_memory import MEMORY
     rules = MEMORY.get_rules()
     memory_rules = "\n    ".join([f"- {r}" for r in rules]) if rules else "- No previous mistakes recorded."
+    
+    # --- RAG: Vector Search for Similar Invoice ---
+    cheat_sheet = "No similar examples found."
+    try:
+        embedding = generate_embedding(context_text)
+        if embedding:
+            # Connect Ad-Hoc (Short-lived)
+            with GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)) as driver:
+                with driver.session() as session:
+                    # Query for nearest neighbor (> 0.88 similarity)
+                    # Note: You must have created the vector index 'invoice_examples_index'
+                    query = """
+                    CALL db.index.vector.queryNodes('invoice_examples_index', 1, $embedding)
+                    YIELD node, score
+                    WHERE score > 0.88
+                    RETURN node.raw_text as raw, node.json_payload as json, score
+                    """
+                    result = session.run(query, embedding=embedding).single()
+                    
+                    if result:
+                        example_raw = result["raw"]
+                        example_json = result["json"]
+                        score = result["score"]
+                        logger.info(f"Mapper: Found similar invoice example! Score: {score:.4f}")
+                        
+                        cheat_sheet = f"""
+    ### REFERENCE EXAMPLE (HIGH SIMILARITY MATCH: {score:.2f})
+    Build your output based on how we mapped this similar invoice:
+    
+    [EXAMPLE INPUT]:
+    {example_raw[:300]}... (truncated)
+    
+    [EXAMPLE OUTPUT MAP]:
+    {example_json}
+    
+    **INSTRUCTION**: Follow the logic of the Example Output EXACTLY for handling columns, packs, and formatting.
+                        """
+                    else:
+                        logger.info("Mapper: No similar invoice found above threshold.")
+    except Exception as e:
+        logger.warning(f"Mapper RAG Lookup Failed: {e}")
     
     prompt = f"""
     You are a DATA STRUCTURE EXPERT.
@@ -79,6 +128,9 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     2. **DUPLICATES**: If the raw text lists the SAME product twice (e.g. "Dolo 650" appears on two lines), CREATE TWO JSON OBJECTS. Do NOT merge them into one. Keep them separate.
     3. **Noise**: Ignore header rows (e.g. "Description | Qty").
     4. **Schemes**: Keep "Offer" / "Free" rows if they are separate line items.
+    
+
+    {cheat_sheet}
     
     SYSTEM MEMORY (PREVIOUS MISTAKES TO AVOID):
     {memory_rules}

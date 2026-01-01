@@ -65,7 +65,7 @@ def build_graph():
 # Global Compilation (Compile once on startup)
 APP = build_graph()
 
-async def run_extraction_pipeline(image_path: str, user_email: str):
+async def run_extraction_pipeline(image_path: str, user_email: str, public_url: str = None):
     """
     Entry point to run the new graph-based pipeline.
     Initializes state and invokes the graph.
@@ -76,6 +76,7 @@ async def run_extraction_pipeline(image_path: str, user_email: str):
     
     initial_state = {
         "image_path": image_path,
+        "public_url": public_url,  # Inject public URL
         "user_email": user_email,
         "extraction_plan": [],
         "line_item_fragments": [],
@@ -98,6 +99,13 @@ async def run_extraction_pipeline(image_path: str, user_email: str):
         
         final_output = headers.copy()
         final_output["Line_Items"] = lines
+        
+    # MERGE Raw Text for Vector Storage (RAG)
+    raw_rows = result_state.get("raw_text_rows", [])
+    if raw_rows:
+        # Deduplicate/Join (Worker might produce duplicates if retried, but add operator handles it)
+        # Just simple join is enough for embeddings
+        final_output["raw_text"] = "\n".join(raw_rows)
         
     # MERGE Supplier Details into Final Output
     supplier_details = result_state.get("supplier_details")

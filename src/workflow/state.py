@@ -8,6 +8,7 @@ class InvoiceState(TypedDict):
     Holds data as it flows between the Surveyor, Workers, and Auditor.
     """
     image_path: str
+    public_url: str  # URL for Frontend Display (R2/S3)
     extraction_plan: List[Dict[str, Any]]  # Zones identified by Surveyor
     
     # Fragments from parallel workers (e.g. Primary Table, Secondary Table)

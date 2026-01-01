@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load env vars BEFORE imports that might use them
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -26,8 +26,57 @@ logger = get_logger("api")
 
 from src.schemas import InvoiceExtraction
 from src.normalization import normalize_line_item, parse_float
-from src.persistence import ingest_invoice, get_activity_log, get_inventory
+from src.persistence import ingest_invoice, get_activity_log, get_inventory, init_vector_index
 from src.workflow.graph import run_extraction_pipeline
+import boto3
+
+# --- R2 Configuration ---
+R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
+# Should not include trailing slash
+R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN") 
+
+s3_client = None
+if R2_ENDPOINT_URL and AWS_ACCESS_KEY and AWS_SECRET_KEY:
+    try:
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=R2_ENDPOINT_URL,
+            aws_access_key_id=AWS_ACCESS_KEY,
+            aws_secret_access_key=AWS_SECRET_KEY
+        )
+        logger.info("R2/S3 Client Initialized Successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize R2/S3 Client: {e}")
+
+def upload_to_r2(file_obj, filename: str) -> str:
+    """
+    Uploads a file-like object to R2/S3 and returns the public URL.
+    """
+    if not s3_client or not R2_BUCKET_NAME:
+        logger.warning("R2 not configured. Falling back to local storage logic (URL might be broken if not handled).")
+        return None
+
+    try:
+        s3_client.upload_fileobj(
+            file_obj,
+            R2_BUCKET_NAME,
+            filename,
+            ExtraArgs={'ContentType': 'image/jpeg'} # Generic or detect
+        )
+        
+        # Construct URL
+        # If public domain is set, use it. Else fall back to some r2.dev url (not reliable)
+        if R2_PUBLIC_DOMAIN:
+            return f"{R2_PUBLIC_DOMAIN}/{filename}"
+        
+        return f"{R2_ENDPOINT_URL}/{R2_BUCKET_NAME}/{filename}"
+        
+    except Exception as e:
+        logger.error(f"R2 Upload Failed: {e}")
+        return None
 
 # Basic validation that API Key exists (optional but good practice)
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -94,7 +143,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,6 +165,9 @@ def startup_event():
         driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
         driver.verify_connectivity()
         print("Connected to Neo4j.")
+        
+        # Initialize Vector Index
+        init_vector_index(driver)
     except Exception as e:
         print(f"Failed to connect to Neo4j: {e} - Application will start in partial mode (No DB)")
 
@@ -277,52 +329,64 @@ async def get_logs(lines: int = 100):
         return {"error": f"Failed to read logs: {str(e)}"}
         
 @app.post("/analyze-invoice", response_model=Dict[str, Any])
-async def analyze_invoice(file: UploadFile = File(...), user_email: str = Depends(get_current_user_email)):
+async def analyze_invoice(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    user_email: str = Depends(get_current_user_email)
+):
     """
     Step 1: Analyzes the invoice (OCR + Normalization) but DOES NOT persist to DB.
     Returns the raw and normalized data for frontend verification.
     """
     processing_path = None
+    public_url = None
+    
     try:
-        # Scope 1: File Save PERMANENTLY locally (for History View)
-        # Note: In production this should be S3. Here we use local filesystem in /static.
         print(f"Received file: {file.filename} from {user_email}")
         
         file_ext = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ".png"
         file_id = uuid.uuid4().hex
         filename = f"{file_id}{file_ext}"
         
-        # Save to static directory directly
-        save_dir = "static/invoices"
-        os.makedirs(save_dir, exist_ok=True)
-        processing_path = os.path.join(save_dir, filename)
-        
-        with open(processing_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # 1. Save to Temporary File for Processing (Gemini needs local file)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            processing_path = tmp.name
             
-        print(f"Saved invoice image to: {processing_path}")
+        print(f"Saved temp invoice to: {processing_path}")
         
-        # This relative path is what we store in DB and send to frontend
-        static_path = f"/static/invoices/{filename}"
-        
+        # 2. Upload to R2 (Cloud Storage) for Frontend/History
+        with open(processing_path, "rb") as f_read:
+            public_url = upload_to_r2(f_read, filename)
+            
+        if public_url:
+            print(f"Uploaded to R2: {public_url}")
+        else:
+            print("R2 Upload Failed or Not Configured. Image might not persist.")
+            
+        # Schedule cleanup of temp file
+        background_tasks.add_task(os.remove, processing_path)
+            
     except Exception as e:
-         raise HTTPException(status_code=500, detail=f"File save failed: {str(e)}")
+         if processing_path and os.path.exists(processing_path):
+             os.remove(processing_path)
+         raise HTTPException(status_code=500, detail=f"File processing failed: {str(e)}")
 
     # Scope 2: Extraction
     try:
         # 2. Extract Data using Gemini Vision + Agents (LangGraph)
         print("Starting extraction pipeline...")
-        # PASS USER CONTEXT
-        # Note: processing_path is absolute or relative to pwd, compatible with vision tools
-        extracted_data = await run_extraction_pipeline(processing_path, user_email)
+        
+        # PASS LOCAL PATH (For Vision) AND PUBLIC URL (For State/DB)
+        extracted_data = await run_extraction_pipeline(processing_path, user_email, public_url=public_url)
         print("Extraction pipeline completed.")
         
         if extracted_data is None:
             raise HTTPException(status_code=400, detail="Invoice extraction failed validation.")
             
         # INJECT IMAGE PATH INTO EXTRACTED DATA
-        # This ensures it travels back to frontend and then back to confirm-invoice
-        extracted_data["image_path"] = static_path
+        # Ensure the frontend receives the persistent URL
+        extracted_data["image_path"] = public_url or processing_path # Fallback to local path if R2 fails (will likely break frontend but better than null)
         
         # 3. Normalize Line Items
         # Hydrate into Pydantic model

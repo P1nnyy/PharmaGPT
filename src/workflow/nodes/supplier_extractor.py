@@ -45,8 +45,10 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         1. **Supplier_Name**: The name of the shop/distributor.
         2. **Address**: Full physical address.
         3. **GSTIN**: GST Number. Standardize format (remove spaces/dashes).
-        4. **DL_No**: Drug License Numbers. **LOOK EVERYWHERE IN HEADER**. often just "D.L.No: ..." or "20B/21B...". Capture ALL.
-        5. **Phone_Number**: Contact numbers. **LOOK EVERYWHERE**. content like "Ph:", "M:", "Mob:", or just 10-digit numbers in the corners.
+        4. **DL_No**: Drug License Numbers.
+           - Look for "D.L.No", "20B", "21B" near the Supplier Name.
+           - **CRITICAL**: Do NOT capture DL Numbers that belong to the "Buyer", "Bill To", or "Party" section.
+        5. **Phone_Number**: Contact numbers. Look near Supplier Name or Top/Bottom margins.
         6. **Email**: Email address.
         7. **PAN**: PAN Number.
         

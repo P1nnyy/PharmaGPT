@@ -16,9 +16,10 @@ const AnalysisModal = ({ isOpen, onClose, isLoading, invoiceData, lineItems, ima
         ? 'https://api.pharmagpt.co'
         : 'http://localhost:5001';
 
-    // If the path starts with /static, prepend API URL.
-    // If it's a blob url (not likely here), leave it.
-    const previewUrl = imagePath ? `${API_BASE_URL}${imagePath}` : null;
+    // If the path starts with http (R2), use it directly. Otherwise prepend API URL.
+    const previewUrl = imagePath
+        ? (imagePath.startsWith('http') ? imagePath : `${API_BASE_URL}${imagePath}`)
+        : null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">

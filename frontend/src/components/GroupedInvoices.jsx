@@ -62,9 +62,11 @@ const GroupedInvoices = () => {
                                 <div className="relative w-full h-full">
                                     <TransformComponent wrapperClass="w-full h-full flex items-center justify-center">
                                         <img
-                                            src={window.location.hostname.includes('pharmagpt.co')
-                                                ? `https://api.pharmagpt.co${viewingImage}`
-                                                : `http://localhost:5001${viewingImage}`}
+                                            src={viewingImage?.startsWith('http')
+                                                ? viewingImage
+                                                : (window.location.hostname.includes('pharmagpt.co')
+                                                    ? `https://api.pharmagpt.co${viewingImage}`
+                                                    : `http://localhost:5001${viewingImage}`)}
                                             alt="Invoice Preview"
                                             className="max-h-[85vh] w-auto rounded shadow-2xl"
                                         />
