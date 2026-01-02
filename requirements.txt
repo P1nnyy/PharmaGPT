@@ -15,3 +15,7 @@ openpyxl
 authlib
 python-jose[cryptography]
 itsdangerous
+boto3
+langgraph
+langchain
+langchain-community

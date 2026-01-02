@@ -35,6 +35,17 @@ const ActivityHistory = () => {
                 Supplier_Name: rawInvoice.supplier_name,
                 Supplier_Phone: rawInvoice.supplier_phone,
                 Invoice_Amount: rawInvoice.grand_total,
+
+                // Reconstruct supplier_details for DataEditor
+                supplier_details: {
+                    Supplier_Name: rawInvoice.supplier_name,
+                    GSTIN: rawInvoice.supplier_gst,
+                    Address: rawInvoice.supplier_address,
+                    DL_No: rawInvoice.supplier_dl,
+                    Phone_Number: rawInvoice.supplier_phone,
+                    Email: rawInvoice.supplier_email
+                },
+
                 // Keep originals just in case
                 invoice_number: rawInvoice.invoice_number
             };

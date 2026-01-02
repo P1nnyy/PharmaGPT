@@ -71,6 +71,7 @@ async def login(request: Request):
     logger.info(f"Login Request Headers: {dict(request.headers)}") # DEBUG HEADERS
     base_url = get_base_url()
     redirect_uri = f"{base_url}/auth/google/callback"
+    logger.info(f"DEBUG: Generated Redirect URI: {redirect_uri}")
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @router.get("/google/callback")

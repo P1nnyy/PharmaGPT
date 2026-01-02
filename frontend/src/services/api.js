@@ -87,7 +87,8 @@ export const getInvoiceHistory = async () => {
 };
 
 export const getInvoiceDetails = async (invoiceNumber) => {
-    const response = await api.get(`/invoices/${invoiceNumber}/items`);
+    const encodedId = encodeURIComponent(invoiceNumber);
+    const response = await api.get(`/invoices/${encodedId}/items`);
     return response.data;
 };
 

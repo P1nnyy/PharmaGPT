@@ -152,7 +152,20 @@ function App() {
   };
 
   const handleHeaderChange = (field, value) => {
-    setInvoiceData(prev => ({ ...prev, [field]: value }));
+    setInvoiceData(prev => {
+      // Handle nested supplier_details updates
+      if (field.startsWith('supplier_details.')) {
+        const key = field.split('.')[1];
+        return {
+          ...prev,
+          supplier_details: {
+            ...prev.supplier_details,
+            [key]: value
+          }
+        };
+      }
+      return { ...prev, [field]: value };
+    });
   };
 
   const handleLineItemChange = (index, field, value) => {
