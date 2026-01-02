@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Folder, FileText, Image, X } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
-import { getGroupedInvoices } from '../../services/api';
+import { getInvoiceHistory } from '../../services/api';
 
 const GroupedInvoices = () => {
     const [suppliers, setSuppliers] = useState([]);
