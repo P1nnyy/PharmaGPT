@@ -1,6 +1,7 @@
 import re
-from typing import Union, Tuple, Dict, Any
-from src.schemas import RawLineItem
+from typing import List, Dict, Any, Tuple, Union
+from src.domain.schemas import NormalizedLineItem
+
 
 from src.utils.config_loader import load_product_catalog, load_vendor_rules, load_hsn_master
 

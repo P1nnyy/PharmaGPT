@@ -6,7 +6,7 @@ import logging
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
-from src.normalization import parse_float
+from src.domain.normalization import parse_float
 
 logger = get_logger("auditor")
 

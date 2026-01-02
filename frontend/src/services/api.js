@@ -1,10 +1,16 @@
 import axios from 'axios';
 
-const API_BASE_URL = window.location.hostname === 'localhost'
-    ? 'http://localhost:8000'
-    : window.location.hostname.includes('pharmagpt.co')
-        ? 'https://api.pharmagpt.co'
-        : 'http://' + window.location.hostname + ':8000';
+const API_PORT = '5001';
+
+// If VITE_API_BASE_URL is explicitly set (even to empty string), use it.
+// Otherwise, check hostname.
+// If on a tunnel/prod (pharmagpt), use relative path '' to leverage Vite Proxy (HTTPS support).
+// Fallback to localhost:5001 for local dev without proxy.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL !== undefined
+    ? import.meta.env.VITE_API_BASE_URL
+    : window.location.hostname.includes('pharmagpt') || window.location.hostname.includes('cloudflare')
+        ? ''
+        : 'http://localhost:5001';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
@@ -27,6 +33,8 @@ api.interceptors.request.use((config) => {
     if (authToken) {
         config.headers.Authorization = `Bearer ${authToken}`;
     }
+    // Bypass LocalTunnel Warning Page
+    config.headers['Bypass-Tunnel-Reminder'] = 'true';
     return config;
 }, (error) => Promise.reject(error));
 
@@ -66,7 +74,7 @@ export const exportInvoice = async (data) => {
 };
 
 // Direct Auth URL (Bypassing Gateway for Redirects)
-export const AUTH_LOGIN_URL = API_BASE_URL.replace(":8000", ":5001") + "/auth/google/login";
+export const AUTH_LOGIN_URL = API_BASE_URL + "/auth/google/login";
 
 export const getActivityLog = async () => {
     const response = await api.get('/activity-log');

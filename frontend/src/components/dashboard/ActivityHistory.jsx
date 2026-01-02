@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Clock, ChevronDown, Image } from 'lucide-react';
-import { getActivityLog, getInvoiceDetails } from '../services/api';
-import AnalysisModal from './AnalysisModal';
+import { getActivityLog, getInvoiceDetails } from '../../services/api';
+import AnalysisModal from '../invoice/AnalysisModal';
 
 const ActivityHistory = () => {
     const [activityLog, setActivityLog] = useState([]);

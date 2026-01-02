@@ -44,9 +44,14 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         TARGET FIELDS:
         1. **Supplier_Name**: The name of the shop/distributor.
         2. **Address**: Full physical address.
-        3. **GSTIN**: GST Number. Standardize format (remove spaces/dashes).
-        4. **DL_No**: Drug License Numbers.
-           - Look for "D.L.No", "20B", "21B" near the Supplier Name.
+        4. **GSTIN**: GST Number (15 Digits/Chars). 
+           - **CRITICAL**: Sometimes labeled as "CST", "VST", "VAT", "TIN", or just "No".
+           - Look for patterns like `03AAJFR...` (State Code + PAN + Entity Code).
+           - If you see a 15-char code starting with 2 digits, IT IS LIKELY THE GSTIN.
+           - DO NOT confusing it with PAN (10 chars).
+        5. **DL_No**: Drug License Numbers.
+           - Look for "D.L.No", "20B", "21B", "Lic No", "Drug Lic", "L.No" near the Supplier Name.
+           - Capture BOTH 20B and 21B numbers if present.
            - **CRITICAL**: Do NOT capture DL Numbers that belong to the "Buyer", "Bill To", or "Party" section.
         5. **Phone_Number**: Contact numbers. Look near Supplier Name or Top/Bottom margins.
         6. **Email**: Email address.
@@ -113,16 +118,29 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
                     is_valid = False
                     errors.append("Output was not valid JSON.")
                 else:
-                    g = data.get("GSTIN", "").replace(" ", "").replace("-", "").upper()
+                    raw_gst = data.get("GSTIN")
+                    if raw_gst:
+                         g = str(raw_gst).replace(" ", "").replace("-", "").upper()
+                    else:
+                         g = ""
+
                     if not g:
-                        is_valid = False
-                        errors.append("GSTIN is Missing.")
-                    elif len(g) != 15:
-                        # Warning but maybe not hard fail if it's close? 
-                        # Let's be strict for < 10 or > 20
-                        if len(g) < 10 or len(g) > 18:
+                        # Fallback: Check if PAN looks like a GSTIN
+                        raw_pan = data.get("PAN")
+                        if raw_pan and len(str(raw_pan)) == 15:
+                             g = str(raw_pan).strip().upper()
+                             data["GSTIN"] = g
+                             data["PAN"] = g[2:12] # Extract PAN from GSTIN
+                             logger.info(f"SupplierExtractor: Promoted PAN {g} to GSTIN.")
+                        else:
                             is_valid = False
-                            errors.append(f"GSTIN '{g}' is invalid length ({len(g)}).")
+                            errors.append("GSTIN is Missing.")
+                    
+                    if g:
+                        if len(g) != 15:
+                            if len(g) < 10 or len(g) > 18:
+                                is_valid = False
+                                errors.append(f"GSTIN '{g}' is invalid length ({len(g)}).")
                             
                     if not data.get("Supplier_Name"):
                          is_valid = False
@@ -130,7 +148,9 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
 
                 if is_valid:
                     # Success!
-                    data["GSTIN"] = data.get("GSTIN", "").replace(" ", "").replace("-", "").upper()
+                    raw_gst = data.get("GSTIN")
+                    if raw_gst:
+                        data["GSTIN"] = str(raw_gst).replace(" ", "").replace("-", "").upper()
                     break
                 else:
                     logger.warning(f"SupplierExtractor: Attempt {attempt+1} Failed Verification: {errors}")

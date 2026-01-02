@@ -3,19 +3,19 @@ import { analyzeInvoice, saveInvoice, getUserProfile, setAuthToken } from './ser
 import { Loader2 } from 'lucide-react';
 
 // ... (imports remain)
-import InvoiceViewer from './components/InvoiceViewer';
-import DataEditor from './components/DataEditor';
-import MobileNavBar from './components/MobileNavBar';
-import InventoryView from './components/Inventory';
+import InvoiceViewer from './components/invoice/InvoiceViewer';
+import DataEditor from './components/invoice/DataEditor';
+import MobileNavBar from './components/layout/MobileNavBar';
+import InventoryView from './components/dashboard/Inventory';
 import Login from './components/Login';
 
-import Sidebar from './components/Sidebar';
+import Sidebar from './components/layout/Sidebar';
 
-import ActivityHistory from './components/ActivityHistory';
+import ActivityHistory from './components/dashboard/ActivityHistory';
 
-import GroupedInvoices from './components/GroupedInvoices';
+import GroupedInvoices from './components/dashboard/GroupedInvoices';
 
-import MobileHeader from './components/MobileHeader';
+import MobileHeader from './components/layout/MobileHeader';
 
 function App() {
   const [activeTab, setActiveTab] = useState('scan'); // 'scan' | 'history' | 'inventory' | 'settings' | 'invoices'
