@@ -13,6 +13,7 @@
     "CRITICAL: Column Selection: If you see 'Total' (often Gross) and 'Amount' (often Net), prefer 'Amount'.",
     "CRITICAL: 'Total Cost' mismatch is often due to picking 'Taxable Value' or 'Gross Total' instead of 'Net Amount'. Pick the lowest final column.",
     "CRITICAL: Do NOT extract 'Total Scheme Discount' as Global Discount. It is usually a summary of line items. Only extract 'Cash Discount' or 'Bill Discount'.",
-    "CRITICAL: If Quantity text is '0 0 5', extract 5. Ignore zeros."
+    "CRITICAL: If Quantity text is '0 0 5', extract 5. Ignore zeros.",
+    "Item ATORLIP F often has a faint Quantity of 4 that looks like 1 or is missed. Check specifically for digit 4 in the row."
   ]
 }
