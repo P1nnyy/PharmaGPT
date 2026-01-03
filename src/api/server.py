@@ -37,8 +37,8 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Invoice Extractor API")
 
-# Trust Headers from Cloudflare/Vite (Fixes OAuth CSRF Mismatch)
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+# ProxyHeadersMiddleware moved to bottom to ensure it runs first
+
 
 # Mount Static Directory
 os.makedirs("static/invoices", exist_ok=True)
@@ -107,9 +107,14 @@ current_base_url = get_base_url()
 app.add_middleware(
     SessionMiddleware, 
     secret_key=SECRET_KEY, 
-    https_only=False, # Allow HTTP for local dev / tunnel mixed content
-    same_site='lax'   # Better for OAuth redirects than 'none' in some browsers without Secure
+    https_only=True,   # Strictly enforce HTTPS
+    same_site='lax',   # Better for OAuth redirects
+    max_age=86400      # 24 Hours Session Lifetime
 )
+
+# Trust Headers from Cloudflare/Vite (Fixes OAuth CSRF Mismatch)
+# Must be added LAST to be the OUTERMOST middleware (Run First)
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # --- Include Routers ---
 app.include_router(auth_router)
