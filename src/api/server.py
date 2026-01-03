@@ -385,7 +385,7 @@ async def read_history(user_email: str = Depends(get_current_user_email)):
     if not driver:
         return []
     try:
-        from src.persistence import get_grouped_invoice_history
+        from src.domain.persistence import get_grouped_invoice_history
         data = get_grouped_invoice_history(driver, user_email=user_email)
         return data
     except Exception as e:
@@ -399,7 +399,7 @@ async def read_invoice_items(invoice_number: str, user_email: str = Depends(get_
         raise HTTPException(status_code=503, detail="Database unavailable")
     
     # Import locally to avoid circular imports if any, or just ensure it's imported at top
-    from src.persistence import get_invoice_details
+    from src.domain.persistence import get_invoice_details
     
     try:
         data = get_invoice_details(driver, invoice_number, user_email=user_email)

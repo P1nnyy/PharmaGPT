@@ -318,14 +318,12 @@ def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[st
     """
     Enforces the invariant: Quantity * Rate = Amount.
     
-    UPDATED STRATEGY:
-    1. Trust OCR 'Quantity' if it exists and is a valid number.
-    2. If Qty * Rate != Amount:
-       a. If Qty is 'solid' (exists, integer-like), ASSUME Rate IS WRONG (or missing tax/discount). 
-          Update Rate = Amount / Qty.
-       b. If Qty is missing/zero, BUT Rate and Amount exist, CALCULATE Qty = Amount / Rate.
-    
-    This prevents "Exploding Quantity" bugs where a wrong low Rate causes Qty to be calculated as 43, 100, etc.
+    UPDATED STRATEGY (Robust Ambiguity Resolution):
+    1. If Qty matches Amount/Rate perfectly, Keep it.
+    2. If Qty = 1 BUT Amount / Rate ~= 2, 3, 4... -> TRUST MATH. (Fix Qty).
+       - This handles cases where OCR returns empty Qty and Mapper defaults to 1.
+    3. If Qty > 1 and mismatch exists -> TRUST QTY. (Fix Rate).
+    4. If Qty is missing/zero -> CALCULATE Qty.
     """
     for item in items:
         try:
@@ -333,43 +331,49 @@ def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[st
             rate = float(item.get("Rate") or 0)
             amt = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
             
-            # 1. Sanity Check: If Amount is missing, we can't do much math.
-            if amt <= 0.1:
+            # 1. Sanity Check: If Amount/Rate missing, skip
+            if amt <= 0.1 or rate <= 0.1:
                 continue
 
-            # 2. Check for Math Mismatch
-            # Expected = Qty * Rate
-            expected_amt = qty_extracted * rate
+            # 2. Check for "The Default 1.0 Hallucination"
+            # Scenario: Mapper sees empty column, puts 1.0. 
+            # Real Life: Rate=100, Amount=200. Implies Qty=2.
+            # Old Logic: Resets Rate to 200/1 = 200. (WRONG)
+            # New Logic: Sets Qty to 200/100 = 2. (CORRECT)
             
-            # Allow 5% variance or 2.0 absolute error
+            calc_qty = amt / rate
+            is_integer_qty = abs(calc_qty - round(calc_qty)) < 0.05
+            implied_qty = round(calc_qty)
+            
+            # If Extracted is 1.0, but Math strongly suggests a different Integer > 1
+            if 0.9 < qty_extracted < 1.1 and implied_qty > 1 and is_integer_qty:
+                 logger.info(f"Auditor: Qty 1.0 detected but Math implies Qty {implied_qty} (Amt {amt} / Rate {rate}). Correcting Qty.")
+                 item["Qty"] = float(implied_qty)
+                 item["Logic_Note"] = item.get("Logic_Note", "") + " [Math-Corrected Qty]"
+                 continue # Done with this item
+            
+            # 3. Standard Mismatch Check
+            expected_amt = qty_extracted * rate
             is_mismatch = abs(expected_amt - amt) > max(2.0, amt * 0.05)
             
             if is_mismatch:
-                # CASE A: OCR Qty Exists -> Trust Qty, Fix Rate
+                # CASE A: OCR Qty Exists (> 1 or non-integer 1 that wasn't caught above) -> Trust Qty, Fix Rate
                 if qty_extracted > 0.1:
                     new_rate = amt / qty_extracted
-                    logger.info(f"Auditor: Math Mismatch for '{item.get('Product')}'. Trusting OCR Qty {qty_extracted}. Adjusting Rate {rate} -> {new_rate:.2f} (derived from Amt {amt})")
+                    logger.info(f"Auditor: Math Mismatch for '{item.get('Product')}'. Trusting OCR Qty {qty_extracted}. Adjusting Rate {rate} -> {new_rate:.2f}")
                     item["Rate"] = new_rate
                     item["Logic_Note"] = item.get("Logic_Note", "") + " [Rate Fix]"
                 
                 # CASE B: OCR Qty Missing -> Trust Rate, Fix Qty
                 elif rate > 0.1:
-                     calc_qty = amt / rate
-                     # Round to nearest integer (assuming units)
                      final_qty = round(calc_qty) 
                      if final_qty < 1: final_qty = 1
                      
-                     # Safety: Don't create huge quantities from tiny rates unless plausible
-                     if final_qty > 100 and amt < 5000:
-                         logger.warning(f"Auditor: Calculated Qty {final_qty} seems excessive for Amt {amt}. Capping/Warning.")
-                         # Fallback: maybe just set to 1? Or keep as is with warning.
-                         
                      logger.info(f"Auditor: Missing Qty for '{item.get('Product')}'. Calculated {final_qty} from Amt {amt} / Rate {rate}")
                      item["Qty"] = float(final_qty)
                      item["Logic_Note"] = item.get("Logic_Note", "") + " [Calc Qty]"
 
         except Exception as e:
-            # Don't let a math error crash the pipeline
             logger.warning(f"Auditor Math Error: {e}")
             continue
             

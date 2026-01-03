@@ -32,30 +32,34 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         prompt = """
         TASK: EXTRACT SUPPLIER / SELLER DETAILED METADATA.
         
-        CRITICAL INSTRUCTION: SCAN THE ENTIRE HEADER AREA, INCLUDING CORNERS.
-        - **Top-Left Corner often contains DL No. or Phone Numbers.**
-        - **Top-Right Corner often contains Date/Invoice No (ignore) but sometimes Phones.**
-        - Look distinctly at the text *above* and *around* the Supplier Name.
+        CRITICAL INSTRUCTION: HANDLE STRUCTURAL AMBIGUITY.
+        The layout is UNPREDICTABLE. The Supplier info could be:
+        - Top Left / Top Right / Center Header.
+        - In a "Side Margin" (Left or Right).
+        - At the very BOTTOM Footer (sometimes Address is there).
+        - Inside a "Stamp" or "Seal".
         
-        Focus ONLY on the Seller/Supplier section.
-        Ignore the Buyer/Bill-To section.
-        Ignore Line Items.
+        STRATEGY:
+        1. Scan the whole document for the "Seller" or "Party" identity.
+        2. Distinguish from "Buyer" (Bill To). The Supplier is the entity generating the invoice.
+        3. Look for "GSTIN", "VAT", "CST", "DL" to anchor the supplier block.
         
         TARGET FIELDS:
-        1. **Supplier_Name**: The name of the shop/distributor.
-        2. **Address**: Full physical address.
-        4. **GSTIN**: GST Number (15 Digits/Chars). 
-           - **CRITICAL**: Sometimes labeled as "CST", "VST", "VAT", "TIN", or just "No".
-           - Look for patterns like `03AAJFR...` (State Code + PAN + Entity Code).
-           - If you see a 15-char code starting with 2 digits, IT IS LIKELY THE GSTIN.
-           - DO NOT confusing it with PAN (10 chars).
-        5. **DL_No**: Drug License Numbers.
-           - Look for "D.L.No", "20B", "21B", "Lic No", "Drug Lic", "L.No" near the Supplier Name.
-           - Capture BOTH 20B and 21B numbers if present.
-           - **CRITICAL**: Do NOT capture DL Numbers that belong to the "Buyer", "Bill To", or "Party" section.
-        5. **Phone_Number**: Contact numbers. Look near Supplier Name or Top/Bottom margins.
+        1. **Supplier_Name**: Name of the shop/distributor. 
+           - **Heuristic**: Usually the Largest Bold Text or associated with the GSTIN.
+        2. **Address**: Full physical address. 
+           - Look for: "Near", "Road", "Market", "Pin".
+        3. **GSTIN**: GST Number (15 Chars).
+           - Pattern: 2 Digits + 5 Letters + 4 Digits + 1 Letter + 1 Digit + 1 Letter/Digit (e.g. 03AADFM6641E1ZO).
+           - Aliases: "GST", "CST", "TIN", "Sales Tax".
+           - **CRITICAL**: If missing, try to construct from PAN (if present) by looking for a 15-char string nearby.
+        4. **DL_No**: Drug License Numbers.
+           - Keywords: "D.L.", "Lic No", "20B", "21B", "R.C.".
+           - Capture BOTH if available.
+        5. **Phone_Number**: Contact numbers. 
+           - Look for `Ph`, `Mob`, `Tel` anywhere (Header/Footer/Margin).
         6. **Email**: Email address.
-        7. **PAN**: PAN Number.
+        7. **PAN**: PAN Number (10 chars).
         
         Return JSON structure:
         {

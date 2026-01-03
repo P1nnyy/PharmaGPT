@@ -46,6 +46,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             5. Do NOT try to rename columns. Capture exact text like "Pcode", "Qty", "Billed", "Sales Qty", "Rate".
             
             CRITICAL TABLE PARSING RULES:
+            - **ROW ALIGNMENT (THE MOST IMPORTANT RULE)**: You MUST preserve the exact row alignment. 
+               - **DO NOT SHIFT COLUMNS VERTICALLY**. 
+               - If "Product A" is on Line 1, its Batch, Expiry, and Rate MUST be on Line 1. Do not pull "Batch" from Line 2 up to Line 1.
+               - Treat horizontal grid lines as **HARD WALLS**. Data cannot cross these lines.
             - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free" or capture as "10+2" in one cell. DO NOT shift data left/right.
             - **Prices are NOT Quantities**: "MRP" (e.g. 200.00) and "Rate" (e.g. 150.00) are typically larger than "Qty" (e.g. 1, 10). Do not mix them up.
             

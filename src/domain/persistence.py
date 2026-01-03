@@ -291,7 +291,7 @@ def get_invoice_details(driver, invoice_no, user_email: str):
         # Construct flat item dict
         line_item = {
             **l_node,
-            "product_name": p_node.get("name", l_node.get("raw_description", "Unknown"))
+            "product_name": (p_node.get("name") or l_node.get("raw_description") or "Unknown Item")
         }
         line_items.append(line_item)
         

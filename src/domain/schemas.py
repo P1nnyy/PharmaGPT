@@ -8,6 +8,7 @@ class RawLineItem(BaseModel):
     """
     Product: str = Field(..., description="The product description exactly as it appears on the invoice.")
     Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
+    Free: Optional[Union[str, float]] = Field(None, description="Free/Bonus Quantity.")
     Batch: Optional[str] = Field(None, description="Batch number.")
     
     # New Blind Fields

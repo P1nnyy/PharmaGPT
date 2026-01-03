@@ -106,6 +106,10 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
       - **Split**: If column is "10+2", use 10.
       - **Multi-Column**: If text is "0 0 2" or "0 2", extract the NON-ZERO number (e.g. 2).
       - **Fractional**: If you see "1.84" or "0.92", ROUND IT to the nearest integer/whole pack (e.g. 1.84 -> 2, 0.92 -> 1).
+    - **Free**: Numeric (Float). Free/Bonus Quantity.
+      - **Aliases**: "Free", "Scheme", "Bonus", "Off".
+      - **Split**: If column is "10+2", extract 2 here.
+      - **Context**: Often found next to Qty. If missing, use 0.
     - **Batch**: Alphanumeric Batch Number. 
       - **Look for aliases**: "Pcode", "Code", "Lot". 
       - **Extraction**: If a column has "Pcode: 808..." extract that as Batch.
@@ -129,7 +133,6 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     3. **Noise**: Ignore header rows (e.g. "Description | Qty").
     4. **Schemes**: Keep "Offer" / "Free" rows if they are separate line items.
     
-
     {cheat_sheet}
     
     SYSTEM MEMORY (PREVIOUS MISTAKES TO AVOID):
@@ -142,6 +145,7 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                 "Product": "str",
                 "Pack": "str",
                 "Qty": float,
+                "Free": float,
                 "Batch": "str",
                 "Expiry": "str",
                 "HSN": "str",

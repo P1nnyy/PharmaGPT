@@ -34,16 +34,21 @@ def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
             raw_net = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
             qty = float(item.get("Qty") or 1)
             
-            # 1. Adjust Total Cost to match the Check (Landed Cost)
+            # 1. Sanctify Product Name (Prevent Pydantic Crash)
+            if not item.get("Product") or str(item.get("Product")).lower() == "none":
+                 item["Product"] = "Unknown Item"
+                 item["Logic_Note"] = item.get("Logic_Note", "") + " [Missing Name Fixed]"
+
+            # 2. Adjust Total Cost to match the Check (Landed Cost)
             new_net = round(raw_net * correction_factor, 2)
             
-            # 2. Recalculate Unit Rate
+            # 3. Recalculate Unit Rate
             # This is the most critical number for the shop user!
             new_rate = round(new_net / qty, 2) if qty > 0 else 0
             
             item["Net_Line_Amount"] = new_net
             item["Calculated_Cost_Price_Per_Unit"] = new_rate
-            item["Logic_Note"] = f"Auto-Adjusted by {correction_factor:.4f} (Global Tax/Discount)"
+            item["Logic_Note"] = (item.get("Logic_Note", "") + f" [Auto-Adjusted {correction_factor:.4f}]").strip()
             
             updated_lines.append(item)
         except Exception as e:
