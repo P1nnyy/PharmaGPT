@@ -7,19 +7,19 @@ logger = get_logger("database")
 
 driver = None
 
-def get_db_driver():
-    """
-    Returns the active Neo4j driver instance.
-    """
-    return driver
-
 def connect_db():
     """
     Initializes the Neo4j driver.
     """
     global driver
     try:
-        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        # Added keep_alive and max_connection_lifetime to prevent 'defunct connection' errors after idle time
+        driver = GraphDatabase.driver(
+            NEO4J_URI, 
+            auth=(NEO4J_USER, NEO4J_PASSWORD),
+            max_connection_lifetime=200, # Refresh connections every 3.5 mins approx
+            keep_alive=True
+        )
         driver.verify_connectivity()
         logger.info("Connected to Neo4j.")
         
@@ -29,6 +29,29 @@ def connect_db():
     except Exception as e:
         logger.error(f"Failed to connect to Neo4j: {e} - Application will start in partial mode (No DB)")
         driver = None
+
+def get_db_driver():
+    """
+    Returns the active Neo4j driver instance.
+    Includes auto-reconnection logic for stale connections.
+    """
+    global driver
+    if driver:
+        try:
+            # lightweight connectivity check
+            driver.verify_connectivity()
+            return driver
+        except Exception as e:
+            logger.warning(f"Neo4j Connection Defunct ({e}). Reconnecting...")
+            try:
+                driver.close()
+            except:
+                pass
+            driver = None
+
+    # Reconnect if None or defunct
+    connect_db()
+    return driver
 
 def close_db():
     """

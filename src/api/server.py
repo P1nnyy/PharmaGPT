@@ -107,8 +107,8 @@ current_base_url = get_base_url()
 app.add_middleware(
     SessionMiddleware, 
     secret_key=SECRET_KEY, 
-    https_only=True, 
-    same_site='none' # Most permissive for cross-site redirects (Requires Secure=True)
+    https_only=False, # Allow HTTP for local dev / tunnel mixed content
+    same_site='lax'   # Better for OAuth redirects than 'none' in some browsers without Secure
 )
 
 # --- Include Routers ---
