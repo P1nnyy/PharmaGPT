@@ -40,10 +40,11 @@ def get_base_url() -> str:
     # 1. BASE_URL (Explicit Backend URL from .env)
     # 2. VITE_API_BASE_URL (Legacy/Frontend var)
     # 3. Default
+    # 3. Default
     return os.getenv("BASE_URL") or os.getenv("VITE_API_BASE_URL") or "http://localhost:5001"
 
 def get_frontend_url() -> str:
     """
     Returns the frontend URL for redirects.
     """
-    return os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
+    return os.getenv("FRONTEND_URL", "https://dev.pharmagpt.co").rstrip('/')

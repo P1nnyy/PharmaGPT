@@ -230,7 +230,8 @@ def get_activity_log(driver, user_email: str):
            s.gstin as supplier_gst,
            s.phone as supplier_phone,
            s.dl_no as supplier_dl,
-           s.address as supplier_address
+           s.address as supplier_address,
+           u.name as saved_by
     ORDER BY i.created_at DESC LIMIT 20
     """
     with driver.session() as session:
@@ -309,14 +310,14 @@ def get_grouped_invoice_history(driver, user_email: str):
     WHERE i.status = 'CONFIRMED'
     
     // Group by Supplier Name
-    WITH i.supplier_name as supplier_name, collect(i) as invoices
+    WITH i.supplier_name as supplier_name, collect(i) as invoices, u.name as user_name
     
     // Calculate total spend per supplier
     // (Ensure grand_total is treated as float)
-    WITH supplier_name, invoices, 
+    WITH supplier_name, invoices, user_name,
          reduce(msg = 0.0, inv in invoices | msg + coalesce(inv.grand_total, 0.0)) as total_spend
          
-    RETURN supplier_name, total_spend, invoices
+    RETURN supplier_name, total_spend, invoices, user_name
     ORDER BY total_spend DESC
     """
     
@@ -328,6 +329,7 @@ def get_grouped_invoice_history(driver, user_email: str):
             supplier_name = record["supplier_name"]
             total_spend = record["total_spend"]
             invoice_nodes = record["invoices"]
+            user_name = record["user_name"]
             
             # Format invoices list
             formatted_invoices = []
@@ -348,7 +350,8 @@ def get_grouped_invoice_history(driver, user_email: str):
             data.append({
                 "name": supplier_name,
                 "total_spend": total_spend,
-                "invoices": formatted_invoices
+                "invoices": formatted_invoices,
+                "saved_by": user_name
             })
             
     return data

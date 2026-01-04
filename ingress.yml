@@ -1,11 +1,17 @@
-tunnel: invoice-app
-credentials-file: /Users/pranavgupta/.cloudflared/87f642ac-94bc-406d-a86c-bf08e829789a.json 
+tunnel: 173e5515-cdf3-4140-b8c4-ad87bf3737df
+credentials-file: /Users/pranavgupta/.cloudflared/173e5515-cdf3-4140-b8c4-ad87bf3737df.json 
 
 ingress:
   - hostname: pharmagpt.co
     service: http://127.0.0.1:5173
+  - hostname: dev.pharmagpt.co
+    service: http://127.0.0.1:5173
+  - hostname: local.pharmagpt.co
+    service: http://127.0.0.1:5173
   - hostname: www.pharmagpt.co
     service: http://127.0.0.1:5173
   - hostname: api.pharmagpt.co
-    service: http://127.0.0.1:8000
+    service: http://127.0.0.1:5001
+    originRequest:
+      connectTimeout: 30s
   - service: http_status:404

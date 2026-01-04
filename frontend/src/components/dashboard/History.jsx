@@ -128,7 +128,7 @@ const History = () => {
                                                     <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
                                                         PG
                                                     </div>
-                                                    <span className="text-slate-300 text-sm font-medium">Pranav Gupta</span>
+                                                    <span className="text-slate-300 text-sm font-medium">{invoice.saved_by || 'Unknown'}</span>
                                                 </div>
                                             </div>
 

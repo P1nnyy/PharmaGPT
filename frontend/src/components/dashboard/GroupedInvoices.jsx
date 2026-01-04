@@ -135,7 +135,7 @@ const GroupedInvoices = () => {
                                                         <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
                                                             PG
                                                         </div>
-                                                        <span className="text-xs text-slate-400">Pranav Gupta</span>
+                                                        <span className="text-xs text-slate-400">{supplier.saved_by || 'Unknown'}</span>
                                                     </div>
 
                                                     {inv.image_path && (
@@ -182,7 +182,7 @@ const GroupedInvoices = () => {
                                                         <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
                                                             PG
                                                         </div>
-                                                        <span className="text-sm text-slate-400">Pranav Gupta</span>
+                                                        <span className="text-sm text-slate-400">{supplier.saved_by || 'Unknown'}</span>
                                                     </div>
                                                 </div>
 

@@ -97,6 +97,16 @@ export const getInventory = async () => {
     return response.data;
 };
 
+export const searchProducts = async (query) => {
+    const response = await api.get(`/products/search?q=${encodeURIComponent(query)}`);
+    return response.data;
+};
+
+export const saveProduct = async (productData) => {
+    const response = await api.post('/products/', productData);
+    return response.data;
+};
+
 export default {
     analyzeInvoice,
     ingestInvoice,
@@ -107,5 +117,8 @@ export default {
     getActivityLog,
     getInvoiceHistory,
     getInvoiceDetails,
-    getInventory
+    getInvoiceDetails,
+    getInventory,
+    searchProducts,
+    saveProduct
 };

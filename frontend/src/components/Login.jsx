@@ -21,6 +21,17 @@ const Login = () => {
                     <p className="text-slate-500">Secure Workspace Access</p>
                 </div>
 
+                {window.location.hostname.match(/\d+\.\d+\.\d+\.\d+/) && (
+                    <div className="bg-amber-500/10 border border-amber-500/50 text-amber-200 p-4 rounded-xl mb-6 text-sm text-center">
+                        <p className="font-bold mb-1">⚠️ Incorrect Access URL</p>
+                        Google Login requires HTTPS. Please use:
+                        <br />
+                        <a href="https://dev.pharmagpt.co" className="underline font-bold text-amber-400 block mt-2 p-2 bg-amber-500/10 rounded-lg hover:bg-amber-500/20 transition-colors">
+                            https://dev.pharmagpt.co
+                        </a>
+                    </div>
+                )}
+
                 <div className="space-y-6">
                     <button
                         onClick={handleGoogleLogin}

@@ -85,3 +85,17 @@ class User(BaseModel):
     email: str = Field(..., description="User's email address.")
     name: str = Field(..., description="Full name from Google Profile.")
     picture: Optional[str] = Field(None, description="URL to profile picture.")
+
+class ProductRequest(BaseModel):
+    """
+    Schema for creating or updating a Global Product in the inventory.
+    """
+    name: str = Field(..., description="Name of the product.")
+    hsn_code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")
+    item_code: Optional[str] = Field(None, description="Internal Item Code.")
+    sale_price: float = Field(..., description="Selling Price (MRP).")
+    purchase_price: float = Field(..., description="Purchase Price (Cost).")
+    tax_rate: float = Field(..., description="GST Tax Rate (e.g., 5.0, 12.0).")
+    opening_stock: float = Field(..., description="Initial Stock Quantity.")
+    min_stock: float = Field(..., description="Minimum Stock Level for alerts.")
+    location: Optional[str] = Field(None, description="Physical location (Rack/Shelf).")

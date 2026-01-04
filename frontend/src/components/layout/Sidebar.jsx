@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScanLine, Clock, Files, Package, Settings, LogOut } from 'lucide-react';
+import { ScanLine, Clock, Files, Package, Settings, LogOut, Database } from 'lucide-react';
 
 const Sidebar = ({ activeTab, onTabChange, isMobile, isOpen, onClose, user, onLogout }) => {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
@@ -17,6 +17,7 @@ const Sidebar = ({ activeTab, onTabChange, isMobile, isOpen, onClose, user, onLo
         { id: 'scan', label: 'Scan Invoice', icon: ScanLine },
         { id: 'history', label: 'History', icon: Clock },
         { id: 'invoices', label: 'Invoices', icon: Files },
+        { id: 'items', label: 'Items', icon: Database },
         { id: 'inventory', label: 'Inventory', icon: Package },
     ];
 

@@ -12,7 +12,9 @@ from src.core.config import (
 )
 from src.services.database import connect_db, close_db, get_db_driver
 from src.services.storage import init_storage_client, upload_to_r2
+from src.services.storage import init_storage_client, upload_to_r2
 from src.api.routes.auth import router as auth_router, get_current_user_email
+from src.api.routes.products import router as products_router
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -107,8 +109,8 @@ current_base_url = get_base_url()
 app.add_middleware(
     SessionMiddleware, 
     secret_key=SECRET_KEY, 
-    https_only=True,   # Strictly enforce HTTPS
-    same_site='lax',   # Better for OAuth redirects
+    https_only=False,  # Relaxed for mixed HTTP/HTTPS envs
+    same_site='lax',   # Allows top-level navigation redirects
     max_age=86400      # 24 Hours Session Lifetime
 )
 
@@ -118,6 +120,7 @@ app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # --- Include Routers ---
 app.include_router(auth_router)
+app.include_router(products_router)
 
 # --- Startup / Shutdown ---
 @app.on_event("startup")
