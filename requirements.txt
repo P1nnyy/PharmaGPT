@@ -19,3 +19,5 @@ boto3
 langgraph
 langchain
 langchain-community
+langfuse
+opencv-python-headless

@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, START, END
+from langfuse.langchain import CallbackHandler
 from src.workflow.state import InvoiceState
 from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics, supplier_extractor
 from src.utils.logging_config import get_logger
@@ -85,8 +86,16 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
         "error_logs": []
     }
     
+    # Initialize Langfuse Callback
+    try:
+        langfuse_handler = CallbackHandler()
+        callbacks = [langfuse_handler]
+    except Exception as e:
+        logger.warning(f"Failed to initialize Langfuse Callback: {e}")
+        callbacks = []
+    
     # Invoke Graph
-    result_state = await APP.ainvoke(initial_state)
+    result_state = await APP.ainvoke(initial_state, config={"callbacks": callbacks})
     
     # Extract final output
     final_output = result_state.get("final_output")

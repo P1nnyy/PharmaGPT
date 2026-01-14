@@ -1,0 +1,98 @@
+version: '3.9'
+
+services:
+  langfuse-server:
+    image: langfuse/langfuse:3
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - NEXTAUTH_SECRET=mysecret
+      - SALT=mysalt
+      - NEXTAUTH_URL=http://localhost:3000
+      - TELEMETRY_ENABLED=false
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_USER=langfuse
+      - CLICKHOUSE_PASSWORD=password
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_MIGRATION_URL=clickhouse://clickhouse:9000
+      - CLICKHOUSE_CLUSTER_ENABLED=false
+      - ENCRYPTION_SECRET=b7e2a9c1d8f3e5g6h7i8j9k0l1m2n3o4
+
+  langfuse-worker:
+    image: langfuse/langfuse:3
+    depends_on:
+      db:
+        condition: service_started
+      clickhouse:
+        condition: service_started
+      langfuse-server:
+        condition: service_healthy
+    environment:
+      - SKIP_MIGRATIONS=true
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - NEXTAUTH_SECRET=mysecret
+      - SALT=mysalt
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_USER=langfuse
+      - CLICKHOUSE_PASSWORD=password
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_MIGRATION_URL=clickhouse://clickhouse:9000
+      - CLICKHOUSE_CLUSTER_ENABLED=false
+      - ENCRYPTION_SECRET=b7e2a9c1d8f3e5g6h7i8j9k0l1m2n3o4
+
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    user: "101:101"
+    container_name: clickhouse
+    hostname: clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_log:/var/log/clickhouse-server
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=langfuse
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+      - CLICKHOUSE_PASSWORD=password
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  clickhouse_log:
