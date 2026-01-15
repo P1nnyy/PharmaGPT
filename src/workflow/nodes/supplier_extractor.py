@@ -27,6 +27,7 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         # as Gemini handles images well.
         
         sample_file = genai.upload_file(path=image_path, display_name="Supplier Extraction")
+        # Retry 2.0 Flash with the NEW Prompt (It should work now)
         model = genai.GenerativeModel('gemini-2.0-flash')
         
         prompt = """
@@ -40,17 +41,25 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         - Inside a "Stamp" or "Seal".
         
         STRATEGY:
-        1. Scan the whole document for the "Seller" or "Party" identity.
+        1. Scan the whole document for the "Seller" or "Party" identity. 
+           - Look for 'Sold By', 'From', or just the header block.
+           - **INFERENCE**: If a bold name appears at the top left/center and is NOT the "Bill To" party, assume it is the Supplier.
         2. Distinguish from "Buyer" (Bill To). The Supplier is the entity generating the invoice.
         3. Look for "GSTIN", "VAT", "CST", "DL" to anchor the supplier block.
         
         TARGET FIELDS:
         1. **Supplier_Name**: Name of the shop/distributor. 
-           - **Heuristic**: Usually the Largest Bold Text or associated with the GSTIN.
+           - **Heuristic**: Usually Top-Center or Top-Left. often Bold.
+           - If text is "Deepak Agencies" or similar, capture it.
+           - **FALLBACK**: If no explicit label, take the top-most meaningful text block.
         2. **Address**: Full physical address. 
-           - Look for: "Near", "Road", "Market", "Pin".
+           - Look for: "Near", "Road", "Market", "Pin", "Plot", "Shop".
+           - It might be immediately below the Supplier Name.
+           - It might be split across lines. capture all of it.
         3. **GSTIN**: GST Number (15 Chars).
            - Pattern: 2 Digits + 5 Letters + 4 Digits + 1 Letter + 1 Digit + 1 Letter/Digit (e.g. 03AADFM6641E1ZO).
+           - **CRITICAL**: Sometimes unlabeled. Look for the pattern `^\d{2}[A-Z]{5}\d{4}`.
+           - Punjab invoices often start with '03'.
            - Aliases: "GST", "CST", "TIN", "Sales Tax".
            - **CRITICAL**: If missing, try to construct from PAN (if present) by looking for a 15-char string nearby.
         4. **DL_No**: Drug License Numbers.

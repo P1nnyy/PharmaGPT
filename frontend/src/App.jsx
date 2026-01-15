@@ -21,13 +21,22 @@ import ItemMaster from './components/items/ItemMaster';
 function App() {
   const [activeTab, setActiveTab] = useState('scan'); // 'scan' | 'history' | 'inventory' | 'settings' | 'invoices'
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [invoiceData, setInvoiceData] = useState(null);
-  const [imagePath, setImagePath] = useState(null);
-  const [lineItems, setLineItems] = useState([]);
-  const [warnings, setWarnings] = useState([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // Batch State
+  const [fileQueue, setFileQueue] = useState([]); // [{ id, file, status: 'pending'|'processing'|'completed'|'error', previewUrl, result, error }]
+  const [selectedQueueId, setSelectedQueueId] = useState(null);
+
+  // Computed from Queue
+  const activeQueueItem = fileQueue.find(item => item.id === selectedQueueId) || fileQueue[0];
+  const file = activeQueueItem?.file || null;
+  const previewUrl = activeQueueItem?.previewUrl || null;
+  const invoiceData = activeQueueItem?.result?.invoice_data || null;
+  const lineItems = activeQueueItem?.result?.normalized_items || [];
+  const warnings = activeQueueItem?.result?.validation_flags || [];
+  const imagePath = activeQueueItem?.result?.image_path || null;
+
+  // Global Loading is true if ANY are processing
+  const isAnalyzing = fileQueue.some(f => f.status === 'processing');
+
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -81,6 +90,98 @@ function App() {
     initAuth();
   }, []);
 
+  // Polling for Updates
+  useEffect(() => {
+    let intervalId;
+
+    const fetchDrafts = async () => {
+      try {
+        const drafts = await import('./services/api').then(m => m.getDrafts());
+
+        // Merge Strategy: Update existing, Add new, Remove only if not in draft list?
+        // Actually, getDrafts returns the source of truth for "Unsaved Work".
+        // We should sync fileQueue to it.
+
+        setFileQueue(prevQueue => {
+          // Optimization: Only update if changed prevents verify flicker?
+          // For now, let's just map status updates to preserve local UI state if needed (like selection)
+
+          // Map server drafts to UI model
+          // STATUS MAPPING: 
+          // 'draft' + is_duplicate -> 'duplicate'
+          // 'draft' -> 'completed'
+          const serverItems = drafts.map(d => {
+            let uiStatus = d.status;
+            if (d.status === 'draft') {
+              if (d.is_duplicate) {
+                uiStatus = 'duplicate';
+              } else {
+                uiStatus = 'completed';
+              }
+            }
+
+            return {
+              id: d.id,
+              file: d.file,
+              status: uiStatus,
+              previewUrl: d.previewUrl,
+              result: d.result,
+              error: d.error,
+              warning: d.duplicate_warning // Pass warning text
+            };
+          });
+
+          // SORTING: Completed/Duplicate First, then Processing
+          serverItems.sort((a, b) => {
+            const score = (status) => {
+              if (status === 'completed') return 3;
+              if (status === 'duplicate') return 3; // Same priority as completed
+              if (status === 'processing') return 2;
+              return 1;
+            };
+            return score(b.status) - score(a.status);
+          });
+
+          // Sync Logic:
+          // If we just blindly replace, we might lose selection context or local-only processing items?
+          // But serverItems is the source of truth for "Batch".
+          // If queue is empty, just fill.
+          if (prevQueue.length === 0) return serverItems;
+
+          // If we have items, we want to update them but keep the sort order stable? 
+          // Actually, if we sort serverItems, that's the desired order.
+          return serverItems;
+        });
+
+      } catch (err) {
+        console.error("Polling Error:", err);
+      }
+    };
+
+    // 1. Initial Load (Recovery)
+    fetchDrafts();
+
+    // 2. Poll if any are Processing
+    // We check state inside the effect interval or by dependency?
+    // Dependency on fileQueue causes infinite loop if we update fileQueue.
+    // Better: Set interval, inside check if we need to continue?
+    // Or just always poll slowly (5s) if "Unsaved Work" exists?
+    // Let's rely on `isAnalyzing` derived state.
+
+    if (isAnalyzing) {
+      intervalId = setInterval(fetchDrafts, 3000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isAnalyzing]); // Re-evaluates when isAnalyzing changes (e.g. one finishes locally? No, local status won't change without polling)
+  // Wait, if we rely on polling to change status, isAnalyzing won't change UNTIL polling runs.
+  // So we need to kickstart it. 
+  // ADDENDUM: We also need to poll if we *mounted* and suspect things.
+  // Actually, if we just uploaded, we set status='processing'. This trips isAnalyzing=true. Effect runs. Interval starts. 
+  // Polling runs. Status changes to 'draft'. isAnalyzing=false. Effect runs. Interval clears. Perfect.
+
 
   if (isLoadingAuth) {
     return (
@@ -98,81 +199,113 @@ function App() {
     setActiveTab(tab);
   };
 
-  const runAnalysis = async (selectedFile) => {
-    setIsAnalyzing(true);
+  const runAnalysis = async (filesToProcess) => {
+    // Logic moved to handleFileChange mostly, this now just handles the upload call
+    // But handleFileChange builds the "Pre-Upload" queue.
+
     try {
-      // Assuming analyzeInvoice returns { invoice_data, normalized_items, validation_flags }
-      const data = await analyzeInvoice(selectedFile);
-      handleAnalysisComplete(data);
+      const { uploadBatchInvoices } = await import('./services/api');
+
+      // filesToProcess is the list of { file: File } objects from the queue
+      const files = filesToProcess.map(item => item.file);
+
+      // Upload - Immediately returns placeholders with IDs
+      const placeholders = await uploadBatchInvoices(files);
+
+      // Update Queue with Server IDs and Status
+      setFileQueue(prev => {
+        // Replace the "temp" items with "server" placeholders
+        // or just override?
+        return placeholders;
+        // Note: This replaces the list. If user selected 3 new ones, we show 3 new ones.
+        // Existing drafts will be fetched by polling merge if we want to show combined history.
+        // But `handleFileChange` creates a NEW queue currently.
+      });
+
     } catch (err) {
-      console.error(err);
-      setErrorMsg(err.response?.data?.detail || "Analysis failed. Please try again.");
-      setIsAnalyzing(false);
+      console.error("Upload Failed", err);
+      setErrorMsg("Batch Upload Failed");
     }
   };
 
   const handleFileChange = async (e) => {
-    const selectedFile = e.target.files ? e.target.files[0] : null;
-    if (!selectedFile) return;
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    if (selectedFiles.length === 0) return;
 
-    setFile(selectedFile);
-    setPreviewUrl(URL.createObjectURL(selectedFile));
-    setInvoiceData(null);
-    setImagePath(null);
-    setLineItems([]);
-    setWarnings([]);
-    setSuccessMsg(null);
-    setErrorMsg(null);
+    // Create Temporary Queue for Immediate UI Feedback
+    const tempQueue = selectedFiles.map(f => ({
+      id: "temp-" + Math.random().toString(36),
+      file: f,
+      status: 'processing',
+      previewUrl: URL.createObjectURL(f),
+      result: null
+    }));
 
-    // Trigger Analysis
-    await runAnalysis(selectedFile);
+    setFileQueue(tempQueue);
+    // runAnalysis will upload and replace these with server IDs
+    await runAnalysis(tempQueue);
+  };
+
+  const handleQueueSelect = (id) => {
+    setSelectedQueueId(id);
   };
 
   const handleReset = () => {
-    setFile(null);
-    setPreviewUrl(null);
-    setInvoiceData(null);
-    setImagePath(null);
-    setLineItems([]);
-    setWarnings([]);
+    setFileQueue([]);
+    setSelectedQueueId(null);
     setSuccessMsg(null);
     setErrorMsg(null);
   };
 
   const handleAnalysisComplete = (data) => {
-    setInvoiceData(data.invoice_data);
-    setLineItems(data.normalized_items);
-    setImagePath(data.image_path);
-    setWarnings(data.validation_flags || []);
-    setIsAnalyzing(false);
+    // Legacy handler - likely unused now in batch mode unless called manually
+    console.warn("Legacy handleAnalysisComplete called");
   };
 
   const handleError = (msg) => {
     setErrorMsg(msg);
-    setIsAnalyzing(false);
+    // This setIsAnalyzing is for the old single-file flow.
+    // In batch mode, `isAnalyzing` is derived from `fileQueue.some(f => f.status === 'processing')`
+    // so setting it here directly might conflict.
+    // For now, let's assume errors are handled per-item in the queue.
+    // setIsAnalyzing(false);
   };
 
   const handleHeaderChange = (field, value) => {
-    setInvoiceData(prev => {
-      // Handle nested supplier_details updates
-      if (field.startsWith('supplier_details.')) {
-        const key = field.split('.')[1];
-        return {
-          ...prev,
-          supplier_details: {
-            ...prev.supplier_details,
+    setFileQueue(prev => prev.map(item => {
+      if (item.id === selectedQueueId) {
+        const newResult = { ...item.result };
+        const newInvoiceData = { ...newResult.invoice_data };
+
+        if (field.startsWith('supplier_details.')) {
+          const key = field.split('.')[1];
+          newInvoiceData.supplier_details = {
+            ...newInvoiceData.supplier_details,
             [key]: value
-          }
-        };
+          };
+        } else {
+          newInvoiceData[field] = value;
+        }
+
+        newResult.invoice_data = newInvoiceData;
+        return { ...item, result: newResult };
       }
-      return { ...prev, [field]: value };
-    });
+      return item;
+    }));
   };
 
   const handleLineItemChange = (index, field, value) => {
-    const updated = [...lineItems];
-    updated[index] = { ...updated[index], [field]: value };
-    setLineItems(updated);
+    setFileQueue(prev => prev.map(item => {
+      if (item.id === selectedQueueId) {
+        const newResult = { ...item.result };
+        const newItems = [...newResult.normalized_items];
+        newItems[index] = { ...newItems[index], [field]: value };
+
+        newResult.normalized_items = newItems;
+        return { ...item, result: newResult };
+      }
+      return item;
+    }));
   };
 
   const handleSaveInvoice = async () => {
@@ -191,12 +324,49 @@ function App() {
 
       await saveInvoice(payload);
       setSuccessMsg("Invoice Saved Successfully!");
-      setTimeout(() => setSuccessMsg(null), 3000);
+
+      // OPTIMISTIC REMOVAL: Remove from Queue immediately
+      setFileQueue(prev => {
+        const next = prev.filter(item => item.id !== selectedQueueId);
+        // Auto-select next item if available
+        if (next.length > 0) {
+          const nextId = next[0].id;
+          // Defer selection update slightly to avoid race or just set it
+          setTimeout(() => setSelectedQueueId(nextId), 0);
+        } else {
+          setSelectedQueueId(null);
+        }
+        return next;
+      });
+
+      // Backend will eventually confirm status -> CONFIRMED so it won't reappear in poll
+
     } catch (err) {
       console.error(err);
       setErrorMsg("Failed to save invoice. " + (err.response?.data?.detail || err.message));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDiscard = async (invoiceId) => {
+    try {
+      const { discardInvoice } = await import('./services/api');
+      await discardInvoice(invoiceId);
+
+      // Remove from local queue
+      setFileQueue(prev => {
+        const next = prev.filter(item => item.id !== invoiceId);
+        if (selectedQueueId === invoiceId && next.length > 0) {
+          setTimeout(() => setSelectedQueueId(next[0].id), 0);
+        } else if (next.length === 0) {
+          setTimeout(() => setSelectedQueueId(null), 0);
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to discard invoice:", error);
+      setErrorMsg("Failed to discard invoice");
     }
   };
 
@@ -241,14 +411,15 @@ function App() {
                     ${isMobile && invoiceData ? 'h-[35%]' : 'h-full'} 
                 `}>
             <InvoiceViewer
-              file={file}
+              fileQueue={fileQueue}
+              selectedQueueId={selectedQueueId}
+              onQueueSelect={handleQueueSelect}
               previewUrl={previewUrl}
               isAnalyzing={isAnalyzing}
               onFileChange={handleFileChange}
               onReset={handleReset}
-              onAnalysisComplete={handleAnalysisComplete}
               onError={handleError}
-              setIsAnalyzing={setIsAnalyzing}
+              onDiscard={handleDiscard}
             />
           </div>
 
@@ -270,7 +441,6 @@ function App() {
                 isAnalyzing={isAnalyzing}
                 onHeaderChange={handleHeaderChange}
                 onInputChange={handleLineItemChange}
-                setLineItems={setLineItems}
                 setIsSaving={setIsSaving}
                 setSuccessMsg={setSuccessMsg}
                 setErrorMsg={setErrorMsg}

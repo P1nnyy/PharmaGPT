@@ -66,6 +66,25 @@ class NormalizedLineItem(BaseModel):
     Expiry_Date: Optional[str] = Field(None, description="Expiry date.")
     Batch_No: Optional[str] = Field(None)
 
+    # --- New Ops/Pharma Fields ---
+    Salt: Optional[str] = Field(None, description="Composition / Salt.")
+    Category: Optional[str] = Field(None, description="Item Category (TAB, SYP, INJ, etc).")
+    Manufacturer: Optional[str] = Field(None, description="Manufacturer Name.")
+    
+    # Units
+    Unit_1st: Optional[str] = Field(None, description="Primary Unit (e.g. TAB).")
+    Unit_2nd: Optional[str] = Field(None, description="Secondary Unit (e.g. STRIP/BOX).")
+    
+    # Pricing (Sales Rates)
+    Sales_Rate_A: Optional[float] = Field(None, description="Sales Rate A.")
+    Sales_Rate_B: Optional[float] = Field(None, description="Sales Rate B.")
+    Sales_Rate_C: Optional[float] = Field(None, description="Sales Rate C.")
+    
+    # Tax Breakups
+    SGST_Percent: Optional[float] = Field(None, description="SGST Percentage.")
+    CGST_Percent: Optional[float] = Field(None, description="CGST Percentage.")
+    IGST_Percent: Optional[float] = Field(None, description="IGST Percentage.")
+
 class SupplierExtraction(BaseModel):
     """
     Dedicated schema for detailed supplier information.

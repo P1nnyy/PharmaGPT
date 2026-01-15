@@ -104,42 +104,199 @@ def _merge_supplier_tx(tx, name, details, user_email):
            email=details.get("Email")
     )
 
+def create_processing_invoice(driver, invoice_id: str, filename: str, image_path: str, user_email: str):
+    """
+    Creates an initial Invoice node with status 'PROCESSING'.
+    Used for immediate feedback before analysis completes.
+    """
+    with driver.session() as session:
+        session.execute_write(_create_processing_tx, invoice_id, filename, image_path, user_email)
+
+def _create_processing_tx(tx, invoice_id, filename, image_path, user_email):
+    query = """
+    MATCH (u:User {email: $user_email})
+    MERGE (i:Invoice {invoice_id: $invoice_id})
+    MERGE (u)-[:OWNS]->(i)
+    
+    ON CREATE SET 
+        i.status = 'PROCESSING',
+        i.filename = $filename,
+        i.image_path = $image_path,
+        i.created_at = timestamp(),
+        i.updated_at = timestamp()
+    """
+    tx.run(query, 
+           user_email=user_email,
+           invoice_id=invoice_id,
+           filename=filename,
+           image_path=image_path)
+
+def update_invoice_status(driver, invoice_id: str, status: str, result_state: Dict[str, Any] = None, error: str = None):
+    """
+    Updates the status of an existing Invoice node (e.g. PROCESSING -> DRAFT).
+    Backfills extracted data if available.
+    """
+    from neo4j.exceptions import ClientError
+    
+    try:
+        with driver.session() as session:
+            session.execute_write(_update_status_tx, invoice_id, status, result_state, error)
+            
+    except ClientError as e:
+        if "ConstraintValidationFailed" in str(e) and "invoice_number" in str(e):
+             # Detected Duplicate Constraint Violation!
+             # Fallback: Update status to DRAFT (Success) but mark as Duplicate
+             logger.warning(f"Constraint Violation for Invoice {invoice_id}. Marking as Duplicate.")
+             with driver.session() as session:
+                 session.execute_write(_mark_duplicate_tx, invoice_id, result_state)
+        else:
+             # Re-raise other Neo4j errors
+             raise e
+
+def _update_status_tx(tx, invoice_id, status, result_state, error):
+    # Serialize state
+    import json
+    state_json = json.dumps(result_state, default=str) if result_state else None
+    
+    # Extract high-level fields if available for the Node connection/display
+    invoice_no = result_state.get("invoice_data", {}).get("Invoice_No") if result_state else None
+    supplier = result_state.get("invoice_data", {}).get("Supplier_Name") if result_state else None
+    grand_total = result_state.get("invoice_data", {}).get("Stated_Grand_Total") if result_state else None
+    
+    # Check for duplicate Invoice Number
+    if invoice_no:
+        # Check if ANOTHER node (not this one) has this invoice_number
+        check_query = """
+        MATCH (other:Invoice {invoice_number: $invoice_no})
+        WHERE other.invoice_id <> $invoice_id
+        RETURN count(other) as cnt
+        """
+        dup_result = tx.run(check_query, invoice_no=invoice_no, invoice_id=invoice_id).single()
+        if dup_result and dup_result["cnt"] > 0:
+            # Duplicate found!
+            # SOFT WARNING: Mark as DRAFT but add a flag.
+            # We append a validation flag to the serialized state if possible, or just set a node property.
+            
+            # Inject into state_json (deserializing if needed, or string manip? No, we have result_state dict passed in context usually, but here it's serialized... wait.)
+            # Actually, the parameters to run() are static. 
+            # We can set a property on the node `is_duplicate = true`.
+            
+            # Note: We continue to execute the main UPDATE query below, but adding the duplicate flag.
+            
+            query = """
+            MATCH (i:Invoice {invoice_id: $invoice_id})
+            SET i.status = 'DRAFT',  // Success, but warn
+                i.updated_at = timestamp(),
+                i.is_duplicate = true,   // New Flag
+                i.duplicate_warning = 'Invoice ' + $invoice_no + ' already exists.'
+                
+            // Conditionally Update Fields
+            // NOTE: Do NOT set i.invoice_number here to avoid ConstraintViolation
+            FOREACH (_ IN CASE WHEN $state_json IS NOT NULL THEN [1] ELSE [] END |
+                SET i.raw_state = $state_json,
+                    i.supplier_name = coalesce($supplier, i.supplier_name),
+                    i.grand_total = coalesce($grand_total, i.grand_total)
+            )
+            """
+            tx.run(query,
+                   invoice_id=invoice_id,
+                   invoice_no=invoice_no,
+                   supplier=supplier,
+                   grand_total=grand_total,
+                   state_json=state_json)
+            return
+
+    query = """
+    MATCH (i:Invoice {invoice_id: $invoice_id})
+    SET i.status = $status,
+        i.updated_at = timestamp(),
+        i.is_duplicate = false // Clear flag if re-processed/corrected
+        
+    // Conditionally Update Fields if provided
+    FOREACH (_ IN CASE WHEN $state_json IS NOT NULL THEN [1] ELSE [] END |
+        SET i.raw_state = $state_json,
+            i.invoice_number = coalesce($invoice_no, i.invoice_number),
+            i.supplier_name = coalesce($supplier, i.supplier_name),
+            i.grand_total = coalesce($grand_total, i.grand_total)
+    )
+    
+    FOREACH (_ IN CASE WHEN $error IS NOT NULL THEN [1] ELSE [] END |
+        SET i.error_message = $error
+    )
+    """
+    tx.run(query,
+           invoice_id=invoice_id,
+           status=status,
+           state_json=state_json,
+           error=error,
+           invoice_no=invoice_no,
+           supplier=supplier,
+           grand_total=grand_total)
+
+def get_draft_invoices(driver, user_email: str):
+    """
+    Fetches invoices in PROCESSING, DRAFT, or ERROR state for the user.
+    """
+    query = """
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
+    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    RETURN i.invoice_id as id,
+           i.filename as filename,
+           i.status as status,
+           i.image_path as image_path,
+           i.raw_state as result,
+           i.error_message as error,
+           i.is_duplicate as is_duplicate,
+           i.duplicate_warning as duplicate_warning,
+           i.created_at as created_at
+    ORDER BY i.created_at DESC
+    """
+    with driver.session() as session:
+        result = session.run(query, user_email=user_email)
+        invoices = []
+        for record in result:
+             # Deserialize result JSON if present
+             res_json = record["result"]
+             res_data = json.loads(res_json) if res_json else None
+             
+             invoices.append({
+                 "id": record["id"],
+                 "file": {"name": record["filename"]}, 
+                 "status": record["status"].lower(), 
+                 "previewUrl": record["image_path"],
+                 "result": res_data,
+                 "error": record["error"],
+                 "is_duplicate": record["is_duplicate"], # New Field
+                 "duplicate_warning": record["duplicate_warning"], # New Field
+                 "created_at": record["created_at"]
+             })
+        return invoices
+
+def delete_draft_invoices(driver, user_email: str):
+    """
+    Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
+    Used for 'Clear All' functionality.
+    """
+    query = """
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
+    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    DETACH DELETE i
+    """
+    with driver.session() as session:
+        session.run(query, user_email=user_email)
+
 def create_invoice_draft(driver, state: Dict[str, Any], user_email: str):
     """
     Creates a DRAFT invoice node in Neo4j, scoped to a User.
     Used for Staging before full confirmation.
     """
-    global_mods = state.get("global_modifiers", {})
-    invoice_no = global_mods.get("Invoice_No", "UNKNOWN")
-    supplier = global_mods.get("Supplier_Name", "UNKNOWN")
-    
-    with driver.session() as session:
-        session.execute_write(_create_draft_tx, invoice_no, supplier, state, user_email)
-        
+    # Legacy wrapper or specific use case? 
+    # For now keeping it but our new flow uses create_processing -> update
+    pass
+
 def _create_draft_tx(tx, invoice_no, supplier, state, user_email):
-    query = """
-    MATCH (u:User {email: $user_email})
-    MERGE (i:Invoice {invoice_number: $invoice_no, supplier_name: $supplier})
-    MERGE (u)-[:OWNS]->(i)
-    
-    ON CREATE SET 
-        i.status = 'DRAFT',
-        i.created_at = timestamp(),
-        i.raw_state = $raw_state
-    ON MATCH SET
-        i.status = 'DRAFT',  // Reset to draft if exists
-        i.updated_at = timestamp(),
-        i.raw_state = $raw_state
-    """
-    # Serialize state partially if needed, but neo4j can store strings
-    import json
-    state_json = json.dumps(state.get("final_output", {}), default=str)
-    
-    tx.run(query, 
-           user_email=user_email,
-           invoice_no=invoice_no, 
-           supplier=supplier,
-           raw_state=state_json)
+    # Keeping for compatibility if needed, but likely replaced
+    pass
 
 def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float, user_email: str):
     query = """
@@ -190,7 +347,20 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
         mrp: $mrp,
         expiry_date: $expiry_date,
         landing_cost: $landing_cost,
-        logic_note: $logic_note
+        logic_note: $logic_note,
+        
+        // New Pharma Fields
+        salt: $salt,
+        category: $category,
+        manufacturer: $manufacturer,
+        unit_1st: $unit_1st,
+        unit_2nd: $unit_2nd,
+        sales_rate_a: $sales_rate_a,
+        sales_rate_b: $sales_rate_b,
+        sales_rate_c: $sales_rate_c,
+        sgst_percent: $sgst_percent,
+        cgst_percent: $cgst_percent,
+        igst_percent: $igst_percent
     })
     
     // 4. Connect Graph
@@ -210,8 +380,21 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            hsn_code=item.get("HSN_Code") or "UNKNOWN", 
            mrp=item.get("MRP", 0.0),
            expiry_date=item.get("Expiry_Date"),
-           landing_cost=item.get("Final_Unit_Cost", 0.0), # Updated Mapping
-           logic_note=item.get("Logic_Note", "N/A")
+           landing_cost=item.get("Final_Unit_Cost", 0.0),
+           logic_note=item.get("Logic_Note", "N/A"),
+           
+           # New Pharma Fields Mapped
+           salt=item.get("Salt"),
+           category=item.get("Category"),
+           manufacturer=item.get("Manufacturer"),
+           unit_1st=item.get("Unit_1st"),
+           unit_2nd=item.get("Unit_2nd"),
+           sales_rate_a=item.get("Sales_Rate_A"),
+           sales_rate_b=item.get("Sales_Rate_B"),
+           sales_rate_c=item.get("Sales_Rate_C"),
+           sgst_percent=item.get("SGST_Percent"),
+           cgst_percent=item.get("CGST_Percent"),
+           igst_percent=item.get("IGST_Percent")
     )
 
 def get_activity_log(driver, user_email: str):
@@ -383,3 +566,73 @@ def _create_invoice_example_tx(tx, supplier_name: str, raw_text: str, json_paylo
            embedding=embedding)
 
 
+
+def _mark_duplicate_tx(tx, invoice_id, result_state):
+    """
+    Fallback transaction when Unique Constraint on invoice_number is violated.
+    Marks the invoice as DRAFT (Warning) instead of failing.
+    """
+    import json
+    state_json = json.dumps(result_state, default=str) if result_state else None
+    invoice_no = result_state.get("invoice_data", {}).get("Invoice_No") if result_state else "Unknown"
+    supplier = result_state.get("invoice_data", {}).get("Supplier_Name") if result_state else None
+    grand_total = result_state.get("invoice_data", {}).get("Stated_Grand_Total") if result_state else None
+    
+    query = """
+    MATCH (i:Invoice {invoice_id: $invoice_id})
+    SET i.status = 'DRAFT',
+        i.updated_at = timestamp(),
+        i.is_duplicate = true,
+        i.duplicate_warning = 'Invoice ' + $invoice_no + ' already exists.'
+        
+    // Save state but DO NOT set invoice_number
+    FOREACH (_ IN CASE WHEN $state_json IS NOT NULL THEN [1] ELSE [] END |
+        SET i.raw_state = $state_json,
+            i.supplier_name = coalesce($supplier, i.supplier_name),
+            i.grand_total = coalesce($grand_total, i.grand_total)
+    )
+    """
+    tx.run(query, 
+           invoice_id=invoice_id,
+           invoice_no=invoice_no,
+           state_json=state_json, 
+           supplier=supplier,
+           grand_total=grand_total)
+
+def delete_draft_invoices(driver, user_email: str):
+    """
+    Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
+    Used for 'Clear All' functionality.
+    """
+    query = """
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
+    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    DETACH DELETE i
+    """
+    with driver.session() as session:
+        session.run(query, user_email=user_email)
+
+def delete_invoice_by_id(driver, invoice_id: str, user_email: str):
+    """
+    Deletes a specific invoice by ID.
+    Used for 'Discard' menu action.
+    """
+    query = """
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_id: $invoice_id})
+    DETACH DELETE i
+    """
+    with driver.session() as session:
+        session.run(query, user_email=user_email, invoice_id=invoice_id)
+
+def delete_draft_invoices(driver, user_email: str):
+    """
+    Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
+    Used for 'Clear All' functionality.
+    """
+    query = """
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
+    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    DETACH DELETE i
+    """
+    with driver.session() as session:
+        session.run(query, user_email=user_email)

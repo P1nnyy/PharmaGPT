@@ -14,6 +14,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL !== undefined
 
 const api = axios.create({
     baseURL: API_BASE_URL,
+    timeout: 300000, // 5 minutes for batch analysis
 });
 
 // --- Auth Token Management ---
@@ -45,15 +46,41 @@ export const getUserProfile = async () => {
     return response.data;
 };
 
-export const analyzeInvoice = async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
+export const analyzeInvoice = async (files) => {
+    // Legacy Wrapper for backward compatibility (if needed)
+    // Or just redirect to the new batch logic if the UI keeps calling this
+    return uploadBatchInvoices(files);
+};
 
-    const response = await api.post('/analyze-invoice', formData, {
+export const uploadBatchInvoices = async (files) => {
+    const formData = new FormData();
+    const fileList = Array.isArray(files) ? files : [files];
+
+    fileList.forEach(file => {
+        formData.append('files', file);
+    });
+
+    // Calls the async endpoint
+    const response = await api.post('/invoices/batch-upload', formData, {
         headers: {
             'Content-Type': 'multipart/form-data',
         },
     });
+    return response.data; // List of placeholders {id, status, previewUrl...}
+};
+
+export const getDrafts = async () => {
+    const response = await api.get('/invoices/drafts');
+    return response.data;
+};
+
+export const clearDrafts = async () => {
+    const response = await api.delete('/invoices/drafts');
+    return response.data;
+};
+
+export const discardInvoice = async (invoiceId) => {
+    const response = await api.delete(`/invoices/${invoiceId}`);
     return response.data;
 };
 
@@ -109,6 +136,10 @@ export const saveProduct = async (productData) => {
 
 export default {
     analyzeInvoice,
+    uploadBatchInvoices,
+    getDrafts,
+    clearDrafts,
+    discardInvoice,
     ingestInvoice,
     exportInvoice,
     getUserProfile,
@@ -116,7 +147,6 @@ export default {
     AUTH_LOGIN_URL,
     getActivityLog,
     getInvoiceHistory,
-    getInvoiceDetails,
     getInvoiceDetails,
     getInventory,
     searchProducts,
