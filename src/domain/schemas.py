@@ -43,6 +43,7 @@ class InvoiceExtraction(BaseModel):
     Round_Off: Union[str, float, None] = Field(None)
     image_path: Optional[str] = Field(None, description="Relative path to the stored invoice image.")
     raw_text: Optional[str] = Field(None, description="Raw OCR Text for Vector Storage (RAG).")
+    trace_id: Optional[str] = Field(None, description="Langfuse Trace ID for debugging.")
 
 class NormalizedLineItem(BaseModel):
     """
@@ -105,6 +106,16 @@ class User(BaseModel):
     name: str = Field(..., description="Full name from Google Profile.")
     picture: Optional[str] = Field(None, description="URL to profile picture.")
 
+class PackagingVariant(BaseModel):
+    """
+    Represents a specific packaging configuration for a Global Product.
+    e.g., "Strip of 10", "Box of 100".
+    """
+    unit_name: str = Field(..., description="Unit type name (e.g., Box, Strip, Bottle).")
+    pack_size: str = Field(..., description="Pack size description (e.g., 1x10, 10's).")
+    mrp: float = Field(..., description="Maximum Retail Price for this specific pack.")
+    conversion_factor: int = Field(1, description="How many base units are in this pack.")
+
 class ProductRequest(BaseModel):
     """
     Schema for creating or updating a Global Product in the inventory.
@@ -118,3 +129,17 @@ class ProductRequest(BaseModel):
     opening_stock: float = Field(..., description="Initial Stock Quantity.")
     min_stock: float = Field(..., description="Minimum Stock Level for alerts.")
     location: Optional[str] = Field(None, description="Physical location (Rack/Shelf).")
+    is_verified: Optional[bool] = Field(None, description="Verification status of the product.")
+    
+    # New: Multi-Unit Support
+    packaging_variants: List[PackagingVariant] = Field(default_factory=list, description="List of packaging variants.")
+    name: str = Field(..., description="Name of the product.")
+    hsn_code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")
+    item_code: Optional[str] = Field(None, description="Internal Item Code.")
+    sale_price: float = Field(..., description="Selling Price (MRP).")
+    purchase_price: float = Field(..., description="Purchase Price (Cost).")
+    tax_rate: float = Field(..., description="GST Tax Rate (e.g., 5.0, 12.0).")
+    opening_stock: float = Field(..., description="Initial Stock Quantity.")
+    min_stock: float = Field(..., description="Minimum Stock Level for alerts.")
+    location: Optional[str] = Field(None, description="Physical location (Rack/Shelf).")
+    is_verified: Optional[bool] = Field(None, description="Verification status of the product.")

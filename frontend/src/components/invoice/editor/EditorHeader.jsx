@@ -1,5 +1,6 @@
 import React from 'react';
-import { AlertCircle, Check, Calendar } from 'lucide-react';
+import { AlertCircle, Check, Calendar, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { submitFeedback } from '../../../services/api';
 
 const EditorHeader = ({
     invoiceData,
@@ -11,6 +12,19 @@ const EditorHeader = ({
     readOnly = false
 }) => {
     const [isHeaderExpanded, setIsHeaderExpanded] = React.useState(false);
+    const [feedbackStatus, setFeedbackStatus] = React.useState('idle'); // idle, submitting, success, error
+
+    const handleRate = async (score) => {
+        if (!invoiceData?.trace_id || feedbackStatus !== 'idle') return;
+        setFeedbackStatus('submitting');
+        try {
+            await submitFeedback(invoiceData.trace_id, score);
+            setFeedbackStatus('success');
+        } catch (e) {
+            console.error(e);
+            setFeedbackStatus('idle'); // Allow retry? or error state
+        }
+    };
 
     return (
         <div className="p-3 md:p-6 bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 shadow-md sticky top-0 z-20">
@@ -48,6 +62,34 @@ const EditorHeader = ({
                         {errorMsg && (
                             <div className="px-2 py-1 bg-red-500/20 text-red-300 rounded-full border border-red-500/30 flex items-center gap-1 text-[10px] md:text-sm animate-in fade-in">
                                 <AlertCircle className="w-3 h-3" /> <span className="hidden md:inline">{errorMsg}</span>
+                            </div>
+                        )}
+
+                        {/* Feedback Buttons */}
+                        {invoiceData?.trace_id && (
+                            <div className="flex items-center gap-1 ml-2">
+                                {feedbackStatus === 'success' ? (
+                                    <span className="text-xs text-green-400 font-medium animate-in fade-in">Thanks!</span>
+                                ) : (
+                                    <>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleRate(1); }}
+                                            disabled={feedbackStatus !== 'idle' || readOnly}
+                                            className="p-1.5 hover:bg-green-500/20 text-gray-400 hover:text-green-400 rounded-lg transition-colors disabled:opacity-50"
+                                            title="Good Extraction"
+                                        >
+                                            <ThumbsUp className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleRate(0); }}
+                                            disabled={feedbackStatus !== 'idle' || readOnly}
+                                            className="p-1.5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-lg transition-colors disabled:opacity-50"
+                                            title="Bad Extraction"
+                                        >
+                                            <ThumbsDown className="w-4 h-4" />
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -115,7 +157,7 @@ const EditorHeader = ({
                                 <label className="text-[10px] uppercase tracking-wider text-gray-500 font-bold ml-1">Drug License (DL)</label>
                                 <input
                                     type="text"
-                                    value={invoiceData.supplier_details?.DL_No || ''}
+                                    value={invoiceData.supplier_details?.DL_No ?? invoiceData.DL_No ?? ''}
                                     onChange={(e) => onHeaderChange('supplier_details.DL_No', e.target.value)}
                                     className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-300 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 outline-none transition-all placeholder-gray-700 disabled:opacity-75"
                                     placeholder="20B/21B..."
@@ -143,6 +185,16 @@ const EditorHeader = ({
                                     />
                                 </div>
                             </div>
+
+                            {/* Trace ID for Debugging - Full Width Row */}
+                            {invoiceData.trace_id && (
+                                <div className="mt-2 pt-2 border-t border-gray-700/50 flex items-center gap-2 col-span-1 md:col-span-3">
+                                    <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold ml-1">Debug Trace:</span>
+                                    <code className="text-xs bg-slate-900 px-2 py-0.5 rounded text-amber-500 font-mono select-all cursor-text border border-amber-900/30">
+                                        {invoiceData.trace_id}
+                                    </code>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="animate-pulse flex gap-4 pt-2">

@@ -8,6 +8,7 @@ import uuid
 import asyncio
 
 # --- New Imports ---
+from langfuse import Langfuse
 from src.core.config import (
     SECRET_KEY, get_base_url, get_frontend_url
 )
@@ -139,6 +140,11 @@ class ConfirmInvoiceRequest(BaseModel):
     invoice_data: Dict[str, Any]
     normalized_items: List[Dict[str, Any]]
 
+class FeedbackRequest(BaseModel):
+    trace_id: str
+    score: int
+    comment: str = None
+
 # --- API Endpoints (Core Logic) ---
 # Note: Ideally these should move to src/api/routes/invoices.py etc.
 
@@ -202,6 +208,28 @@ async def discard_invoice(invoice_id: str, user_email: str = Depends(get_current
     from src.domain.persistence import delete_invoice_by_id
     delete_invoice_by_id(driver, invoice_id, user_email)
     return {"status": "success", "message": f"Invoice {invoice_id} discarded"}
+
+@app.post("/feedback")
+async def submit_feedback(feedback: FeedbackRequest, user_email: str = Depends(get_current_user_email)):
+    """
+    Submits feedback (score) to Langfuse for a given trace.
+    """
+    try:
+        langfuse = Langfuse() # Auto-loads keys from env
+        # Score: 1 = Good (Thumbs Up), 0 = Bad (Thumbs Down)
+        langfuse.score(
+            trace_id=feedback.trace_id,
+            name="user_feedback",
+            value=feedback.score,
+            comment=feedback.comment
+        )
+        # Flush to ensure it sends immediately (optional but good for low volume)
+        langfuse.flush()
+        return {"status": "success", "message": "Feedback submitted"}
+    except Exception as e:
+        logger.error(f"Failed to submit feedback: {e}")
+        # Don't crash the UI for feedback failure
+        return {"status": "error", "message": str(e)}
 
 @app.post("/invoices/batch-upload", response_model=List[Dict[str, Any]])
 async def upload_batch(
@@ -284,7 +312,15 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         if extracted_data is None:
              raise ValueError("Extraction yielded None")
              
+        if extracted_data is None:
+             raise ValueError("Extraction yielded None")
+             
         extracted_data["image_path"] = public_url
+        print(f"DEBUG: Extracted Data Keys: {list(extracted_data.keys())}")
+        if "trace_id" in extracted_data:
+            print(f"DEBUG: Found Trace ID in Background Task: {extracted_data['trace_id']}")
+        else:
+            print(f"DEBUG: NO Trace ID in Background Task!")
         
         # Normalize
         invoice_obj = InvoiceExtraction(**extracted_data)
@@ -370,26 +406,63 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, user_email: str = Depe
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
-        # 1. Re-hydrate Invoice Object from the (possibly edited) invoice_data
-        # Note: If frontend edits invoice header, 'request.invoice_data' should reflect that.
+        # Import Persistence Helpers
+        from src.domain.persistence import get_invoice_draft, log_correction
+
+        # 1. Try to find the Original Draft to (A) Log Diff, (B) Recover Raw Text/Image Path
+        # Since frontend payload might not have UUID, we look up by Invoice Number (Risk: Duplicates, but Drafts usually unique per flow)
+        # We search for a DRAFT/PROCESSING invoice with this number.
+        invoice_no = request.invoice_data.get("Invoice_No")
+        original_draft = None
+        invoice_id_lookup = None
+
+        if invoice_no:
+            # Helper Query to find draft ID
+            find_draft_query = """
+            MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
+            WHERE i.status IN ['DRAFT', 'PROCESSING', 'ERROR'] AND i.invoice_number = $invoice_no
+            RETURN i.invoice_id as id, i.raw_state as state LIMIT 1
+            """
+            with driver.session() as session:
+                rec = session.run(find_draft_query, user_email=user_email, invoice_no=invoice_no).single()
+                if rec:
+                    invoice_id_lookup = rec["id"]
+                    import json
+                    original_draft = json.loads(rec["state"]) if rec["state"] else None
+
+        # 2. Log Corrections (Gap Analysis)
+        if invoice_id_lookup and original_draft:
+            logger.info(f"Checking for corrections on Invoice {invoice_id_lookup}...")
+            log_correction(driver, invoice_id_lookup, original_draft, request.invoice_data, user_email)
+            
+            # 3. Preserve Metadata (Raw Text & Image Path) for RAG
+            # If frontend didn't send raw_text (likely), we recover it from draft
+            # This ensures we can generate Embeddings in ingest_invoice
+            original_data = original_draft.get("invoice_data", {})
+            
+            if not request.invoice_data.get("raw_text") and original_data.get("raw_text"):
+                logger.info("Recovering raw_text from Draft for RAG Auto-Promotion.")
+                request.invoice_data["raw_text"] = original_data.get("raw_text")
+                
+            if not request.invoice_data.get("image_path") and original_data.get("image_path"):
+                 request.invoice_data["image_path"] = original_data.get("image_path")
+
+        # 4. Re-hydrate Invoice Object 
         invoice_obj = InvoiceExtraction(**request.invoice_data)
         
-        # 2. Ingest into Neo4j
-        # Extract supplier details if available
+        # 5. Ingest into Neo4j (Creates/Updates Invoice, Lines, and Auto-Promotes to InvoiceExample if raw_text exists)
         supplier_details = request.invoice_data.get("supplier_details")
-        
-        # We pass the confirmed normalized_items directly
         ingest_invoice(driver, invoice_obj, request.normalized_items, user_email=user_email, supplier_details=supplier_details)
         
         return {
             "status": "success",
             "message": f"Invoice {invoice_obj.Invoice_No} persisted successfully.",
-            "invoice_number": invoice_obj.Invoice_No
+            "invoice_number": invoice_obj.Invoice_No,
+            "corrections_logged": bool(invoice_id_lookup)
         }
 
     except Exception as e:
         logger.error(f"Database ingestion failed: {e}")
-        # Traceback is already logged by logger.exception if we use it, keeping traceback for now if needed explicitly but logger.exception is better
         logger.exception("Ingestion Traceback")
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 

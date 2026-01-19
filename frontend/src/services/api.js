@@ -129,8 +129,18 @@ export const searchProducts = async (query) => {
     return response.data;
 };
 
+export const getReviewQueue = async () => {
+    const response = await api.get('/products/review-queue');
+    return response.data;
+};
+
 export const saveProduct = async (productData) => {
     const response = await api.post('/products/', productData);
+    return response.data;
+};
+
+export const submitFeedback = async (traceId, score, comment = null) => {
+    const response = await api.post('/feedback', { trace_id: traceId, score, comment });
     return response.data;
 };
 
@@ -150,5 +160,7 @@ export default {
     getInvoiceDetails,
     getInventory,
     searchProducts,
-    saveProduct
+    saveProduct,
+    getReviewQueue,
+    submitFeedback
 };

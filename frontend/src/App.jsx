@@ -38,8 +38,13 @@ function App() {
   const isAnalyzing = fileQueue.some(f => f.status === 'processing');
 
   const [isSaving, setIsSaving] = useState(false);
-  const [successMsg, setSuccessMsg] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
+  // Replaced successMsg/errorMsg with Toast
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' }); // type: success | error
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ show: true, message: msg, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -158,6 +163,9 @@ function App() {
       }
     };
 
+    // 0. Guard: Don't poll if not authenticated
+    if (isLoadingAuth || !user) return;
+
     // 1. Initial Load (Recovery)
     fetchDrafts();
 
@@ -175,7 +183,7 @@ function App() {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [isAnalyzing]); // Re-evaluates when isAnalyzing changes (e.g. one finishes locally? No, local status won't change without polling)
+  }, [isAnalyzing, isLoadingAuth, user]); // Re-evaluates when isAnalyzing changes (e.g. one finishes locally? No, local status won't change without polling)
   // Wait, if we rely on polling to change status, isAnalyzing won't change UNTIL polling runs.
   // So we need to kickstart it. 
   // ADDENDUM: We also need to poll if we *mounted* and suspect things.
@@ -224,7 +232,7 @@ function App() {
 
     } catch (err) {
       console.error("Upload Failed", err);
-      setErrorMsg("Batch Upload Failed");
+      showToast("Batch Upload Failed", "error");
     }
   };
 
@@ -250,11 +258,20 @@ function App() {
     setSelectedQueueId(id);
   };
 
-  const handleReset = () => {
-    setFileQueue([]);
-    setSelectedQueueId(null);
-    setSuccessMsg(null);
-    setErrorMsg(null);
+  const handleReset = async () => {
+    try {
+      // Clear backend drafts
+      const { clearDrafts } = await import('./services/api');
+      await clearDrafts();
+
+      // Clear frontend
+      setFileQueue([]);
+      setSelectedQueueId(null);
+      showToast("All drafts cleared.", "success");
+    } catch (error) {
+      console.error("Failed to clear drafts:", error);
+      showToast("Failed to clear drafts", "error");
+    }
   };
 
   const handleAnalysisComplete = (data) => {
@@ -263,12 +280,7 @@ function App() {
   };
 
   const handleError = (msg) => {
-    setErrorMsg(msg);
-    // This setIsAnalyzing is for the old single-file flow.
-    // In batch mode, `isAnalyzing` is derived from `fileQueue.some(f => f.status === 'processing')`
-    // so setting it here directly might conflict.
-    // For now, let's assume errors are handled per-item in the queue.
-    // setIsAnalyzing(false);
+    showToast(msg, 'error');
   };
 
   const handleHeaderChange = (field, value) => {
@@ -311,8 +323,6 @@ function App() {
   const handleSaveInvoice = async () => {
     if (!invoiceData) return;
     setIsSaving(true);
-    setSuccessMsg(null);
-    setErrorMsg(null);
 
     try {
       // Construct payload matching backend expectation
@@ -323,7 +333,7 @@ function App() {
       };
 
       await saveInvoice(payload);
-      setSuccessMsg("Invoice Saved Successfully!");
+      showToast("Invoice Saved Successfully!", "success");
 
       // OPTIMISTIC REMOVAL: Remove from Queue immediately
       setFileQueue(prev => {
@@ -331,19 +341,16 @@ function App() {
         // Auto-select next item if available
         if (next.length > 0) {
           const nextId = next[0].id;
-          // Defer selection update slightly to avoid race or just set it
           setTimeout(() => setSelectedQueueId(nextId), 0);
         } else {
-          setSelectedQueueId(null);
+          setTimeout(() => setSelectedQueueId(null), 0);
         }
         return next;
       });
 
-      // Backend will eventually confirm status -> CONFIRMED so it won't reappear in poll
-
     } catch (err) {
       console.error(err);
-      setErrorMsg("Failed to save invoice. " + (err.response?.data?.detail || err.message));
+      showToast("Failed to save invoice. " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setIsSaving(false);
     }
@@ -420,6 +427,7 @@ function App() {
               onReset={handleReset}
               onError={handleError}
               onDiscard={handleDiscard}
+              isMobile={isMobile}
             />
           </div>
 
@@ -435,15 +443,11 @@ function App() {
                 invoiceData={invoiceData}
                 lineItems={lineItems}
                 warnings={warnings}
-                successMsg={successMsg}
-                errorMsg={errorMsg}
                 isSaving={isSaving}
                 isAnalyzing={isAnalyzing}
                 onHeaderChange={handleHeaderChange}
                 onInputChange={handleLineItemChange}
                 setIsSaving={setIsSaving}
-                setSuccessMsg={setSuccessMsg}
-                setErrorMsg={setErrorMsg}
                 onConfirm={handleSaveInvoice}
               />
             )}
@@ -477,14 +481,6 @@ function App() {
           )}
         </div>
       </div>
-
-      {/* Global Toast for Errors */}
-      {errorMsg && !invoiceData && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-rose-500/90 text-white px-6 py-3 rounded-full shadow-2xl backdrop-blur-md z-[100] animate-in slide-in-from-top-4 fade-in">
-          <span className="font-medium mr-2">Error:</span> {errorMsg}
-          <button onClick={() => setErrorMsg(null)} className="ml-4 hover:bg-white/20 rounded-full p-1">✕</button>
-        </div>
-      )}
     </div>
   );
 }

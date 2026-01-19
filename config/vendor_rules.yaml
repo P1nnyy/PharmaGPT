@@ -38,3 +38,8 @@ vendors:
     calculation_rules: {}
   "abka medicos":
     calculation_rules: {}
+  "deepak agencies":
+    calculation_rules:
+      rate_divisor: 1.0
+      column_aliases:
+        "HSN": "HSN Code"

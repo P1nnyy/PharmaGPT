@@ -99,6 +99,31 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
     
     # Extract final output
     final_output = result_state.get("final_output")
+
+    # Capture Trace ID
+    if langfuse_handler:
+        try:
+            # Try to get trace ID if available
+            trace_id = None
+            if hasattr(langfuse_handler, "get_trace_id"):
+                trace_id = langfuse_handler.get_trace_id()
+            elif hasattr(langfuse_handler, "trace") and langfuse_handler.trace:
+                trace_id = langfuse_handler.trace.id
+            elif hasattr(langfuse_handler, "last_trace_id"):
+                 trace_id = langfuse_handler.last_trace_id
+
+            if not trace_id:
+                logger.warning(f"Failed to extract Trace ID. Handler attributes: {[a for a in dir(langfuse_handler) if not a.startswith('_')]}")
+            
+            if trace_id:
+                logger.info(f"Langfuse Trace ID: {trace_id}")
+                if final_output:
+                    final_output["trace_id"] = trace_id
+                else:
+                    # Will be merged into constructed output later
+                    result_state["trace_id"] = trace_id 
+        except Exception as e:
+            logger.warning(f"Failed to extract Trace ID: {e}")
     
     # Fallback: If pipeline ended without explicit Final Output (e.g. Retry Exhausted), construct it now
     if not final_output:
@@ -108,13 +133,25 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
         
         final_output = headers.copy()
         final_output["Line_Items"] = lines
+    
+    # Inject Trace ID if it was stashed in result_state (fallback case)
+    if "trace_id" in result_state and "trace_id" not in final_output:
+        final_output["trace_id"] = result_state["trace_id"]
         
     # MERGE Raw Text for Vector Storage (RAG)
     raw_rows = result_state.get("raw_text_rows", [])
     if raw_rows:
         # Deduplicate/Join (Worker might produce duplicates if retried, but add operator handles it)
         # Just simple join is enough for embeddings
+        # Deduplicate/Join (Worker might produce duplicates if retried, but add operator handles it)
+        # Just simple join is enough for embeddings
         final_output["raw_text"] = "\n".join(raw_rows)
+    
+    # DEBUG TRACE ID
+    if "trace_id" in final_output:
+        logger.info(f"FINAL OUTPUT HAS TRACE ID: {final_output['trace_id']}")
+    else:
+        logger.warning("FINAL OUTPUT MISSING TRACE ID")
         
     # MERGE Supplier Details into Final Output
     supplier_details = result_state.get("supplier_details")

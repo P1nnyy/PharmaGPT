@@ -6,13 +6,24 @@ import AnalysisModal from '../invoice/AnalysisModal';
 const ActivityHistory = () => {
     const [activityLog, setActivityLog] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [expandedIds, setExpandedIds] = useState(new Set());
+    const [expandedId, setExpandedId] = useState(null);
+
+    // Helper for efficient Image URLs
+    const getImageUrl = (path) => {
+        if (!path) return null;
+        if (path.startsWith('http')) return path;
+        // Use window.location logic to determine backend
+        const baseUrl = window.location.hostname.includes('pharmagpt.co')
+            ? 'https://api.pharmagpt.co'
+            : 'http://localhost:5001';
+        return `${baseUrl}${path}`;
+    };
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalLoading, setModalLoading] = useState(false);
     const [selectedInvoiceData, setSelectedInvoiceData] = useState(null);
-    const [selectedLineItems, setSelectedLineItems] = useState([]);
+    const [selectedLineItems, setSelectedLineItems] = useState(null);
     const [selectedImagePath, setSelectedImagePath] = useState(null);
 
     const handleViewInvoice = async (e, item) => {
@@ -21,7 +32,9 @@ const ActivityHistory = () => {
         setIsModalOpen(true);
         setSelectedInvoiceData(null);
         setSelectedLineItems([]);
-        setSelectedImagePath(item.image_path); // Use path from list initially
+
+        // Use helper to resolve full URL immediately
+        setSelectedImagePath(getImageUrl(item.image_path));
 
         try {
             const data = await getInvoiceDetails(item.invoice_number);
@@ -66,8 +79,10 @@ const ActivityHistory = () => {
             setSelectedInvoiceData(mappedInvoice);
             setSelectedLineItems(mappedItems);
 
-            // Update image path if more accurate one returned (though list usually has it)
-            if (rawInvoice.image_path) setSelectedImagePath(rawInvoice.image_path);
+            // Update image path if more accurate one returned
+            if (rawInvoice.image_path) {
+                setSelectedImagePath(getImageUrl(rawInvoice.image_path));
+            }
 
         } catch (err) {
             console.error("Error fetching invoice details:", err);
@@ -113,13 +128,11 @@ const ActivityHistory = () => {
     };
 
     const toggleExpand = (id) => {
-        const newExpanded = new Set(expandedIds);
-        if (newExpanded.has(id)) {
-            newExpanded.delete(id);
+        if (expandedId === id) {
+            setExpandedId(null);
         } else {
-            newExpanded.add(id);
+            setExpandedId(id);
         }
-        setExpandedIds(newExpanded);
     };
 
     if (loading) return <div className="p-8 text-center text-slate-500">Loading History...</div>;
@@ -136,7 +149,7 @@ const ActivityHistory = () => {
                     <div className="text-center text-slate-500 py-10">No recent activity found.</div>
                 ) : (
                     activityLog.map((item, index) => {
-                        const isExpanded = expandedIds.has(item.invoice_number);
+                        const isExpanded = expandedId === item.invoice_number;
                         const contactInfo = item.supplier_phone || item.supplier_gst || 'N/A';
 
                         return (

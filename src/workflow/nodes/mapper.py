@@ -5,8 +5,8 @@ from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 from src.services.embeddings import generate_embedding
+from src.utils.config_loader import load_vendor_rules
 from neo4j import GraphDatabase
-import os
 
 logger = get_logger("mapper")
 
@@ -33,28 +33,48 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
 
     logger.info(f"Mapper: Processing {len(raw_rows)} raw text fragments...")
     
-    # Model Setup
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    # --- 1. Load Context & Memory ---
+    # A. Vendor Rules (The "Context")
+    vendor_rules = load_vendor_rules()
     
-    # Construct Context from all rows
-    # Each row is likely a string "Product | Qty | Rate"
+    # Identify Supplier from previous steps (Surveyor/Worker)
+    # We check global modifiers for a hint, or just pass 'Unknown'
+    current_supplier = state.get("global_modifiers", {}).get("Supplier_Name", "").lower()
+    
+    supplier_instruction = ""
+    # Check if we have specific rules for this supplier
+    for vendor_name, rules in vendor_rules.get("vendors", {}).items():
+        if vendor_name.lower() in current_supplier:
+            logger.info(f"Mapper: Applying Vendor Rules for '{vendor_name}'")
+            supplier_instruction = f"""
+            *** VENDOR SPECIFIC RULES FOR: {vendor_name} ***
+            {rules.get('extraction_notes', '')}
+            
+            Column Mapping Overrides:
+            {json.dumps(rules.get('aliases', {}), indent=2)}
+            """
+            break
+
+    # B. Mistake Memory (The "Lessons")
+    from src.services.mistake_memory import MEMORY
+    rules_list = MEMORY.get_rules()
+    memory_rules = "\n    ".join([f"- {r}" for r in rules_list]) if rules_list else "- No previous mistakes recorded."
+    
+    # C. Model Setup
+    model = genai.GenerativeModel("gemini-2.0-flash")
     context_text = "\n".join(raw_rows)
     
-    # Load Memory
-    from src.services.mistake_memory import MEMORY
-    rules = MEMORY.get_rules()
-    memory_rules = "\n    ".join([f"- {r}" for r in rules]) if rules else "- No previous mistakes recorded."
-    
-    # --- RAG: Vector Search for Similar Invoice ---
+    # --- D. RAG: Dynamic Few-Shotting ---
     cheat_sheet = "No similar examples found."
+    
     try:
         embedding = generate_embedding(context_text)
-        if embedding:
-            # Connect Ad-Hoc (Short-lived)
-            with GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)) as driver:
-                with driver.session() as session:
-                    # Query for nearest neighbor (> 0.88 similarity)
-                    # Note: You must have created the vector index 'invoice_examples_index'
+        found_example = None
+        
+        with GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)) as driver:
+            with driver.session() as session:
+                # 1. Try Vector Search (> 0.88)
+                if embedding:
                     query = """
                     CALL db.index.vector.queryNodes('invoice_examples_index', 1, $embedding)
                     YIELD node, score
@@ -64,25 +84,40 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                     result = session.run(query, embedding=embedding).single()
                     
                     if result:
-                        example_raw = result["raw"]
-                        example_json = result["json"]
-                        score = result["score"]
-                        logger.info(f"Mapper: Found similar invoice example! Score: {score:.4f}")
-                        
-                        cheat_sheet = f"""
-    ### REFERENCE EXAMPLE (HIGH SIMILARITY MATCH: {score:.2f})
-    Build your output based on how we mapped this similar invoice:
+                        found_example = {
+                            "raw": result["raw"],
+                            "json": result["json"],
+                            "source": f"VECTOR MATCH ({result['score']:.2f})"
+                        }
+
+                # 2. Fallback: Supplier specific example
+                if not found_example and current_supplier:
+                    logger.info(f"Mapper: No vector match. Checking generic example for supplier '{current_supplier}'")
+                    # Note: We rely on the Supplier Name being accurate from Surveyor/Global Modifiers
+                    query_fallback = """
+                    MATCH (s:Supplier)-[:HAS_EXAMPLE]->(e)
+                    WHERE toLower(s.name) CONTAINS $supplier_lower 
+                    RETURN e.raw_text as raw, e.json_payload as json
+                    LIMIT 1
+                    """
+                    res_fallback = session.run(query_fallback, supplier_lower=current_supplier).single()
+                    if res_fallback:
+                         found_example = {
+                            "raw": res_fallback["raw"],
+                            "json": res_fallback["json"],
+                            "source": f"SUPPLIER FALLBACK ({current_supplier})"
+                        }
+
+        if found_example:
+            logger.info(f"Mapper: Using Few-Shot Example ({found_example['source']})")
+            cheat_sheet = f"""
+    Here is a correct example from your history:
+    [INPUT RAW]:
+    {found_example['raw']}
     
-    [EXAMPLE INPUT]:
-    {example_raw[:300]}... (truncated)
-    
-    [EXAMPLE OUTPUT MAP]:
-    {example_json}
-    
-    **INSTRUCTION**: Follow the logic of the Example Output EXACTLY for handling columns, packs, and formatting.
-                        """
-                    else:
-                        logger.info("Mapper: No similar invoice found above threshold.")
+    [OUTPUT JSON]:
+    {found_example['json']}
+    """
     except Exception as e:
         logger.warning(f"Mapper RAG Lookup Failed: {e}")
     
@@ -95,43 +130,27 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     {context_text}
     \"\"\"
     
+    {supplier_instruction}
+    
     YOUR TASK:
     Convert this text into a VALID JSON array of line items.
     
     SCHEMA RULES:
     - **Product**: Full description.
-    - **Pack**: Pack Size if visible (e.g. "1x10", "10's", "10T").
+    - **Pack**: Pack Size if visible (e.g. "1x10", "10's").
     - **Qty**: Numeric (Float). Billed Quantity.
-      - **Aliases**: Look for "Billed", "Sales Qty", "Strips", "Tabs", "Packs", "Quantity".
-      - **Split**: If column is "10+2", use 10.
-      - **Multi-Column**: If text is "0 0 2" or "0 2", extract the NON-ZERO number (e.g. 2).
-      - **Fractional**: If you see "1.84" or "0.92", ROUND IT to the nearest integer/whole pack (e.g. 1.84 -> 2, 0.92 -> 1).
     - **Free**: Numeric (Float). Free/Bonus Quantity.
-      - **Aliases**: "Free", "Scheme", "Bonus", "Off".
-      - **Split**: If column is "10+2", extract 2 here.
-      - **Context**: Often found next to Qty. If missing, use 0.
     - **Batch**: Alphanumeric Batch Number. 
-      - **Look for aliases**: "Pcode", "Code", "Lot". 
-      - **Extraction**: If a column has "Pcode: 808..." extract that as Batch.
     - **Expiry**: Text date (MM/YY or DD/MM/YY).
-      - **CRITICAL**: Do NOT put a 4-8 digit HSN code (e.g. 3004, 30049099) here.
-      - If you see an integer like "3004" or "30043110", put it in HSN, NOT Expiry.
     - **HSN**: Numeric HSN code (4-8 digits).
     - **Rate**: Unit Price.
-    - **Rate**: Unit Price.
-      - **CRITICAL**: Watch for faint decimal points. "16000" is likely "160.00".
-      - "12345" is likely "123.45".
     - **Amount**: Net Total (Inclusive of Tax).
-      - **CRITICAL**: Watch for faint decimal points.
-      - **Consistency**: Ideally `Qty * Rate` ~= `Amount`. If `Amount` is wildly different, check if you missed a decimal in Rate or Amount.
-      - **Selection**: If "Total" and "Amount" both exist, prefer "Amount" (usually strict final). Avoid "Total" if it looks like Gross/MRP-based.
     - **MRP**: Max Retail Price.
     
     CRITICAL:
-    1. **Merges**: DO NOT merge distinct products. "Vaporub 5gm" and "Vaporub 10gm" are DIFFERENT.
-    2. **DUPLICATES**: If the raw text lists the SAME product twice (e.g. "Dolo 650" appears on two lines), CREATE TWO JSON OBJECTS. Do NOT merge them into one. Keep them separate.
-    3. **Noise**: Ignore header rows (e.g. "Description | Qty").
-    4. **Schemes**: Keep "Offer" / "Free" rows if they are separate line items.
+    1. **Merges**: DO NOT merge distinct products.
+    2. **DUPLICATES**: If the raw text lists the SAME product twice, CREATE TWO JSON OBJECTS.
+    3. **Noise**: Ignore header rows.
     
     {cheat_sheet}
     

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Calculator } from 'lucide-react';
 
 const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) => {
     return (
@@ -84,6 +84,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
 
                                     {/* Net Amount & Alert */}
                                     <div className="col-span-3 text-right flex items-center justify-end gap-3">
+                                        {/* Price Hike Warning */}
                                         {item.is_price_hike && (
                                             <div className="group/alert relative flex items-center justify-center w-8 h-8 bg-red-500/10 rounded-full animate-pulse">
                                                 <span className="text-sm">⚠️</span>
@@ -92,11 +93,27 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                                 </span>
                                             </div>
                                         )}
+
+                                        {/* Global Reconcile Calc Indicator */}
+                                        {item.Is_Calculated && (
+                                            <div className="group/calc relative flex items-center justify-center w-8 h-8 bg-amber-500/10 rounded-full">
+                                                <Calculator className="w-4 h-4 text-amber-400" />
+                                                <span className="absolute bottom-full right-0 mb-2 w-48 bg-gray-900 text-amber-300 text-[10px] p-2 rounded border border-amber-900 shadow-xl hidden group-hover/calc:block z-50 pointer-events-none">
+                                                    {item.Logic_Note || "Auto-Corrected to match Invoice Total"}
+                                                </span>
+                                            </div>
+                                        )}
+
                                         <input
                                             type="number"
                                             value={item.Net_Line_Amount || 0}
                                             onChange={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
-                                            className="w-24 bg-transparent outline-none font-mono text-right text-green-400 font-bold focus:text-green-300 text-base disabled:text-green-500/80"
+                                            className={`w-24 bg-transparent outline-none font-mono text-right font-bold text-base disabled:text-green-500/80
+                                                ${item.Is_Calculated
+                                                    ? 'text-amber-400 focus:text-amber-300 bg-amber-900/20 rounded px-1'
+                                                    : 'text-green-400 focus:text-green-300'
+                                                }
+                                            `}
                                             disabled={readOnly}
                                         />
                                     </div>
@@ -131,13 +148,21 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                 />
                             </div>
                             <div className="flex flex-col items-end shrink-0">
-                                <div className="relative">
+                                <div className="relative flex items-center gap-1">
+                                    {item.Is_Calculated && (
+                                        <Calculator className="w-3 h-3 text-amber-400" />
+                                    )}
                                     <span className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-500 text-[10px]">₹</span>
                                     <input
                                         type="number"
                                         value={item.Net_Line_Amount || 0}
                                         onChange={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
-                                        className="w-16 bg-transparent outline-none font-mono text-right text-base font-bold text-green-400 focus:text-green-300 pl-2 disabled:text-green-500"
+                                        className={`w-16 bg-transparent outline-none font-mono text-right text-base font-bold pl-2 disabled:text-green-500
+                                             ${item.Is_Calculated
+                                                ? 'text-amber-400 focus:text-amber-300 bg-amber-900/20 rounded'
+                                                : 'text-green-400 focus:text-green-300'
+                                            }
+                                        `}
                                         disabled={readOnly}
                                     />
                                 </div>

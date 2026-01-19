@@ -272,6 +272,91 @@ def get_draft_invoices(driver, user_email: str):
              })
         return invoices
 
+def get_invoice_draft(driver, invoice_id: str):
+    """
+    Fetches the raw draft state of an invoice by ID.
+    Used for comparing Original vs Final changes.
+    """
+    query = """
+    MATCH (i:Invoice {invoice_id: $invoice_id})
+    RETURN i.raw_state as result
+    """
+    with driver.session() as session:
+        record = session.run(query, invoice_id=invoice_id).single()
+        if record and record["result"]:
+            import json
+            return json.loads(record["result"])
+        return None
+
+def log_correction(driver, invoice_id: str, original: Dict[str, Any], final: Dict[str, Any], user_email: str):
+    """
+    Logs the differences between Original (Draft) and Final (Confirmed) invoice data.
+    """
+    changes = []
+    
+    # 1. Header Changes
+    for field in ["Invoice_No", "Invoice_Date", "Supplier_Name", "Stated_Grand_Total", "Global_Discount_Amount"]:
+        old_val = original.get("invoice_data", {}).get(field)
+        new_val = final.get(field)
+        
+        # Simple normalization for comparison (str)
+        if str(old_val) != str(new_val) and new_val is not None:
+             changes.append({
+                 "field": field,
+                 "old": str(old_val),
+                 "new": str(new_val),
+                 "type": "header"
+             })
+
+    # 2. Supplier Details Changes
+    old_supp = original.get("invoice_data", {}).get("supplier_details", {}) or {}
+    new_supp = final.get("supplier_details", {}) or {}
+    
+    for field in ["GSTIN", "DL_No", "Address", "Phone_Number"]:
+        old_val = old_supp.get(field)
+        new_val = new_supp.get(field)
+        if str(old_val) != str(new_val) and new_val is not None:
+             changes.append({
+                 "field": f"supplier.{field}",
+                 "old": str(old_val),
+                 "new": str(new_val),
+                 "type": "supplier"
+             })
+
+    if not changes:
+        return
+
+    # 3. Store Corrections in Graph
+    with driver.session() as session:
+        session.execute_write(_create_correction_nodes_tx, invoice_id, changes, user_email)
+
+def _create_correction_nodes_tx(tx, invoice_id, changes, user_email):
+    query = """
+    MATCH (i:Invoice {invoice_id: $invoice_id})
+    MATCH (u:User {email: $user_email})
+    
+    MERGE (c:CorrectionSet {id: $change_id})
+    ON CREATE SET 
+        c.created_at = timestamp(),
+        c.count = size($changes)
+        
+    MERGE (i)-[:HAS_CORRECTION]->(c)
+    MERGE (c)-[:MADE_BY]->(u)
+    
+    FOREACH (change IN $changes |
+        CREATE (d:Diff {
+            field: change.field,
+            old_value: change.old,
+            new_value: change.new,
+            type: change.type
+        })
+        CREATE (c)-[:INCLUDES]->(d)
+    )
+    """
+    import uuid
+    change_id = uuid.uuid4().hex
+    tx.run(query, invoice_id=invoice_id, changes=changes, user_email=user_email, change_id=change_id)
+
 def delete_draft_invoices(driver, user_email: str):
     """
     Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
@@ -280,10 +365,18 @@ def delete_draft_invoices(driver, user_email: str):
     query = """
     MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
     WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    WITH i, count(i) as cnt
     DETACH DELETE i
+    RETURN cnt
     """
-    with driver.session() as session:
-        session.run(query, user_email=user_email)
+    try:
+        with driver.session() as session:
+            result = session.run(query, user_email=user_email).single()
+            count = result["cnt"] if result else 0
+            logger.info(f"Deleted {count} draft invoices for {user_email}.")
+    except Exception as e:
+        logger.error(f"Failed to delete drafts for {user_email}: {e}")
+        raise e
 
 def create_invoice_draft(driver, state: Dict[str, Any], user_email: str):
     """
@@ -333,6 +426,10 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     // 1. Merge Global Product (Shared Catalog)
     // Instead of User-Owned Product, we map to a Global Product based on name
     MERGE (gp:GlobalProduct {name: $standard_item_name})
+    ON CREATE SET 
+        gp.is_verified = false,
+        gp.needs_review = true,
+        gp.created_at = timestamp()
     
     // 2. Merge HSN Node
     MERGE (h:HSN {code: $hsn_code})
@@ -367,6 +464,29 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     MERGE (i)-[:CONTAINS]->(l)
     MERGE (l)-[:IS_VARIANT_OF]->(gp)
     MERGE (l)-[:BELONGS_TO_HSN]->(h)
+    
+    // 5. Multi-Unit Packaging Tracking
+    // We treat the 'pack_size' string (e.g., "1x10") as the unique identifier for a variant of this product.
+    MERGE (pv:PackagingVariant {pack_size: $pack_size, product_name: $standard_item_name})
+    
+    // Link Product -> Variant
+    MERGE (gp)-[:HAS_VARIANT]->(pv)
+    
+    // On Create of NEW Variant:
+    // 1. Set details
+    // 2. Mark Global Product as 'needs_review' because we found a new pack size
+    ON CREATE SET
+        pv.unit_name = $unit_2nd, // Use extracted unit (e.g. Box/Strip) if available
+        pv.mrp = $mrp,
+        pv.conversion_factor = 1, // Default, needs manual update or deeper logic
+        pv.created_at = timestamp(),
+        gp.needs_review = true
+        
+    // On Match (Existing Variant):
+    // 1. Update MRP (keep latest)
+    ON MATCH SET
+        pv.mrp = $mrp,
+        pv.updated_at = timestamp()
     """
     
     tx.run(query,
@@ -599,18 +719,7 @@ def _mark_duplicate_tx(tx, invoice_id, result_state):
            supplier=supplier,
            grand_total=grand_total)
 
-def delete_draft_invoices(driver, user_email: str):
-    """
-    Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
-    Used for 'Clear All' functionality.
-    """
-    query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
-    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
-    DETACH DELETE i
-    """
-    with driver.session() as session:
-        session.run(query, user_email=user_email)
+
 
 def delete_invoice_by_id(driver, invoice_id: str, user_email: str):
     """
@@ -623,16 +732,3 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str):
     """
     with driver.session() as session:
         session.run(query, user_email=user_email, invoice_id=invoice_id)
-
-def delete_draft_invoices(driver, user_email: str):
-    """
-    Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
-    Used for 'Clear All' functionality.
-    """
-    query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
-    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
-    DETACH DELETE i
-    """
-    with driver.session() as session:
-        session.run(query, user_email=user_email)

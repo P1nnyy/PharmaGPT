@@ -8,9 +8,10 @@ export default defineConfig({
     host: true,
     allowedHosts: ['pharmagpt.co', 'api.pharmagpt.co', 'www.pharmagpt.co', 'local.pharmagpt.co', 'dev.pharmagpt.co', '.trycloudflare.com'],
     proxy: {
-      '^/(auth|analyze-invoice|confirm-invoice|report|activity-log|inventory|history|invoices|static|export-excel|products)': {
+      '^/(auth|analyze-invoice|confirm-invoice|report|activity-log|inventory|history|invoices|static|export-excel|products|feedback)': {
         target: 'http://127.0.0.1:5001',
-        changeOrigin: false
+        changeOrigin: true,
+        secure: false
       }
     }
   }

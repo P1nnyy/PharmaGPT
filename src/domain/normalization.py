@@ -389,60 +389,50 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     current_sum = sum(float(item.get("Net_Line_Amount", 0)) for item in line_items)
     gap = current_sum - grand_total
     
-    # Threshold for "Close Enough" (e.g. 0.5% or 1.0)
-    if abs(gap) < max(1.0, grand_total * 0.005):
-        # logger object not strictly available here unless imported. 
-        # But we can import it inside or use print if we trust stdout capture? 
-        # Better: Assume caller (server) handles logging? No, server called this.
-        # Let's import standard logging.
-        import logging
-        logger = logging.getLogger("normalization")
-        logger.info(f"Reconcile: Sum {current_sum:.2f} matches Total {grand_total:.2f}. No changes.")
-        return line_items
+    # User Requirement: ALWAYS adjust to match Grand Total.
+    # Removed threshold check (previous logic skipped if gap < 0.5%)
 
     import logging
     logger = logging.getLogger("normalization")
-    logger.info(f"Reconcile: GAP DETECTED. Sum {current_sum:.2f} vs Total {grand_total:.2f} (Gap {gap:.2f})")
-    logger.info(f"Reconcile: Input Modifiers: {global_modifiers}")
+    
+    if abs(gap) < 0.01:
+        # Truly negligible
+        return line_items
 
-    # Extract Modifiers (Sanitized Absolutes)
+    logger.info(f"Reconcile: GAP DETECTED. Sum {current_sum:.2f} vs Total {grand_total:.2f} (Gap {gap:.2f})")
+    
+    # Initialize
+    modifier_to_apply = -gap # We always want to negate the gap
+    action = "FORCED_MATCH"
+    
+    # Attempt to label the action based on available headers (for better UX)
+    # But strictly perform the math regardless.
+    
+    # Extract Modifiers for labeling
     g_disc = abs(float(global_modifiers.get("Global_Discount_Amount", 0) or 0))
     g_tax = abs(float(global_modifiers.get("Global_Tax_Amount", 0) or 0) + 
                 float(global_modifiers.get("SGST_Amount", 0) or 0) + 
                 float(global_modifiers.get("CGST_Amount", 0) or 0) + 
                 float(global_modifiers.get("IGST_Amount", 0) or 0))
-    freight = abs(float(global_modifiers.get("Freight_Charges", 0) or 0))
     
-    modifier_to_apply = 0.0
-    action = "NONE"
-    
-    # DIRECTIONAL LOGIC
     if gap > 0:
-        # Sum is TOO HIGH (Inflation). We need to REDUCE.
-        logger.info(f"Reconcile: Inflation Detected (Gap +{gap:.2f}). Looking for Reducers...")
-        
+        # Inflation (Sum > Total). Reduce.
         if g_disc > 0:
-            # PERFECT MATCH STRATEGY:
-            # If we have a Global Discount, we assume the ENTIRE Gap is due to that (plus other footer adjustments).
-            # We force the line items to sum exactly to Grand Total by distributing the GAP.
-            modifier_to_apply = -gap 
             action = "APPLY_DISCOUNT_CORRECTION"
-            logger.info(f"Reconcile: Found Global Discount ({g_disc}). Applying Correction of -{gap:.2f} to match Total.")
+            logger.info("Reconcile: Gap attributed to Global Discount.")
         else:
-            logger.warning("Reconcile: No Discount found to reduce inflation. Doing nothing (Safe Mode).")
+            action = "IMPLICIT_REDUCTION" 
+            logger.info("Reconcile: Gap treated as Implicit Reduction/Rounding.")
             
     elif gap < 0:
-        # Sum is TOO LOW (Deflation). We need to INCREASE.
-        logger.info(f"Reconcile: Deflation Detected (Gap {gap:.2f}). Looking for Adders...")
-        
-        adder_sum = g_tax + freight
+        # Deflation (Sum < Total). Increase.
+        adder_sum = g_tax 
         if adder_sum > 0:
-            # PERFECT MATCH STRATEGY:
-            modifier_to_apply = -gap # gap is negative, so -gap is positive addition
-            action = "APPLY_TAX_FREIGHT_CORRECTION"
-            logger.info(f"Reconcile: Found Tax/Freight ({adder_sum}). Applying Correction of +{abs(gap):.2f} to match Total.")
+            action = "APPLY_TAX_CORRECTION"
+            logger.info("Reconcile: Gap attributed to Global Tax.")
         else:
-             logger.warning("Reconcile: No Tax/Freight found to increase value. Doing nothing (Safe Mode).")
+            action = "IMPLICIT_ADDITION"
+            logger.info("Reconcile: Gap treated as Implicit Addition/Rounding.")
 
     # EXECUTE DISTRIBUTION
     if modifier_to_apply != 0:
@@ -453,13 +443,21 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
             share = modifier_to_apply * ratio
             new_net = original_net + share # Add (modifier might be negative)
             
+            # Metadata for UI Feedback "Perfect Match"
+            correction_factor = new_net / original_net if original_net != 0 else 1.0
+            
             item["Net_Line_Amount"] = round(new_net, 2)
+            item["Is_Calculated"] = True # New Flag for Frontend UI (Calculator Icon)
             
             # Recalculate Unit Cost
             qty = float(item.get("Standard_Quantity", 1) or 1)
             if qty > 0:
                 item["Final_Unit_Cost"] = round(new_net / qty, 2)
             
-            item["Logic_Note"] = item.get("Logic_Note", "") + f" [Reconcile: {action}]"
+            # logic_note update
+            factor_str = f"{correction_factor:.4f}x"
+            # Append specific note
+            old_note = item.get("Logic_Note", "")
+            item["Logic_Note"] = f"{old_note} [Reconcile: {action}, Factor: {factor_str}]"
 
     return line_items

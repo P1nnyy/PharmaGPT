@@ -38,8 +38,8 @@ def get_db_driver():
     global driver
     if driver:
         try:
-            # lightweight connectivity check
-            driver.verify_connectivity()
+            # lightweight connectivity check is expensive on flaky networks
+            # driver.verify_connectivity() 
             return driver
         except Exception as e:
             logger.warning(f"Neo4j Connection Defunct ({e}). Reconnecting...")

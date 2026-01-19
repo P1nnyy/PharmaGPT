@@ -28,6 +28,35 @@ async def search_products(q: str = Query(..., min_length=2)):
         result = session.run(query, q=q)
         return [dict(record) for record in result]
 
+@router.get("/review-queue", response_model=List[Dict[str, Any]])
+async def get_review_queue(user_email: str = Depends(get_current_user_email)):
+    """
+    Fetch products requiring review (needs_review=true).
+    """
+    driver = get_db_driver()
+    if not driver:
+         raise HTTPException(status_code=503, detail="Database unavailable")
+
+    query = """
+    MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct)
+    WHERE gp.needs_review = true
+    RETURN gp.name as name, 
+           gp.hsn_code as hsn_code, 
+           gp.sale_price as sale_price,
+           gp.tax_rate as tax_rate,
+           gp.item_code as item_code,
+           gp.purchase_price as purchase_price,
+           gp.opening_stock as opening_stock,
+           gp.min_stock as min_stock,
+           gp.location as location,
+           gp.is_verified as is_verified
+    LIMIT 100
+    """
+    
+    with driver.session() as session:
+        result = session.run(query, user_email=user_email)
+        return [dict(record) for record in result]
+
 @router.post("/", response_model=Dict[str, str])
 async def save_product(product: ProductRequest, user_email: str = Depends(get_current_user_email)):
     """
@@ -52,7 +81,9 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
         gp.opening_stock = $opening_stock,
         gp.min_stock = $min_stock,
         gp.location = $location,
-        gp.updated_at = timestamp()
+        gp.updated_at = timestamp(),
+        gp.is_verified = true,
+        gp.needs_review = false
         
     RETURN gp.name as name
     """
