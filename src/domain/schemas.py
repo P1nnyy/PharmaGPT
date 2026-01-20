@@ -131,15 +131,11 @@ class ProductRequest(BaseModel):
     location: Optional[str] = Field(None, description="Physical location (Rack/Shelf).")
     is_verified: Optional[bool] = Field(None, description="Verification status of the product.")
     
+    # New Fields for Redesign
+    manufacturer: Optional[str] = Field(None, description="Manufacturer Name.")
+    salt_composition: Optional[str] = Field(None, description="Drug Composition.")
+    category: Optional[str] = Field(None, description="Product Category (e.g. Tablet, Syrup).")
+    schedule: Optional[str] = Field(None, description="Drug Schedule (e.g. H, H1).")
+    
     # New: Multi-Unit Support
     packaging_variants: List[PackagingVariant] = Field(default_factory=list, description="List of packaging variants.")
-    name: str = Field(..., description="Name of the product.")
-    hsn_code: Optional[str] = Field(None, description="Harmonized System of Nomenclature code.")
-    item_code: Optional[str] = Field(None, description="Internal Item Code.")
-    sale_price: float = Field(..., description="Selling Price (MRP).")
-    purchase_price: float = Field(..., description="Purchase Price (Cost).")
-    tax_rate: float = Field(..., description="GST Tax Rate (e.g., 5.0, 12.0).")
-    opening_stock: float = Field(..., description="Initial Stock Quantity.")
-    min_stock: float = Field(..., description="Minimum Stock Level for alerts.")
-    location: Optional[str] = Field(None, description="Physical location (Rack/Shelf).")
-    is_verified: Optional[bool] = Field(None, description="Verification status of the product.")

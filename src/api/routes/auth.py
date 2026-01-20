@@ -69,9 +69,10 @@ async def get_current_user_email(token: str = Depends(oauth2_scheme)):
 async def login(request: Request):
     # Absolute URL for callback
     logger.info(f"Login Request Headers: {dict(request.headers)}") # DEBUG HEADERS
-    # Dynamic Base URL from Request (Respects ProxyHeaders)
-    base_url = str(request.base_url).rstrip('/')
-    # If using API gateway, logic might need adjustment, but for Tunnel+ViteProxy this is correct.
+    # Dynamic Base URL from Config (Safe)
+    # request.base_url is unreliable behind double proxies (Cloudflare -> Vite -> Uvicorn)
+    base_url = get_base_url().rstrip('/')
+    
     redirect_uri = f"{base_url}/auth/google/callback"
     logger.info(f"DEBUG: Generated Redirect URI: {redirect_uri}")
     return await oauth.google.authorize_redirect(request, redirect_uri)

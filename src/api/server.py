@@ -259,32 +259,24 @@ async def upload_batch(
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
             shutil.copyfileobj(file.file, tmp)
             processing_path = tmp.name
-            
-        # Upload to R2 (Sync/Async?) - Better to do here or in background? 
-        # Doing here ensures "image_path" is valid immediately for UI preview if we return R2 URL.
-        # But R2 upload takes time.
-        # Let's do it here for simplicity of "Preview URL" consistency.
-        with open(processing_path, "rb") as f_read:
-            public_url = upload_to_r2(f_read, filename)
-            
-        # Fallback to Local if R2 fails (User deleted bucket or credentials missing)
-        if not public_url:
-            local_dest = os.path.join("static/invoices", filename)
-            shutil.copy(processing_path, local_dest)
-            
-            # Construct Local URL
-            # Use request.base_url or configured BASE_URL. 
-            # Since get_base_url might return API URL, let's use that.
-            # Assuming get_base_url() returns "http://localhost:5001" or tunnel.
-            base = get_base_url().rstrip('/')
-            public_url = f"{base}/static/invoices/{filename}"
-            logger.warning(f"R2 Upload failed/disabled. Serving locally at: {public_url}")
+        
+        # OPTIMIZATION: Skip Synchronous R2 Upload to prevent UI Blocking (15-20s delay)
+        # Always serve locally first for speed.
+        # We will upload to R2 in the background task if needed.
+        
+        local_dest = os.path.join("static/invoices", filename)
+        shutil.copy(processing_path, local_dest)
+        
+        # Construct Local URL
+        base = get_base_url().rstrip('/')
+        public_url = f"{base}/static/invoices/{filename}"
             
         # 2. Create Neo4j Node 'PROCESSING'
         create_processing_invoice(driver, invoice_id, file.filename, public_url, user_email)
         
         # 3. Trigger Background Task
-        background_tasks.add_task(process_invoice_background, invoice_id, processing_path, public_url, user_email, file.filename)
+        # Check if upload_to_r2 is needed in background
+        background_tasks.add_task(process_invoice_background, invoice_id, processing_path, public_url, user_email, file.filename, True)
         
         # 4. Return Placeholder
         temp_results.append({
@@ -296,12 +288,24 @@ async def upload_batch(
         
     return temp_results
 
-async def process_invoice_background(invoice_id, local_path, public_url, user_email, original_filename):
+async def process_invoice_background(invoice_id, local_path, public_url, user_email, original_filename, upload_r2: bool = False):
     """
     Background Task: Runs extraction and updates DB status.
     """
     from src.domain.persistence import update_invoice_status
     driver = get_db_driver()
+    
+    # Lazy Upload to R2 (if requested)
+    if upload_r2:
+        try:
+            with open(local_path, "rb") as f_read:
+                r2_url = upload_to_r2(f_read, original_filename)
+                if r2_url:
+                    public_url = r2_url
+                    print(f"Background R2 Upload Success: {public_url}")
+        except Exception as e:
+             print(f"Background R2 Upload Failed: {e}") 
+             # Continue with local URL
     
     try:
         print(f"Starting Background Processing for {invoice_id}...")

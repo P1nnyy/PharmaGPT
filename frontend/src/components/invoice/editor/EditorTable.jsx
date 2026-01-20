@@ -83,7 +83,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     </div>
 
                                     {/* Net Amount & Alert */}
-                                    <div className="col-span-3 text-right flex items-center justify-end gap-3">
+                                    <div className="col-span-3 text-right flex items-center justify-end gap-3 pr-4">
                                         {/* Price Hike Warning */}
                                         {item.is_price_hike && (
                                             <div className="group/alert relative flex items-center justify-center w-8 h-8 bg-red-500/10 rounded-full animate-pulse">
@@ -108,7 +108,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                             type="number"
                                             value={item.Net_Line_Amount || 0}
                                             onChange={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
-                                            className={`w-24 bg-transparent outline-none font-mono text-right font-bold text-base disabled:text-green-500/80
+                                            className={`w-32 bg-transparent outline-none font-mono text-right font-bold text-base disabled:text-green-500/80
                                                 ${item.Is_Calculated
                                                     ? 'text-amber-400 focus:text-amber-300 bg-amber-900/20 rounded px-1'
                                                     : 'text-green-400 focus:text-green-300'

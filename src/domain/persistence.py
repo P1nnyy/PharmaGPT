@@ -48,6 +48,9 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
                 session.execute_write(_merge_supplier_tx, supplier_name, supplier_details, user_email)
             
             # 3. Process Line Items
+            # Clean up existing line items if re-ingesting to prevent duplicates
+            session.run("MATCH (i:Invoice {invoice_number: $no})-[r:CONTAINS]->(l:Line_Item) DELETE r, l", no=invoice_data.Invoice_No)
+
             for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
                 session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item, user_email)
                 
@@ -418,14 +421,121 @@ def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float, 
            grand_total=grand_total,
            image_path=invoice_data.image_path)
 
+def link_product_alias(driver, user_email: str, master_product_name: str, raw_alias: str):
+    """
+    Links a raw product name (alias) to a Master GlobalProduct.
+    """
+    with driver.session() as session:
+        session.execute_write(_link_alias_tx, user_email, master_product_name, raw_alias)
+
+def _link_alias_tx(tx, user_email, master_product_name, raw_alias):
+    query = """
+    MATCH (u:User {email: $user_email})
+    
+    // Find Master Product (must exist and be managed by user or globally available)
+    MATCH (gp:GlobalProduct {name: $master_name})
+    // Optional: Check if User manages it? For now, assuming Global lookup.
+    
+    // Create Alias Node
+    MERGE (alias:ProductAlias {raw_name: $raw_alias})
+    
+    // Link Alias to Master
+    MERGE (alias)-[:MAPS_TO]->(gp)
+    
+    // Link to User? Maybe later to track who created the alias.
+    """
+    tx.run(query, user_email=user_email, master_name=master_product_name, raw_alias=raw_alias)
+
+def rename_product_with_alias(driver, user_email: str, old_name: str, new_name: str):
+    """
+    Renames a GlobalProduct or Merges it if the new name already exists.
+    In both cases, creates a ProductAlias for the old name pointing to the new name.
+    """
+    with driver.session() as session:
+        session.execute_write(_rename_product_tx, user_email, old_name, new_name)
+
+def _rename_product_tx(tx, user_email, old_name, new_name):
+    # Check if target exists (Merge Case vs Rename Case)
+    check_q = "MATCH (gp:GlobalProduct {name: $new_name}) RETURN count(gp) as cnt"
+    target_exists = tx.run(check_q, new_name=new_name).single()["cnt"] > 0
+    
+    if target_exists:
+        # MERGE CASE: Repoint & Delete Old
+        logger.info(f"Merging '{old_name}' into existing '{new_name}'")
+        query = """
+        MATCH (u:User {email: $user_email})
+        MATCH (old:GlobalProduct {name: $old_name})
+        MATCH (new:GlobalProduct {name: $new_name})
+        
+        // 1. Repoint Alias links (Aliases pointing to Old now point to New)
+        OPTIONAL MATCH (alias:ProductAlias)-[r1:MAPS_TO]->(old)
+        DELETE r1
+        MERGE (alias)-[:MAPS_TO]->(new)
+        
+        // 2. Repoint Line Items (History)
+        OPTIONAL MATCH (li:Line_Item)-[r2:IS_VARIANT_OF]->(old)
+        DELETE r2
+        MERGE (li)-[:IS_VARIANT_OF]->(new)
+        
+        // 3. Repoint Packaging Variants
+        // (If new product already has similar variants, this might create dupes on the node, 
+        //  but visually distinct variants. Ideally we merge same-size variants but that's complex.
+        //  Simple link for now.)
+        OPTIONAL MATCH (old)-[r3:HAS_VARIANT]->(v:PackagingVariant)
+        DELETE r3
+        MERGE (new)-[:HAS_VARIANT]->(v)
+        // Update variant product_name property
+        SET v.product_name = $new_name
+        
+        // 4. Create Alias for the Old Name itself
+        MERGE (self_alias:ProductAlias {raw_name: $old_name})
+        MERGE (self_alias)-[:MAPS_TO]->(new)
+        
+        // 5. Delete Old Node
+        DETACH DELETE old
+        """
+        tx.run(query, user_email=user_email, old_name=old_name, new_name=new_name)
+        
+    else:
+        # RENAME CASE: Just update name and create alias
+        logger.info(f"Renaming '{old_name}' to new '{new_name}'")
+        query = """
+        MATCH (u:User {email: $user_email})
+        MATCH (gp:GlobalProduct {name: $old_name})
+        
+        // 1. Create Alias for Old Name
+        MERGE (alias:ProductAlias {raw_name: $old_name})
+        MERGE (alias)-[:MAPS_TO]->(gp)
+        
+        // 2. Update Product Name
+        SET gp.name = $new_name,
+            gp.updated_at = timestamp()
+            
+        // 3. Update related PackagingVariants' product_name property
+        WITH gp
+        OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant)
+        SET pv.product_name = $new_name
+        """
+        tx.run(query, user_email=user_email, old_name=old_name, new_name=new_name)
+
 def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: Any, user_email: str):
     query = """
     MATCH (u:User {email: $user_email})
     MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
     
-    // 1. Merge Global Product (Shared Catalog)
-    // Instead of User-Owned Product, we map to a Global Product based on name
-    MERGE (gp:GlobalProduct {name: $standard_item_name})
+    // 1. Alias Lookup & Product Resolution
+    // Check if the incoming name is a known alias
+    OPTIONAL MATCH (alias:ProductAlias {raw_name: $standard_item_name})-[:MAPS_TO]->(master:GlobalProduct)
+    
+    // Determine final name: Use Master if alias found, else use incoming name
+    WITH coalesce(master.name, $standard_item_name) as final_product_name, u, i
+    
+    // 2. Merge Global Product
+    MERGE (gp:GlobalProduct {name: final_product_name})
+    
+    // Ensure User manages this product (ownership/access)
+    MERGE (u)-[:MANAGES]->(gp)
+    
     ON CREATE SET 
         gp.is_verified = false,
         gp.needs_review = true,
@@ -467,10 +577,14 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     
     // 5. Multi-Unit Packaging Tracking
     // We treat the 'pack_size' string (e.g., "1x10") as the unique identifier for a variant of this product.
-    MERGE (pv:PackagingVariant {pack_size: $pack_size, product_name: $standard_item_name})
+    // KEY CHANGE: We use final_product_name (resolved alias) instead of generic standard_item_name
+    MERGE (pv:PackagingVariant {pack_size: $pack_size, product_name: final_product_name})
     
     // Link Product -> Variant
     MERGE (gp)-[:HAS_VARIANT]->(pv)
+    
+    // Link Line Item -> Variant (Track inventory per line specific to this pack)
+    MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
     
     // On Create of NEW Variant:
     // 1. Set details
@@ -489,11 +603,12 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
         pv.updated_at = timestamp()
     """
     
+    logger.info(f"DEBUG_TX: Linking Variant pack_size={item.get('Pack_Size_Description')} to product={item.get('Standard_Item_Name')}")
     tx.run(query,
            user_email=user_email,
            invoice_no=invoice_no,
            standard_item_name=item.get("Standard_Item_Name"),
-           pack_size=item.get("Pack_Size_Description"),
+           pack_size=item.get("Pack_Size_Description") or "1x1",
            quantity=item.get("Standard_Quantity"),
            net_amount=item.get("Net_Line_Amount"),
            batch_no=item.get("Batch_No"),

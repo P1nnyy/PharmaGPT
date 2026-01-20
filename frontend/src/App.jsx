@@ -432,7 +432,7 @@ function App() {
           </div>
 
           {/* RIGHT SIDE: EDITOR */}
-          <div className={`w-full md:w-1/2 flex flex-col bg-slate-900/50 border-l border-slate-800
+          <div className={`w-full md:w-1/2 flex flex-col bg-slate-900/50 border-l border-slate-800 overflow-y-auto
                     ${isMobile && activeTab === 'scan' && !invoiceData ? 'hidden' : 'flex'} 
                     ${isMobile && activeTab !== 'scan' ? 'flex h-full' : ''}
                     ${isMobile && activeTab === 'scan' && invoiceData ? 'h-[65%]' : 'h-full'}

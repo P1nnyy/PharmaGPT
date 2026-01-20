@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Save, Barcode, Search, DollarSign, Warehouse, Tag, AlertCircle, CheckCircle } from 'lucide-react';
-import { searchProducts, saveProduct, getReviewQueue } from '../../services/api';
+import { Package, Save, Search, DollarSign, Warehouse, Tag, AlertCircle, CheckCircle, ArrowLeft, Plus, X, Check, FlaskConical, Stethoscope, Factory } from 'lucide-react';
+import { saveProduct, getReviewQueue, getAllProducts, getProductHistory, renameProduct, linkProductAlias } from '../../services/api';
 
 const ItemMaster = () => {
     // State
@@ -13,18 +13,43 @@ const ItemMaster = () => {
         tax_rate: 0,
         opening_stock: 0,
         min_stock: 0,
-        location: ''
+        location: '',
+
+        // New Fields
+        manufacturer: '',
+        salt_composition: '',
+        category: '',
+        schedule: '',
+
+        is_verified: false,
+        packaging_variants: []
     });
 
-    const [activeTab, setActiveTab] = useState('pricing');
-    const [suggestions, setSuggestions] = useState([]);
-    const [showDropdown, setShowDropdown] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'pricing' | 'inventory' | 'packaging' | 'history'
     const [saving, setSaving] = useState(false);
+
+    // Sidebar Lists
+    const [sidebarTab, setSidebarTab] = useState('review'); // 'review' | 'all'
     const [reviewQueue, setReviewQueue] = useState([]);
     const [reviewLoading, setReviewLoading] = useState(true);
+    const [allItems, setAllItems] = useState([]);
+    const [allLoading, setAllLoading] = useState(false);
 
-    // Fetch Review Queue on Mount
+    // History
+    const [history, setHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
+    // Rename & Review State
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [renameValue, setRenameValue] = useState('');
+    const [showRenameInput, setShowRenameInput] = useState(false);
+    const [incomingAlias, setIncomingAlias] = useState('');
+
+    // UI State
+    const [searchTerm, setSearchTerm] = useState('');
+    const [showMobileDetail, setShowMobileDetail] = useState(false);
+
+    // Data Fetching
     const fetchQueue = async () => {
         try {
             setReviewLoading(true);
@@ -37,365 +62,407 @@ const ItemMaster = () => {
         }
     };
 
+    const fetchAllItems = async () => {
+        try {
+            setAllLoading(true);
+            const data = await getAllProducts();
+            setAllItems(data);
+        } catch (err) {
+            console.error("Failed to fetch all items", err);
+        } finally {
+            setAllLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchQueue();
     }, []);
 
-    // Autosuggest Logic
     useEffect(() => {
-        const fetchSuggestions = async () => {
-            // Only search if name has length > 2
-            if (formData.name && formData.name.length > 2) {
-                try {
-                    setLoading(true);
-                    const results = await searchProducts(formData.name);
-                    setSuggestions(results);
-                    setShowDropdown(true);
-                } catch (error) {
-                    console.error("Search failed", error);
-                } finally {
-                    setLoading(false);
-                }
-            } else {
-                setSuggestions([]);
-                setShowDropdown(false);
-            }
-        };
+        if (sidebarTab === 'all' && allItems.length === 0) {
+            fetchAllItems();
+        }
+    }, [sidebarTab]);
 
-        // Debounce to prevent API spam
-        const timeoutId = setTimeout(fetchSuggestions, 300);
-        return () => clearTimeout(timeoutId);
-    }, [formData.name]);
-
+    // Handlers
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-
-        // Auto-parse numbers for numeric fields
         const isNumeric = ['sale_price', 'purchase_price', 'tax_rate', 'opening_stock', 'min_stock'].includes(name);
-
         setFormData(prev => ({
             ...prev,
             [name]: isNumeric ? (parseFloat(value) || 0) : value
         }));
     };
 
-    // Special handler for name to avoid number parsing/clearing weirdness
-    const handleNameChange = (e) => {
-        setFormData(prev => ({ ...prev, name: e.target.value }));
-    };
-
-    const handleSuggestionClick = (product) => {
-        populateForm(product);
-        setShowDropdown(false);
-    };
-
     const handleQueueItemClick = (product) => {
         populateForm(product);
+        setShowMobileDetail(true);
     };
 
     const populateForm = (product) => {
         setFormData(prev => ({
             ...prev,
-            name: product.name,
+            name: product.name || '',
             hsn_code: product.hsn_code || prev.hsn_code || '',
-            sale_price: product.sale_price !== undefined ? product.sale_price : prev.sale_price,
-            tax_rate: product.tax_rate !== undefined ? product.tax_rate : prev.tax_rate,
+            sale_price: product.sale_price ?? (prev.sale_price || 0),
+            purchase_price: product.purchase_price ?? (prev.purchase_price || 0),
+            tax_rate: product.tax_rate ?? (prev.tax_rate || 0),
+            opening_stock: product.opening_stock ?? (prev.opening_stock || 0),
+            min_stock: product.min_stock ?? (prev.min_stock || 0),
             item_code: product.item_code || prev.item_code || '',
-            purchase_price: product.purchase_price !== undefined ? product.purchase_price : prev.purchase_price,
-            opening_stock: product.opening_stock !== undefined ? product.opening_stock : prev.opening_stock,
-            min_stock: product.min_stock !== undefined ? product.min_stock : prev.min_stock,
             location: product.location || prev.location || '',
-            is_verified: product.is_verified // Track verification status
+            is_verified: product.is_verified,
+
+            // New Fields
+            manufacturer: product.manufacturer || '',
+            salt_composition: product.salt_composition || '',
+            category: product.category || '',
+            schedule: product.schedule || '',
+
+            packaging_variants: (product.packaging_variants || []).map(v => ({
+                ...v,
+                unit_name: v.unit_name || '',
+                pack_size: v.pack_size || '',
+                mrp: v.mrp ?? 0,
+                conversion_factor: v.conversion_factor ?? 1
+            })),
+            needs_review: product.needs_review
         }));
-    };
 
-    // Validation Helpers
-    const isInvalid = (field) => {
-        const val = formData[field];
-        if (field === 'hsn_code') return !val || val.length < 4; // Arbitrary 4 char check
-        return !val || val <= 0;
-    };
+        setIncomingAlias(product.incoming_name || '');
+        setRenameValue(product.name || '');
+        setShowRenameInput(false);
 
-    const getInputClass = (field) => {
-        const base = "w-full bg-slate-900 border rounded-lg pl-10 pr-4 py-2.5 focus:outline-none transition-all";
-        if (isInvalid(field)) {
-            return `${base} border-red-500/50 focus:border-red-500 text-white placeholder-red-400/50`;
+        // Fetch History
+        if (product.name) {
+            setHistoryLoading(true);
+            getProductHistory(product.name).then(data => {
+                setHistory(data);
+                setHistoryLoading(false);
+            }).catch(err => {
+                console.error("Failed to fetch history", err);
+                setHistoryLoading(false);
+            });
         }
-        return `${base} border-slate-700 focus:border-blue-500 text-white placeholder-slate-600`;
+    };
+
+    const handleNewItem = () => {
+        setFormData({
+            name: '', item_code: '', hsn_code: '', sale_price: 0, purchase_price: 0,
+            tax_rate: 0, opening_stock: 0, min_stock: 0, location: '',
+            manufacturer: '', salt_composition: '', category: '', schedule: '',
+            is_verified: false, packaging_variants: []
+        });
+        setHistory([]);
+        setShowMobileDetail(true);
     };
 
     const handleSave = async () => {
         try {
             setSaving(true);
             await saveProduct(formData);
-            alert('Product Saved Successfully!');
-            fetchQueue(); // Refresh queue
+
+            // Refresh logic
+            if (sidebarTab === 'review') fetchQueue();
+            else fetchAllItems();
+
+            // Show toast or alert (Using alert for now)
+            // alert('Product Saved Successfully!'); 
         } catch (error) {
             console.error("Save failed", error);
-            alert('Failed to save product. Check console.');
+            alert('Failed to save product.');
         } finally {
             setSaving(false);
         }
     };
 
+    // --- Render Helpers ---
+
+    const renderInput = (label, name, type = 'text', icon = null, placeholder = '') => (
+        <div className="space-y-1">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                {icon} {label}
+            </label>
+            <input
+                type={type}
+                name={name}
+                value={formData[name]}
+                onChange={handleInputChange}
+                placeholder={placeholder}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none transition-colors"
+            />
+        </div>
+    );
+
     return (
-        <div className="bg-slate-900 min-h-screen text-slate-200 p-6 flex items-center justify-center">
-            <div className="w-full max-w-4xl bg-slate-800 rounded-xl shadow-2xl overflow-hidden border border-slate-700">
+        <div className="bg-slate-900 h-full text-slate-200">
+            <div className="w-full h-full bg-slate-800 rounded-xl shadow-2xl overflow-hidden border border-slate-700 flex flex-col">
+
                 {/* Header */}
-                <div className="p-6 border-b border-slate-700 flex items-center gap-3 bg-slate-800">
-                    <div className="p-3 bg-blue-600/20 rounded-lg text-blue-400">
-                        <Package className="w-6 h-6" />
+                <div className="p-4 border-b border-slate-700 flex items-center justify-between bg-slate-800 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-600/20 rounded-lg text-blue-400">
+                            <Package className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-white leading-tight">Item Master</h2>
+                            <p className="text-slate-400 text-xs">Pharma Inventory Management</p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-white">Item Master</h2>
-                        <p className="text-slate-400 text-sm">Create or Edit Product Inventory</p>
-                    </div>
+                    {/* Global Actions */}
                 </div>
 
-                {/* Content */}
-                {/* Content - Split Layout */}
-                <div className="flex flex-col md:flex-row min-h-[600px] bg-slate-800/50">
+                {/* Main Content Split */}
+                <div className="flex flex-1 overflow-hidden relative">
 
-                    {/* Left Panel: Review Queue */}
-                    <div className="w-full md:w-1/3 border-r border-slate-700 p-4 flex flex-col bg-slate-900/30">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center justify-between">
-                            Review Queue
-                            <span className="bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full text-[10px]">{reviewQueue.length}</span>
-                        </h3>
+                    {/* LEFT SIDEBAR: List */}
+                    <div className={`w-full md:w-1/4 min-w-[300px] border-r border-slate-700 flex flex-col bg-slate-900/30 absolute md:relative inset-0 z-10 transition-transform duration-300 transform md:transform-none ${showMobileDetail ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
+                        {/* Sidebar Tabs */}
+                        <div className="p-3 pb-0">
+                            <div className="flex rounded-lg bg-slate-900 p-1 mb-3 border border-slate-700">
+                                <button
+                                    onClick={() => setSidebarTab('review')}
+                                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${sidebarTab === 'review' ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                                >
+                                    Review {reviewQueue.length > 0 && `(${reviewQueue.length})`}
+                                </button>
+                                <button
+                                    onClick={() => setSidebarTab('all')}
+                                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${sidebarTab === 'all' ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                                >
+                                    All Items
+                                </button>
+                                <button
+                                    onClick={handleNewItem}
+                                    className="ml-1 px-2 py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-600/50 hover:bg-emerald-600/30"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                </button>
+                            </div>
 
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                            {reviewLoading ? (
-                                <div className="text-center text-slate-500 py-4 text-sm">Loading...</div>
-                            ) : reviewQueue.length === 0 ? (
-                                <div className="text-center text-slate-500 py-8 text-sm flex flex-col items-center">
-                                    <CheckCircle className="w-8 h-8 opacity-20 mb-2" />
-                                    No pending items
-                                </div>
-                            ) : (
-                                reviewQueue.map((item, idx) => (
+                            {/* Search */}
+                            <div className="relative mb-2">
+                                <input
+                                    type="text"
+                                    placeholder="Filter..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+                                />
+                                <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500" />
+                            </div>
+                        </div>
+
+                        {/* List Area */}
+                        <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                            {(sidebarTab === 'review' ? reviewQueue : allItems)
+                                .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                .map((item, idx) => (
                                     <div
                                         key={idx}
                                         onClick={() => handleQueueItemClick(item)}
-                                        className={`p-3 rounded-lg border cursor-pointer transition-all hover:bg-slate-800 ${formData.name === item.name ? 'border-orange-500/50 bg-orange-500/10' : 'border-slate-800 bg-slate-900/50'}`}
+                                        className={`p-3 rounded-lg border cursor-pointer transition-all hover:bg-slate-800 ${formData.name === item.name ? 'border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/20' : 'border-slate-800 bg-slate-900/40'}`}
                                     >
-                                        <div className="font-medium text-sm text-slate-200 truncate">{item.name}</div>
+                                        <div className="font-semibold text-sm text-slate-200 truncate">{item.name}</div>
                                         <div className="flex justify-between items-center mt-1">
-                                            <span className="text-[10px] text-slate-500">HSN: {item.hsn_code || '---'}</span>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${!item.sale_price ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                                                ₹{item.sale_price || 0}
+                                            <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                                                {item.hsn_code || 'No HSN'}
                                             </span>
+                                            <span className="text-[10px] font-mono text-emerald-400">₹{item.sale_price}</span>
                                         </div>
                                     </div>
                                 ))
+                            }
+                            {((sidebarTab === 'review' ? reviewQueue : allItems).length === 0) && (
+                                <div className="text-center py-8 text-slate-500 text-xs">No items found</div>
                             )}
                         </div>
                     </div>
 
-                    {/* Right Panel: Form */}
-                    <div className="w-full md:w-2/3 p-8 space-y-8">
-                        {/* Top Section */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Name with Autosuggest */}
-                            <div className="col-span-2 relative z-20">
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Item Name</label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        name="name"
-                                        value={formData.name}
-                                        onChange={handleNameChange}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-white placeholder-slate-600 transition-all font-medium"
-                                        placeholder="Search or Enter Item Name..."
-                                        autoComplete="off"
-                                    />
-                                    {loading && <div className="absolute right-3 top-3.5 text-slate-500 text-xs animate-pulse">Searching...</div>}
-                                </div>
+                    {/* RIGHT PANEL: Details Form */}
+                    <div className={`flex-1 flex flex-col bg-slate-800 absolute md:relative inset-0 z-20 transition-transform duration-300 ${showMobileDetail ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
 
-                                {/* Dropdown */}
-                                {showDropdown && suggestions.length > 0 && (
-                                    <div className="absolute w-full mt-2 bg-slate-800 border border-slate-600 rounded-lg shadow-2xl max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-                                        {suggestions.map((item, idx) => (
-                                            <div
-                                                key={idx}
-                                                onClick={() => handleSuggestionClick(item)}
-                                                className="p-3 hover:bg-slate-700 cursor-pointer flex justify-between items-center border-b border-slate-700/50 last:border-0 group"
-                                            >
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-medium text-slate-200 group-hover:text-blue-400 transition-colors">{item.name}</span>
-                                                    {item.hsn_code && <span className="text-[10px] text-slate-500">HSN: {item.hsn_code}</span>}
-                                                </div>
-                                                <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">₹{item.sale_price}</span>
-                                            </div>
-                                        ))}
+                        {/* Mobile Header */}
+                        <div className="md:hidden flex items-center gap-2 p-4 border-b border-slate-700 text-slate-400 hover:text-white cursor-pointer" onClick={() => setShowMobileDetail(false)}>
+                            <ArrowLeft className="w-5 h-5" />
+                            <span className="font-bold text-sm">Back</span>
+                        </div>
+
+                        {/* Detail Header & Tabs */}
+                        <div className="px-6 pt-6 pb-0 flex flex-col gap-4 border-b border-slate-700 bg-slate-800 z-10">
+                            {/* Title Row */}
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-1 flex-1 mr-4">
+                                    <h1 className="text-2xl font-bold text-white leading-tight">
+                                        {formData.name || 'New Product'}
+                                    </h1>
+                                    <div className="flex items-center gap-2">
+                                        {formData.is_verified ? (
+                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20 flex items-center gap-1">
+                                                <CheckCircle className="w-3 h-3" /> VERIFIED
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 text-[10px] font-bold border border-orange-500/20 flex items-center gap-1">
+                                                <AlertCircle className="w-3 h-3" /> DRAFT
+                                            </span>
+                                        )}
+                                        {formData.category && (
+                                            <span className="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 text-[10px] font-bold border border-slate-600">
+                                                {formData.category}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold shadow-lg transition-all ${saving ? 'bg-slate-600 opacity-50' : 'bg-blue-600 hover:bg-blue-500 text-white'
+                                        }`}
+                                >
+                                    <Save className="w-4 h-4" />
+                                    {saving ? 'Saving...' : 'Save'}
+                                </button>
+                            </div>
+
+                            {/* Tabs */}
+                            <div className="flex gap-6 text-sm font-medium overflow-x-auto no-scrollbar">
+                                {['overview', 'pricing', 'inventory', 'packaging', 'history'].map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setActiveTab(tab)}
+                                        className={`pb-3 capitalize transition-colors border-b-2 whitespace-nowrap px-1 ${activeTab === tab
+                                                ? 'border-blue-500 text-white'
+                                                : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                                            }`}
+                                    >
+                                        {tab}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Scrollable Content */}
+                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                            <div className="max-w-4xl mx-auto space-y-8 pb-20">
+
+                                {/* OVERVIEW TAB */}
+                                {activeTab === 'overview' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <div className="col-span-2">
+                                            {renderInput('Product Name', 'name', 'text', <Tag className="w-3 h-3" />, 'Enter product name')}
+                                        </div>
+
+                                        {renderInput('Manufacturer', 'manufacturer', 'text', <Factory className="w-3 h-3" />, 'Cipla, Sun Pharma...')}
+                                        {renderInput('Salt Composition', 'salt_composition', 'text', <FlaskConical className="w-3 h-3" />, 'Paracetamol 500mg...')}
+
+                                        {renderInput('Category', 'category', 'text', <Package className="w-3 h-3" />, 'Tablet, Syrup, Injection')}
+                                        {renderInput('Drug Schedule', 'schedule', 'text', <Stethoscope className="w-3 h-3" />, 'Schedule H, H1...')}
+
+                                        {renderInput('Item Code / SKU', 'item_code', 'text', <Search className="w-3 h-3" />, 'Internal SKU')}
                                     </div>
                                 )}
-                            </div>
 
-                            {/* Codes */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Item Code / SKU</label>
-                                <div className="relative group">
-                                    <Barcode className="absolute left-3 top-3 w-5 h-5 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
-                                    <input
-                                        type="text"
-                                        name="item_code"
-                                        value={formData.item_code}
-                                        onChange={handleInputChange}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-blue-500 text-white placeholder-slate-600 transition-all"
-                                        placeholder="Auto or Manual SKU"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                HSN / SAC Code
-                                {isInvalid('hsn_code') && <span className="text-red-500 text-[10px] font-normal normal-case animate-pulse">* Required</span>}
-                            </label>
-                            <div className="relative group" title={isInvalid('hsn_code') ? "HSN Code is missing" : ""}>
-                                <Tag className={`absolute left-3 top-3 w-5 h-5 transition-colors ${isInvalid('hsn_code') ? 'text-red-500' : 'text-slate-500 group-focus-within:text-blue-400'}`} />
-                                <input
-                                    type="text"
-                                    name="hsn_code"
-                                    value={formData.hsn_code}
-                                    onChange={handleInputChange}
-                                    className={getInputClass('hsn_code')}
-                                    placeholder="Tax Code"
-                                />
+                                {/* PRICING TAB */}
+                                {activeTab === 'pricing' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <div className="col-span-2 p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
+                                            {renderInput('Sale Price (MRP)', 'sale_price', 'number', <DollarSign className="w-3 h-3 text-emerald-400" />)}
+                                        </div>
+                                        {renderInput('Purchase Price (Base Cost)', 'purchase_price', 'number', <DollarSign className="w-3 h-3" />)}
+                                        {renderInput('Tax Rate (GST %)', 'tax_rate', 'number', <span className="text-xs font-bold">%</span>)}
+                                        {renderInput('HSN / SAC Code', 'hsn_code', 'text', <Search className="w-3 h-3" />)}
+                                    </div>
+                                )}
+
+                                {/* INVENTORY TAB */}
+                                {activeTab === 'inventory' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        {renderInput('Opening Stock', 'opening_stock', 'number', <Warehouse className="w-3 h-3" />)}
+                                        {renderInput('Minimum Stock Alert', 'min_stock', 'number', <AlertCircle className="w-3 h-3" />)}
+                                        <div className="col-span-2">
+                                            {renderInput('Rack Location', 'location', 'text', <Tag className="w-3 h-3" />, 'A-12-04')}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* PACKAGING TAB */}
+                                {activeTab === 'packaging' && (
+                                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <div className="bg-slate-900/50 rounded-xl border border-slate-700 p-4">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <h3 className="text-sm font-bold text-slate-300 uppercase">Packaging Hierarchy</h3>
+                                                <button onClick={() => setFormData(p => ({ ...p, packaging_variants: [...p.packaging_variants, { unit_name: 'Box', pack_size: '1x10', mrp: 0, conversion_factor: 10 }] }))} className="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition-colors text-blue-400 border border-slate-600">
+                                                    + Add Level
+                                                </button>
+                                            </div>
+                                            <div className="space-y-3">
+                                                {formData.packaging_variants.length === 0 && (
+                                                    <div className="text-center py-6 text-slate-500 text-sm italic">No packaging defined. Add a variant like "Strip" or "Box".</div>
+                                                )}
+                                                {formData.packaging_variants.map((variant, idx) => (
+                                                    <div key={idx} className="grid grid-cols-12 gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700 items-start">
+                                                        <div className="col-span-3 space-y-1">
+                                                            <label className="text-[9px] text-slate-500 uppercase">Unit Name</label>
+                                                            <input type="text" value={variant.unit_name} onChange={e => { const v = [...formData.packaging_variants]; v[idx].unit_name = e.target.value; setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                                                        </div>
+                                                        <div className="col-span-3 space-y-1">
+                                                            <label className="text-[9px] text-slate-500 uppercase">Pack Size</label>
+                                                            <input type="text" value={variant.pack_size} onChange={e => { const v = [...formData.packaging_variants]; v[idx].pack_size = e.target.value; setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                                                        </div>
+                                                        <div className="col-span-2 space-y-1">
+                                                            <label className="text-[9px] text-slate-500 uppercase">MRP</label>
+                                                            <input type="number" value={variant.mrp} onChange={e => { const v = [...formData.packaging_variants]; v[idx].mrp = parseFloat(e.target.value); setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-right" />
+                                                        </div>
+                                                        <div className="col-span-3 space-y-1">
+                                                            <label className="text-[9px] text-slate-500 uppercase">Base Units</label>
+                                                            <input type="number" value={variant.conversion_factor} onChange={e => { const v = [...formData.packaging_variants]; v[idx].conversion_factor = parseFloat(e.target.value); setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-center" />
+                                                        </div>
+                                                        <div className="col-span-1 flex justify-end pt-4">
+                                                            <button onClick={() => { const v = formData.packaging_variants.filter((_, i) => i !== idx); setFormData(p => ({ ...p, packaging_variants: v })) }} className="text-slate-500 hover:text-red-400">
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* HISTORY TAB */}
+                                {activeTab === 'history' && (
+                                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <div className="bg-slate-900/50 rounded-xl border border-slate-700 overflow-hidden">
+                                            <table className="w-full text-left text-xs text-slate-300">
+                                                <thead className="bg-slate-800 text-slate-500 font-bold uppercase">
+                                                    <tr>
+                                                        <th className="px-4 py-3">Date</th>
+                                                        <th className="px-4 py-3">Supplier</th>
+                                                        <th className="px-4 py-3 text-right">Qty</th>
+                                                        <th className="px-4 py-3 text-right">Rate</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-700/50">
+                                                    {historyLoading ? (<tr><td colSpan="4" className="p-4 text-center text-slate-500">Loading...</td></tr>)
+                                                        : history.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-slate-500">No Purchase History</td></tr>)
+                                                            : history.map((h, i) => (
+                                                                <tr key={i} className="hover:bg-slate-800/50">
+                                                                    <td className="px-4 py-2">{h.date}</td>
+                                                                    <td className="px-4 py-2">{h.supplier}</td>
+                                                                    <td className="px-4 py-2 text-right">{h.quantity}</td>
+                                                                    <td className="px-4 py-2 text-right text-emerald-400">₹{h.amount}</td>
+                                                                </tr>
+                                                            ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
                             </div>
                         </div>
 
-                        {/* Tabs */}
-                        <div className="border-b border-slate-700 flex gap-8">
-                            <button
-                                onClick={() => setActiveTab('pricing')}
-                                className={`pb-3 text-sm font-bold tracking-wide transition-all relative ${activeTab === 'pricing' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
-                                    }`}
-                            >
-                                Pricing & Tax
-                                {activeTab === 'pricing' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-t-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />}
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('stock')}
-                                className={`pb-3 text-sm font-bold tracking-wide transition-all relative ${activeTab === 'stock' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'
-                                    }`}
-                            >
-                                Stock & Location
-                                {activeTab === 'stock' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-500 rounded-t-full shadow-[0_0_10px_rgba(16,185,129,0.5)]" />}
-                            </button>
-                        </div>
-
-                        {/* Tab Content */}
-                        <div className="min-h-[180px]">
-                            {activeTab === 'pricing' ? (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-left-4 fade-in duration-300">
-                                    <div className="group">
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Sale Price (MRP)</label>
-                                        <div className="relative" title={isInvalid('sale_price') ? "Sale Price cannot be 0" : ""}>
-                                            <DollarSign className={`absolute left-3 top-3 w-5 h-5 transition-colors ${isInvalid('sale_price') ? 'text-red-500' : 'text-emerald-500 group-focus-within:text-emerald-400'}`} />
-                                            <input
-                                                type="number"
-                                                name="sale_price"
-                                                value={formData.sale_price}
-                                                onChange={handleInputChange}
-                                                className={getInputClass('sale_price').replace('border-slate-700', 'border-slate-700').replace('focus:border-blue-500', 'focus:border-emerald-500')}
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="group">
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Purchase Price</label>
-                                        <div className="relative">
-                                            <DollarSign className="absolute left-3 top-3 w-5 h-5 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
-                                            <input
-                                                type="number"
-                                                name="purchase_price"
-                                                value={formData.purchase_price}
-                                                onChange={handleInputChange}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-blue-500 text-white font-mono placeholder-slate-700 transition-all"
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                            Tax Rate (GST)
-                                            {isInvalid('tax_rate') && <span className="text-red-500 text-[10px] font-normal normal-case animate-pulse">* Check</span>}
-                                        </label>
-                                        <div className="relative" title={isInvalid('tax_rate') ? "Validate Tax Rate" : ""}>
-                                            <select
-                                                name="tax_rate"
-                                                value={formData.tax_rate}
-                                                onChange={handleInputChange}
-                                                className={`w-full bg-slate-900 border rounded-lg px-4 py-2.5 focus:outline-none appearance-none cursor-pointer hover:bg-slate-800 transition-all ${isInvalid('tax_rate') ? 'border-red-500 text-white' : 'border-slate-700 focus:border-blue-500 text-white'}`}
-                                            >
-                                                <option value={0}>0% (Exempt)</option>
-                                                <option value={5}>5%</option>
-                                                <option value={12}>12%</option>
-                                                <option value={18}>18%</option>
-                                                <option value={28}>28%</option>
-                                            </select>
-                                            <div className="absolute right-4 top-3.5 pointer-events-none text-slate-500 text-[10px]">▼</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-right-4 fade-in duration-300">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Opening Stock</label>
-                                        <input
-                                            type="number"
-                                            name="opening_stock"
-                                            value={formData.opening_stock}
-                                            onChange={handleInputChange}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 text-white font-mono placeholder-slate-700 transition-all"
-                                            placeholder="0"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Min Alert Stock</label>
-                                        <input
-                                            type="number"
-                                            name="min_stock"
-                                            value={formData.min_stock}
-                                            onChange={handleInputChange}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-orange-500 text-white font-mono placeholder-slate-700 transition-all"
-                                            placeholder="0"
-                                        />
-                                    </div>
-                                    <div className="group">
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Rack / Location</label>
-                                        <div className="relative">
-                                            <Warehouse className="absolute left-3 top-3 w-5 h-5 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
-                                            <input
-                                                type="text"
-                                                name="location"
-                                                value={formData.location}
-                                                onChange={handleInputChange}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-blue-500 text-white placeholder-slate-700 transition-all"
-                                                placeholder="Row-A1"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
                     </div>
-                </div>
-
-                {/* Footer */}
-                <div className="p-6 bg-slate-900/50 border-t border-slate-700 flex justify-end">
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className={`flex items-center gap-2 px-8 py-3 rounded-lg font-bold shadow-lg transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${formData.is_verified === false
-                            ? 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white'
-                            : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'
-                            }`}
-                    >
-                        {formData.is_verified === false ? <CheckCircle className="w-5 h-5" /> : <Save className="w-5 h-5" />}
-                        {saving ? 'Saving...' : (formData.is_verified === false ? 'Verify & Save' : 'Save Item')}
-                    </button>
                 </div>
             </div>
         </div>

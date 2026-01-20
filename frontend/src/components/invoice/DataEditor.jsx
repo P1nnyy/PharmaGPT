@@ -33,7 +33,7 @@ const DataEditor = ({
     }
 
     return (
-        <div className="flex flex-col h-full bg-gray-900 relative">
+        <div className="flex flex-col min-h-full bg-gray-900 relative">
             <EditorHeader
                 invoiceData={invoiceData}
                 lineItems={lineItems}

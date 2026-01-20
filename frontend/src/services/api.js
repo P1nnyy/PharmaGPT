@@ -139,6 +139,27 @@ export const saveProduct = async (productData) => {
     return response.data;
 };
 
+export const renameProduct = async (oldName, newName) => {
+    const response = await api.post(`/products/${encodeURIComponent(oldName)}/rename`, { new_name: newName });
+    return response.data;
+};
+
+export const linkProductAlias = async (masterName, alias) => {
+    console.log("Calling linkProductAlias", masterName, alias);
+    const response = await api.post(`/products/${encodeURIComponent(masterName)}/alias`, { alias });
+    return response.data;
+};
+
+export const getAllProducts = async () => {
+    const response = await api.get('/products/all');
+    return response.data;
+};
+
+export const getProductHistory = async (name) => {
+    const response = await api.get(`/products/${encodeURIComponent(name)}/history`);
+    return response.data;
+};
+
 export const submitFeedback = async (traceId, score, comment = null) => {
     const response = await api.post('/feedback', { trace_id: traceId, score, comment });
     return response.data;
@@ -161,6 +182,8 @@ export default {
     getInventory,
     searchProducts,
     saveProduct,
+    getAllProducts,
+    getProductHistory,
     getReviewQueue,
     submitFeedback
 };
