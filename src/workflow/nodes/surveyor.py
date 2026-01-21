@@ -16,6 +16,9 @@ if not API_KEY:
 
 genai.configure(api_key=API_KEY)
 
+from langfuse import observe
+
+@observe(name="surveyor_layout_analysis")
 def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Layout Discovery Node.
@@ -73,17 +76,29 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         ]
         """
 
-        response = model.generate_content([prompt, sample_file])
-        response_text = response.text
+        # RETRY LOGIC (Max 3 Attempts)
+        max_retries = 3
+        extraction_plan = []
         
-        # Clean Code Blocks
-        clean_json = response_text.replace("```json", "").replace("```", "").strip()
-        extraction_plan = json.loads(clean_json)
-        
-        logger.info(f"Surveyor Plan: {len(extraction_plan)} zones identified.")
-        
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content([prompt, sample_file])
+                response_text = response.text
+                
+                # Clean Code Blocks
+                clean_json = response_text.replace("```json", "").replace("```", "").strip()
+                extraction_plan = json.loads(clean_json)
+                
+                logger.info(f"Surveyor Plan: {len(extraction_plan)} zones identified.")
+                return {"extraction_plan": extraction_plan}
+                
+            except Exception as e:
+                logger.warning(f"Surveyor Attempt {attempt+1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise e
+                    
         return {"extraction_plan": extraction_plan}
 
     except Exception as e:
-        logger.error(f"Surveyor failed: {e}")
+        logger.error(f"Surveyor failed after retries: {e}")
         return {"extraction_plan": [], "error_logs": [f"Surveyor Error: {str(e)}"]}

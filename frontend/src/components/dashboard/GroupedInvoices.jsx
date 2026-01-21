@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Folder, FileText, Image, X } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { getInvoiceHistory } from '../../services/api';
+import { getImageUrl } from '../../utils/urlHelper';
 
 const GroupedInvoices = () => {
     const [suppliers, setSuppliers] = useState([]);
@@ -62,11 +63,7 @@ const GroupedInvoices = () => {
                                 <div className="relative w-full h-full">
                                     <TransformComponent wrapperClass="w-full h-full flex items-center justify-center">
                                         <img
-                                            src={viewingImage?.startsWith('http')
-                                                ? viewingImage
-                                                : (window.location.hostname.includes('pharmagpt.co')
-                                                    ? `https://api.pharmagpt.co${viewingImage}`
-                                                    : `http://localhost:5001${viewingImage}`)}
+                                            src={getImageUrl(viewingImage)}
                                             alt="Invoice Preview"
                                             className="max-h-[85vh] w-auto rounded shadow-2xl"
                                         />

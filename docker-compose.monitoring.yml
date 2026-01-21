@@ -92,6 +92,26 @@ services:
       - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
       - CLICKHOUSE_PASSWORD=password
 
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./config/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - default
+
+  grafana:
+    image: grafana/grafana
+    volumes:
+      - ./config/monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - default
+
 volumes:
   postgres_data:
   clickhouse_data:

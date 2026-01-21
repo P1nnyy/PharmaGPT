@@ -2,24 +2,16 @@ import React from 'react';
 import { X, Loader2 } from 'lucide-react';
 import InvoiceViewer from './InvoiceViewer';
 import DataEditor from './DataEditor';
+import { getImageUrl } from '../../utils/urlHelper';
 
 const AnalysisModal = ({ isOpen, onClose, isLoading, invoiceData, lineItems, imagePath }) => {
 
 
+
     if (!isOpen) return null;
 
-    // Construct preview URL from imagePath
-    // imagePath covers /static/invoices/...
-    // If running in dev, we might need localhost logic, but usually the backend serves static.
-    // The imagePath from DB is already "/static/invoices/..."
-    const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
-        ? 'https://api.pharmagpt.co'
-        : 'http://localhost:5001';
-
-    // If the path starts with http (R2), use it directly. Otherwise prepend API URL.
-    const previewUrl = imagePath
-        ? (imagePath.startsWith('http') ? imagePath : `${API_BASE_URL}${imagePath}`)
-        : null;
+    // Use centralized helper for URL resolution
+    const previewUrl = getImageUrl(imagePath);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">

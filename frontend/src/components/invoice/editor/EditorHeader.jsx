@@ -166,12 +166,12 @@ const EditorHeader = ({
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] uppercase tracking-wider text-gray-500 font-bold ml-1">Address / Phone</label>
-                                <div className="flex gap-2">
+                                <div className="flex flex-col md:flex-row gap-2">
                                     <input
                                         type="text"
                                         value={invoiceData.supplier_details?.Phone_Number || ''}
                                         onChange={(e) => onHeaderChange('supplier_details.Phone_Number', e.target.value)}
-                                        className="w-1/3 bg-gray-900/50 border border-gray-700 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none placeholder-gray-700"
+                                        className="w-full md:w-1/3 bg-gray-900/50 border border-gray-700 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none placeholder-gray-700"
                                         placeholder="Phone"
                                         disabled={readOnly}
                                     />
@@ -179,7 +179,7 @@ const EditorHeader = ({
                                         type="text"
                                         value={invoiceData.supplier_details?.Address || ''}
                                         onChange={(e) => onHeaderChange('supplier_details.Address', e.target.value)}
-                                        className="w-2/3 bg-gray-900/50 border border-gray-700 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none placeholder-gray-700"
+                                        className="w-full md:w-2/3 bg-gray-900/50 border border-gray-700 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none placeholder-gray-700"
                                         placeholder="Address"
                                         disabled={readOnly}
                                     />

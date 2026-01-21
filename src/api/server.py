@@ -124,6 +124,10 @@ app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 app.include_router(auth_router)
 app.include_router(products_router)
 
+# --- Observability ---
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app)
+
 # --- Startup / Shutdown ---
 @app.on_event("startup")
 def startup_event():
@@ -411,7 +415,7 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, user_email: str = Depe
 
     try:
         # Import Persistence Helpers
-        from src.domain.persistence import get_invoice_draft, log_correction
+        from src.domain.persistence import get_invoice_draft, log_correction, delete_redundant_draft
 
         # 1. Try to find the Original Draft to (A) Log Diff, (B) Recover Raw Text/Image Path
         # Since frontend payload might not have UUID, we look up by Invoice Number (Risk: Duplicates, but Drafts usually unique per flow)
@@ -457,6 +461,11 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, user_email: str = Depe
         # 5. Ingest into Neo4j (Creates/Updates Invoice, Lines, and Auto-Promotes to InvoiceExample if raw_text exists)
         supplier_details = request.invoice_data.get("supplier_details")
         ingest_invoice(driver, invoice_obj, request.normalized_items, user_email=user_email, supplier_details=supplier_details)
+        
+        # 6. Cleanup Draft if it was a separate node (Duplicate)
+        draft_id = request.invoice_data.get("id")
+        if draft_id:
+            delete_redundant_draft(driver, draft_id, user_email)
         
         return {
             "status": "success",

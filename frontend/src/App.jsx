@@ -327,7 +327,10 @@ function App() {
     try {
       // Construct payload matching backend expectation
       const payload = {
-        invoice_data: invoiceData,
+        invoice_data: {
+          ...invoiceData,
+          id: selectedQueueId, // Inject Draft ID for cleanup
+        },
         normalized_items: lineItems,
         image_path: imagePath
       };

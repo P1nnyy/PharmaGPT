@@ -21,3 +21,4 @@ langchain
 langchain-community
 langfuse
 opencv-python-headless
+prometheus-fastapi-instrumentator

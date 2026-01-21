@@ -847,3 +847,16 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str):
     """
     with driver.session() as session:
         session.run(query, user_email=user_email, invoice_id=invoice_id)
+
+def delete_redundant_draft(driver, invoice_id: str, user_email: str):
+    """
+    Safely deletes a draft invoice ONLY if it is still in DRAFT/PROCESSING state.
+    Used during confirmation to clean up if a new node was created instead of updating.
+    """
+    query = """
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_id: $invoice_id})
+    WHERE i.status IN ['DRAFT', 'PROCESSING', 'ERROR']
+    DETACH DELETE i
+    """
+    with driver.session() as session:
+        session.run(query, user_email=user_email, invoice_id=invoice_id)

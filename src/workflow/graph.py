@@ -163,5 +163,16 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
     
     if error_logs:
         logger.warning(f"Pipeline completed with errors: {error_logs}")
+
+    # Post-Processing: Smart Mapper (Auto-Fill from Master)
+    if "Line_Items" in final_output:
+        try:
+            from src.domain.smart_mapper import enrich_line_items_from_master
+            logger.info("Running Smart Mapper Enrichment...")
+            line_items = final_output.get("Line_Items", [])
+            enriched_items = await enrich_line_items_from_master(line_items, user_email)
+            final_output["Line_Items"] = enriched_items
+        except Exception as e:
+            logger.error(f"Smart Mapper Failed: {e}")
         
     return final_output

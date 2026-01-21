@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Clock, ChevronDown, Image } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { getActivityLog } from '../../services/api';
 
 const History = () => {
     const [activityLog, setActivityLog] = useState([]);
@@ -28,12 +29,7 @@ const History = () => {
 
     const fetchActivity = async () => {
         try {
-            const API_BASE_URL = window.location.hostname.includes('pharmagpt.co')
-                ? 'https://api.pharmagpt.co'
-                : 'http://localhost:8000';
-
-            const res = await fetch(`${API_BASE_URL}/activity-log`);
-            const data = await res.json();
+            const data = await getActivityLog();
             if (Array.isArray(data)) {
                 setActivityLog(data);
             } else {

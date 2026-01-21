@@ -11,6 +11,9 @@ logger = get_logger("detective")
 API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=API_KEY)
 
+from langfuse import observe
+
+@observe(name="detective_investigation")
 def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Detective Node.

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Clock, ChevronDown, Image } from 'lucide-react';
 import { getActivityLog, getInvoiceDetails } from '../../services/api';
+import { getImageUrl } from '../../utils/urlHelper';
 import AnalysisModal from '../invoice/AnalysisModal';
 
 const ActivityHistory = () => {
@@ -8,16 +9,7 @@ const ActivityHistory = () => {
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);
 
-    // Helper for efficient Image URLs
-    const getImageUrl = (path) => {
-        if (!path) return null;
-        if (path.startsWith('http')) return path;
-        // Use window.location logic to determine backend
-        const baseUrl = window.location.hostname.includes('pharmagpt.co')
-            ? 'https://api.pharmagpt.co'
-            : 'http://localhost:5001';
-        return `${baseUrl}${path}`;
-    };
+
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);

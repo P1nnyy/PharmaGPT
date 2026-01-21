@@ -19,6 +19,9 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=API_KEY)
 
+from langfuse import observe
+
+@observe(name="mapper_execution")
 def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Mapper Node.
@@ -121,7 +124,6 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Mapper RAG Lookup Failed: {e}")
     
-    import json
     
     # --- E. SMART MAPPER LOGIC (Alias & Vector Pre-Check) ---
     # Goal: Try to resolve Product Names via DB before asking LLM.

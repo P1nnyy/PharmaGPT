@@ -19,7 +19,10 @@ const ItemMaster = () => {
         manufacturer: '',
         salt_composition: '',
         category: '',
-        schedule: '',
+        // schedule: '', // Removed as per request
+        supplier_name: '',
+        last_purchase_date: '',
+        saved_by: '',
 
         is_verified: false,
         packaging_variants: []
@@ -103,21 +106,24 @@ const ItemMaster = () => {
         setFormData(prev => ({
             ...prev,
             name: product.name || '',
-            hsn_code: product.hsn_code || prev.hsn_code || '',
-            sale_price: product.sale_price ?? (prev.sale_price || 0),
-            purchase_price: product.purchase_price ?? (prev.purchase_price || 0),
-            tax_rate: product.tax_rate ?? (prev.tax_rate || 0),
-            opening_stock: product.opening_stock ?? (prev.opening_stock || 0),
-            min_stock: product.min_stock ?? (prev.min_stock || 0),
-            item_code: product.item_code || prev.item_code || '',
-            location: product.location || prev.location || '',
+            hsn_code: product.hsn_code || '',
+            sale_price: product.sale_price ?? 0,
+            purchase_price: product.purchase_price ?? 0,
+            tax_rate: product.tax_rate ?? 0,
+            opening_stock: product.opening_stock ?? 0,
+            min_stock: product.min_stock ?? 0,
+            item_code: product.item_code || '',
+            location: product.location || '',
             is_verified: product.is_verified,
 
             // New Fields
             manufacturer: product.manufacturer || '',
             salt_composition: product.salt_composition || '',
             category: product.category || '',
-            schedule: product.schedule || '',
+            // schedule: product.schedule || '',
+            supplier_name: product.supplier_name || '',
+            last_purchase_date: product.last_purchase_date || '',
+            saved_by: product.saved_by || '',
 
             packaging_variants: (product.packaging_variants || []).map(v => ({
                 ...v,
@@ -331,8 +337,8 @@ const ItemMaster = () => {
                                         key={tab}
                                         onClick={() => setActiveTab(tab)}
                                         className={`pb-3 capitalize transition-colors border-b-2 whitespace-nowrap px-1 ${activeTab === tab
-                                                ? 'border-blue-500 text-white'
-                                                : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                                            ? 'border-blue-500 text-white'
+                                            : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
                                             }`}
                                     >
                                         {tab}
@@ -352,25 +358,103 @@ const ItemMaster = () => {
                                             {renderInput('Product Name', 'name', 'text', <Tag className="w-3 h-3" />, 'Enter product name')}
                                         </div>
 
+
                                         {renderInput('Manufacturer', 'manufacturer', 'text', <Factory className="w-3 h-3" />, 'Cipla, Sun Pharma...')}
                                         {renderInput('Salt Composition', 'salt_composition', 'text', <FlaskConical className="w-3 h-3" />, 'Paracetamol 500mg...')}
 
                                         {renderInput('Category', 'category', 'text', <Package className="w-3 h-3" />, 'Tablet, Syrup, Injection')}
-                                        {renderInput('Drug Schedule', 'schedule', 'text', <Stethoscope className="w-3 h-3" />, 'Schedule H, H1...')}
+
+
+                                        {/* Source Information (Read Only) */}
+                                        <div className="col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-slate-900/50 rounded-xl border border-dashed border-slate-700">
+                                            {renderInput('Supplier Name', 'supplier_name', 'text', <Warehouse className="w-3 h-3 text-slate-500" />, 'Read Only')}
+                                            {renderInput('Purchase Date', 'last_purchase_date', 'text', <Tag className="w-3 h-3 text-slate-500" />, 'Read Only')}
+                                            {renderInput('Saved By', 'saved_by', 'text', <Tag className="w-3 h-3 text-slate-500" />, 'System')}
+                                        </div>
 
                                         {renderInput('Item Code / SKU', 'item_code', 'text', <Search className="w-3 h-3" />, 'Internal SKU')}
                                     </div>
                                 )}
 
-                                {/* PRICING TAB */}
+                                {/* PRICING TAB (ERP REDESIGN) */}
                                 {activeTab === 'pricing' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                        <div className="col-span-2 p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
-                                            {renderInput('Sale Price (MRP)', 'sale_price', 'number', <DollarSign className="w-3 h-3 text-emerald-400" />)}
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+                                        {/* 1. Metric Cards (Real-time Analysis) */}
+                                        <div className="grid grid-cols-3 gap-4">
+                                            {/* Landing Cost */}
+                                            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                                                <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Effective Landing Cost</div>
+                                                <div className="text-2xl font-mono font-bold text-white">
+                                                    ₹{((formData.purchase_price || 0) * (1 + (formData.tax_rate || 0) / 100)).toFixed(2)}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 mt-1">Base + {formData.tax_rate}% GST</div>
+                                            </div>
+
+                                            {/* Tax Amount */}
+                                            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                                                <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Tax Amount</div>
+                                                <div className="text-2xl font-mono font-bold text-blue-400">
+                                                    ₹{((formData.purchase_price || 0) * ((formData.tax_rate || 0) / 100)).toFixed(2)}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 mt-1">Input Credit Available</div>
+                                            </div>
+
+                                            {/* Margin Analysis */}
+                                            {(() => {
+                                                const landing = (formData.purchase_price || 0) * (1 + (formData.tax_rate || 0) / 100);
+                                                const margin = (formData.sale_price || 0) - landing;
+                                                const marginPercent = formData.sale_price > 0 ? (margin / formData.sale_price) * 100 : 0;
+                                                const isHigh = marginPercent > 25;
+                                                const isLow = marginPercent < 15;
+
+                                                return (
+                                                    <div className={`p-4 rounded-xl border ${isHigh ? 'bg-emerald-500/10 border-emerald-500/30' : isLow ? 'bg-red-500/10 border-red-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
+                                                        <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isHigh ? 'text-emerald-400' : isLow ? 'text-red-400' : 'text-amber-400'}`}>Net Margin</div>
+                                                        <div className="flex items-end gap-2">
+                                                            <div className={`text-2xl font-mono font-bold ${isHigh ? 'text-emerald-300' : isLow ? 'text-red-300' : 'text-amber-300'}`}>
+                                                                {marginPercent.toFixed(1)}%
+                                                            </div>
+                                                            <div className="text-sm font-medium opacity-80 mb-1">
+                                                                (₹{margin.toFixed(2)})
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-[10px] mt-1 opacity-70">Profit per Unit</div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
-                                        {renderInput('Purchase Price (Base Cost)', 'purchase_price', 'number', <DollarSign className="w-3 h-3" />)}
-                                        {renderInput('Tax Rate (GST %)', 'tax_rate', 'number', <span className="text-xs font-bold">%</span>)}
-                                        {renderInput('HSN / SAC Code', 'hsn_code', 'text', <Search className="w-3 h-3" />)}
+
+                                        {/* 2. Detailed Input Grid */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+                                            {/* Cost Side */}
+                                            <div className="space-y-4">
+                                                <h3 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-700 pb-2 mb-4">Cost Structure</h3>
+                                                {renderInput('Purchase Price (Base Rate)', 'purchase_price', 'number', <DollarSign className="w-3 h-3 text-slate-400" />)}
+                                                {renderInput('Tax Rate (GST %)', 'tax_rate', 'number', <span className="text-xs font-bold">%</span>)}
+                                                {renderInput('HSN / SAC Code', 'hsn_code', 'text', <Search className="w-3 h-3" />)}
+                                            </div>
+
+                                            {/* Revenue Side */}
+                                            <div className="space-y-4">
+                                                <h3 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-700 pb-2 mb-4">Revenue & Pricing</h3>
+
+                                                <div className="p-1 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
+                                                    {renderInput('Sale Price (MRP)', 'sale_price', 'number', <DollarSign className="w-3 h-3 text-emerald-400" />)}
+                                                </div>
+
+                                                <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 mt-4">
+                                                    <div className="flex justify-between items-center text-xs mb-2">
+                                                        <span className="text-slate-400">Trade Discount (Scheme)</span>
+                                                        <span className="text-slate-500 italic">Coming Soon</span>
+                                                    </div>
+                                                    <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-slate-700 w-0"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 

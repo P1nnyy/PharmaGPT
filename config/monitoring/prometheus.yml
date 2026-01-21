@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'backend'
+    scrape_interval: 5s
+    metrics_path: '/metrics'
+    static_configs:
+      # Host 'backend' refers to the service name in docker-compose
+      # Port 5001 is where FastAPI is running inside the container
+      - targets: ['backend:5001']

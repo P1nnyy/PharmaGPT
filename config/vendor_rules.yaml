@@ -27,6 +27,10 @@ vendors:
     calculation_rules:
       rate_divisor: 12.0
   "c m associates":
+    aliases:
+      "Pcode": "Batch"
+      "P.Code": "Batch"
+      "P Code": "Batch"
     calculation_rules: {}
   "sood medicos":
     calculation_rules: {}

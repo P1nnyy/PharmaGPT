@@ -44,11 +44,24 @@ async def get_review_queue(user_email: str = Depends(get_current_user_email)):
     // Fetch latest line item to show "Incoming" name and HSN
     OPTIONAL MATCH (l:Line_Item)-[:IS_VARIANT_OF]->(gp)
     WITH gp, l ORDER BY l.created_at DESC
-    WITH gp, head(collect(l.description)) as incoming_name, head(collect(l.hsn_code)) as incoming_hsn
+    
+    // Get Supplier Name, Date, and Saved By from the Invoice containing this line item
+    OPTIONAL MATCH (i:Invoice)-[:CONTAINS]->(l)
+    OPTIONAL MATCH (owner:User)-[:OWNS]->(i)
+    
+    WITH gp, 
+         head(collect(l.description)) as incoming_name, 
+         head(collect(l.hsn_code)) as incoming_hsn, 
+         head(collect(i.supplier_name)) as supplier_name,
+         head(collect(i.invoice_date)) as last_purchase_date,
+         head(collect(owner.name)) as saved_by
     
     OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant)
     RETURN gp.name as name, 
            incoming_name,
+           supplier_name,
+           last_purchase_date,
+           saved_by,
            coalesce(gp.hsn_code, incoming_hsn) as hsn_code, 
            gp.sale_price as sale_price,
            gp.tax_rate as tax_rate,

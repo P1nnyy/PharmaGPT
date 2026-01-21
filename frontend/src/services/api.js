@@ -2,15 +2,13 @@ import axios from 'axios';
 
 const API_PORT = '5001';
 
-// If VITE_API_BASE_URL is explicitly set (even to empty string), use it.
-// Otherwise, check hostname.
-// If on a tunnel/prod (pharmagpt), use relative path '' to leverage Vite Proxy (HTTPS support).
-// Fallback to localhost:5001 for local dev without proxy.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL !== undefined
-    ? import.meta.env.VITE_API_BASE_URL
-    : window.location.hostname.includes('pharmagpt') || window.location.hostname.includes('cloudflare')
-        ? ''
-        : 'http://localhost:5001';
+// If VITE_API_BASE_URL is explicitly set, use it.
+// Otherwise, default to relative path '' to leverage Vite Proxy (which forwards to Backend).
+// This works for:
+// 1. Tunnel (dev.pharmagpt.co) -> Proxy -> Backend
+// 2. LAN (192.168.x.x:5173) -> Proxy -> Backend
+// 3. Localhost (localhost:5173) -> Proxy -> Backend
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 const api = axios.create({
     baseURL: API_BASE_URL,

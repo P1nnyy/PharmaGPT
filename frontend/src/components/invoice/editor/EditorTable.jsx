@@ -13,9 +13,9 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                         <div className="sticky top-0 z-10 bg-gray-900 pt-2 border-b border-gray-800">
                             <div className="grid grid-cols-12 gap-4 mb-2 text-xs font-bold text-gray-500 uppercase tracking-wider px-4">
                                 <div className="col-span-1 text-center">#</div>
-                                <div className="col-span-4">Item Name</div>
+                                <div className="col-span-3">Item Name</div>
                                 <div className="col-span-2">Batch / Expiry</div>
-                                <div className="col-span-1 text-center">MRP</div>
+                                <div className="col-span-2 text-center">MRP</div>
                                 <div className="col-span-1 text-center">Qty</div>
                                 <div className="col-span-3 text-right">Net Amount</div>
                             </div>
@@ -32,7 +32,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     <div className="col-span-1 text-center text-gray-600 font-mono text-xs">{idx + 1}</div>
 
                                     {/* Name */}
-                                    <div className="col-span-4">
+                                    <div className="col-span-3">
                                         <input
                                             value={item.Standard_Item_Name || ''}
                                             onChange={(e) => onInputChange(idx, 'Standard_Item_Name', e.target.value)}
@@ -61,7 +61,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     </div>
 
                                     {/* MRP */}
-                                    <div className="col-span-1">
+                                    <div className="col-span-2">
                                         <input
                                             type="number"
                                             value={item.MRP || 0}
@@ -106,8 +106,9 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
 
                                         <input
                                             type="number"
-                                            value={item.Net_Line_Amount || 0}
+                                            value={readOnly ? (parseFloat(item.Net_Line_Amount) || 0).toFixed(2) : (item.Net_Line_Amount || 0)}
                                             onChange={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
+                                            onBlur={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value).toFixed(2))}
                                             className={`w-32 bg-transparent outline-none font-mono text-right font-bold text-base disabled:text-green-500/80
                                                 ${item.Is_Calculated
                                                     ? 'text-amber-400 focus:text-amber-300 bg-amber-900/20 rounded px-1'
@@ -155,8 +156,9 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     <span className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-500 text-[10px]">₹</span>
                                     <input
                                         type="number"
-                                        value={item.Net_Line_Amount || 0}
+                                        value={readOnly ? (parseFloat(item.Net_Line_Amount) || 0).toFixed(2) : (item.Net_Line_Amount || 0)}
                                         onChange={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
+                                        onBlur={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value).toFixed(2))}
                                         className={`w-16 bg-transparent outline-none font-mono text-right text-base font-bold pl-2 disabled:text-green-500
                                              ${item.Is_Calculated
                                                 ? 'text-amber-400 focus:text-amber-300 bg-amber-900/20 rounded'
