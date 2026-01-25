@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Save, Search, DollarSign, Warehouse, Tag, AlertCircle, CheckCircle, ArrowLeft, Plus, X, Check, FlaskConical, Stethoscope, Factory } from 'lucide-react';
+import { Package, Save, Search, DollarSign, Warehouse, Tag, AlertCircle, CheckCircle, ArrowLeft, Plus, X, Check, FlaskConical, Stethoscope, Factory, IndianRupee } from 'lucide-react';
 import { saveProduct, getReviewQueue, getAllProducts, getProductHistory, renameProduct, linkProductAlias } from '../../services/api';
 
 const ItemMaster = () => {
@@ -22,7 +22,9 @@ const ItemMaster = () => {
         // schedule: '', // Removed as per request
         supplier_name: '',
         last_purchase_date: '',
+        last_purchase_date: '',
         saved_by: '',
+        base_unit: 'Tablet', // Default unit
 
         is_verified: false,
         packaging_variants: []
@@ -262,14 +264,24 @@ const ItemMaster = () => {
                         {/* List Area */}
                         <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
                             {(sidebarTab === 'review' ? reviewQueue : allItems)
-                                .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                .filter(item =>
+                                    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (item.item_code && item.item_code.toLowerCase().includes(searchTerm.toLowerCase()))
+                                )
                                 .map((item, idx) => (
                                     <div
                                         key={idx}
                                         onClick={() => handleQueueItemClick(item)}
                                         className={`p-3 rounded-lg border cursor-pointer transition-all hover:bg-slate-800 ${formData.name === item.name ? 'border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/20' : 'border-slate-800 bg-slate-900/40'}`}
                                     >
-                                        <div className="font-semibold text-sm text-slate-200 truncate">{item.name}</div>
+                                        <div className="font-semibold text-sm text-slate-200 truncate flex items-center gap-2">
+                                            <span className="truncate">{item.name}</span>
+                                            {item.item_code && (
+                                                <span className="shrink-0 px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 text-[10px] font-mono border border-slate-600">
+                                                    {item.item_code}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="flex justify-between items-center mt-1">
                                             <span className="text-[10px] text-slate-500 flex items-center gap-1">
                                                 {item.hsn_code || 'No HSN'}
@@ -312,9 +324,9 @@ const ItemMaster = () => {
                                                 <AlertCircle className="w-3 h-3" /> DRAFT
                                             </span>
                                         )}
-                                        {formData.category && (
+                                        {formData.base_unit && (
                                             <span className="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 text-[10px] font-bold border border-slate-600">
-                                                {formData.category}
+                                                {formData.base_unit}
                                             </span>
                                         )}
                                     </div>
@@ -332,7 +344,7 @@ const ItemMaster = () => {
 
                             {/* Tabs */}
                             <div className="flex gap-6 text-sm font-medium overflow-x-auto no-scrollbar">
-                                {['overview', 'pricing', 'inventory', 'packaging', 'history'].map(tab => (
+                                {['overview', 'pricing', 'inventory_packaging', 'history'].map(tab => (
                                     <button
                                         key={tab}
                                         onClick={() => setActiveTab(tab)}
@@ -341,7 +353,7 @@ const ItemMaster = () => {
                                             : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
                                             }`}
                                     >
-                                        {tab}
+                                        {tab === 'inventory_packaging' ? 'Packaging/ Item Management' : tab}
                                     </button>
                                 ))}
                             </div>
@@ -362,7 +374,7 @@ const ItemMaster = () => {
                                         {renderInput('Manufacturer', 'manufacturer', 'text', <Factory className="w-3 h-3" />, 'Cipla, Sun Pharma...')}
                                         {renderInput('Salt Composition', 'salt_composition', 'text', <FlaskConical className="w-3 h-3" />, 'Paracetamol 500mg...')}
 
-                                        {renderInput('Category', 'category', 'text', <Package className="w-3 h-3" />, 'Tablet, Syrup, Injection')}
+
 
 
                                         {/* Source Information (Read Only) */}
@@ -381,7 +393,7 @@ const ItemMaster = () => {
                                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
 
                                         {/* 1. Metric Cards (Real-time Analysis) */}
-                                        <div className="grid grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             {/* Landing Cost */}
                                             <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
                                                 <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Effective Landing Cost</div>
@@ -431,7 +443,7 @@ const ItemMaster = () => {
                                             {/* Cost Side */}
                                             <div className="space-y-4">
                                                 <h3 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-700 pb-2 mb-4">Cost Structure</h3>
-                                                {renderInput('Purchase Price (Base Rate)', 'purchase_price', 'number', <DollarSign className="w-3 h-3 text-slate-400" />)}
+                                                {renderInput('Purchase Price (Base Rate)', 'purchase_price', 'number', <IndianRupee className="w-3 h-3 text-slate-400" />)}
                                                 {renderInput('Tax Rate (GST %)', 'tax_rate', 'number', <span className="text-xs font-bold">%</span>)}
                                                 {renderInput('HSN / SAC Code', 'hsn_code', 'text', <Search className="w-3 h-3" />)}
                                             </div>
@@ -441,7 +453,7 @@ const ItemMaster = () => {
                                                 <h3 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-700 pb-2 mb-4">Revenue & Pricing</h3>
 
                                                 <div className="p-1 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
-                                                    {renderInput('Sale Price (MRP)', 'sale_price', 'number', <DollarSign className="w-3 h-3 text-emerald-400" />)}
+                                                    {renderInput('Sale Price (MRP)', 'sale_price', 'number', <IndianRupee className="w-3 h-3 text-emerald-400" />)}
                                                 </div>
 
                                                 <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 mt-4">
@@ -458,60 +470,119 @@ const ItemMaster = () => {
                                     </div>
                                 )}
 
-                                {/* INVENTORY TAB */}
-                                {activeTab === 'inventory' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                        {renderInput('Opening Stock', 'opening_stock', 'number', <Warehouse className="w-3 h-3" />)}
-                                        {renderInput('Minimum Stock Alert', 'min_stock', 'number', <AlertCircle className="w-3 h-3" />)}
-                                        <div className="col-span-2">
-                                            {renderInput('Rack Location', 'location', 'text', <Tag className="w-3 h-3" />, 'A-12-04')}
+                                {/* INVENTORY & PACKAGING (Consolidated) */}
+                                {activeTab === 'inventory_packaging' && (
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+                                        {/* 1. Inventory Control */}
+                                        <div className="bg-slate-900/40 rounded-xl border border-slate-700/50 p-5">
+                                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5 flex items-center gap-2">
+                                                <Warehouse className="w-4 h-4" /> Inventory Control
+                                            </h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="col-span-2 md:col-span-1">
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Product Type</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            value={formData.base_unit || 'Tablet'}
+                                                            onChange={(e) => setFormData({ ...formData, base_unit: e.target.value })}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none appearance-none"
+                                                        >
+                                                            <option value="Tablet">Tablet</option>
+                                                            <option value="Capsule">Capsule</option>
+                                                            <option value="Syrup">Syrup</option>
+                                                            <option value="Injection">Injection</option>
+                                                            <option value="Softgel">Softgel</option>
+                                                            <option value="Powder">Powder</option>
+                                                            <option value="Liquid">Liquid</option>
+                                                            <option value="Cream">Cream</option>
+                                                            <option value="Gel">Gel</option>
+                                                            <option value="Drops">Drops</option>
+                                                            <option value="Spray">Spray</option>
+                                                        </select>
+                                                        <div className="absolute right-4 top-3 pointer-events-none text-slate-500">
+                                                            <Package className="w-4 h-4" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {renderInput(`Opening Stock (in ${formData.base_unit || 'Strip'}s)`, 'opening_stock', 'number', <Warehouse className="w-3 h-3" />)}
+                                                {renderInput('Minimum Stock Alert', 'min_stock', 'number', <AlertCircle className="w-3 h-3" />)}
+                                                <div className="col-span-2">
+                                                    {renderInput('Rack Location', 'location', 'text', <Tag className="w-3 h-3" />, 'A-12-04')}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 2. Packaging Hierarchy */}
+                                        <div className="bg-slate-900/40 rounded-xl border border-slate-700/50 p-5">
+                                            <div className="flex justify-between items-center mb-5">
+                                                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                                    <Package className="w-4 h-4" /> Packaging Hierarchy
+                                                </h3>
+                                                <button onClick={() => setFormData(p => ({ ...p, packaging_variants: [...p.packaging_variants, { unit_name: 'Box', pack_size: '1x10', mrp: 0, conversion_factor: 10 }] }))} className="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition-colors text-blue-400 border border-slate-600 flex items-center gap-1">
+                                                    <Plus className="w-3 h-3" /> Add Level
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                {formData.packaging_variants.length === 0 ? (
+                                                    <div className="text-center py-8 border border-dashed border-slate-800 rounded-lg text-slate-500 text-xs italic">
+                                                        No alternative packaging defined (e.g. Boxes, Cartons).
+                                                    </div>
+                                                ) : (
+                                                    formData.packaging_variants.map((v, i) => (
+                                                        <div key={i} className="grid grid-cols-12 gap-3 p-3 bg-slate-900 rounded-lg border border-slate-800 items-center">
+                                                            <div className="col-span-3">
+                                                                <label className="text-[9px] text-slate-500 uppercase mb-1 block">Unit</label>
+                                                                <input placeholder="Box" value={v.unit_name} onChange={e => {
+                                                                    const newV = [...formData.packaging_variants];
+                                                                    newV[i].unit_name = e.target.value;
+                                                                    setFormData({ ...formData, packaging_variants: newV });
+                                                                }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500" />
+                                                            </div>
+                                                            <div className="col-span-3">
+                                                                <label className="text-[9px] text-slate-500 uppercase mb-1 block">Pack</label>
+                                                                <input placeholder="10x10" value={v.pack_size} onChange={e => {
+                                                                    const newV = [...formData.packaging_variants];
+                                                                    newV[i].pack_size = e.target.value;
+                                                                    setFormData({ ...formData, packaging_variants: newV });
+                                                                }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500" />
+                                                            </div>
+                                                            <div className="col-span-2">
+                                                                <label className="text-[9px] text-slate-500 uppercase mb-1 block">MRP</label>
+                                                                <input type="number" placeholder="0" value={v.mrp} onChange={e => {
+                                                                    const newV = [...formData.packaging_variants];
+                                                                    newV[i].mrp = parseFloat(e.target.value);
+                                                                    setFormData({ ...formData, packaging_variants: newV });
+                                                                }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500 text-right" />
+                                                            </div>
+                                                            <div className="col-span-3">
+                                                                <label className="text-[9px] text-slate-500 uppercase mb-1 block">Units</label>
+                                                                <input type="number" placeholder="10" value={v.conversion_factor} onChange={e => {
+                                                                    const newV = [...formData.packaging_variants];
+                                                                    newV[i].conversion_factor = parseFloat(e.target.value);
+                                                                    setFormData({ ...formData, packaging_variants: newV });
+                                                                }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500 text-center" />
+                                                            </div>
+                                                            <div className="col-span-1 text-right pt-4">
+                                                                <button onClick={() => {
+                                                                    const newV = [...formData.packaging_variants];
+                                                                    newV.splice(i, 1);
+                                                                    setFormData({ ...formData, packaging_variants: newV });
+                                                                }} className="text-slate-600 hover:text-red-400 transition-colors">
+                                                                    <X className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 )}
 
                                 {/* PACKAGING TAB */}
-                                {activeTab === 'packaging' && (
-                                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                        <div className="bg-slate-900/50 rounded-xl border border-slate-700 p-4">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <h3 className="text-sm font-bold text-slate-300 uppercase">Packaging Hierarchy</h3>
-                                                <button onClick={() => setFormData(p => ({ ...p, packaging_variants: [...p.packaging_variants, { unit_name: 'Box', pack_size: '1x10', mrp: 0, conversion_factor: 10 }] }))} className="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition-colors text-blue-400 border border-slate-600">
-                                                    + Add Level
-                                                </button>
-                                            </div>
-                                            <div className="space-y-3">
-                                                {formData.packaging_variants.length === 0 && (
-                                                    <div className="text-center py-6 text-slate-500 text-sm italic">No packaging defined. Add a variant like "Strip" or "Box".</div>
-                                                )}
-                                                {formData.packaging_variants.map((variant, idx) => (
-                                                    <div key={idx} className="grid grid-cols-12 gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700 items-start">
-                                                        <div className="col-span-3 space-y-1">
-                                                            <label className="text-[9px] text-slate-500 uppercase">Unit Name</label>
-                                                            <input type="text" value={variant.unit_name} onChange={e => { const v = [...formData.packaging_variants]; v[idx].unit_name = e.target.value; setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
-                                                        </div>
-                                                        <div className="col-span-3 space-y-1">
-                                                            <label className="text-[9px] text-slate-500 uppercase">Pack Size</label>
-                                                            <input type="text" value={variant.pack_size} onChange={e => { const v = [...formData.packaging_variants]; v[idx].pack_size = e.target.value; setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
-                                                        </div>
-                                                        <div className="col-span-2 space-y-1">
-                                                            <label className="text-[9px] text-slate-500 uppercase">MRP</label>
-                                                            <input type="number" value={variant.mrp} onChange={e => { const v = [...formData.packaging_variants]; v[idx].mrp = parseFloat(e.target.value); setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-right" />
-                                                        </div>
-                                                        <div className="col-span-3 space-y-1">
-                                                            <label className="text-[9px] text-slate-500 uppercase">Base Units</label>
-                                                            <input type="number" value={variant.conversion_factor} onChange={e => { const v = [...formData.packaging_variants]; v[idx].conversion_factor = parseFloat(e.target.value); setFormData(p => ({ ...p, packaging_variants: v })) }} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-center" />
-                                                        </div>
-                                                        <div className="col-span-1 flex justify-end pt-4">
-                                                            <button onClick={() => { const v = formData.packaging_variants.filter((_, i) => i !== idx); setFormData(p => ({ ...p, packaging_variants: v })) }} className="text-slate-500 hover:text-red-400">
-                                                                <X className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+
 
                                 {/* HISTORY TAB */}
                                 {activeTab === 'history' && (

@@ -1,12 +1,49 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from src.domain.schemas import InvoiceExtraction, NormalizedLineItem
 from src.domain.normalization import parse_float
 import os
 import json
+import re
 from src.utils.logging_config import get_logger
 from src.services.embeddings import generate_embedding
 
 logger = get_logger(__name__)
+
+def init_db_constraints(driver):
+    """
+    Ensures unique constraints exist for GlobalProduct item_code.
+    """
+    query = "CREATE CONSTRAINT item_code_unique IF NOT EXISTS FOR (p:GlobalProduct) REQUIRE p.item_code IS UNIQUE"
+    try:
+        with driver.session() as session:
+            session.run(query)
+            logger.info("Checked/Created Unique Constraint for GlobalProduct.item_code")
+    except Exception as e:
+        logger.error(f"Failed to create constraint: {e}")
+
+def _generate_sku(tx, product_name: str) -> str:
+    """
+    Generates a Name-Based SKU (e.g., 'DOL-001') using a transactional counter.
+    Format: AAA-NNN (First 3 letters of name - Sequential Number)
+    """
+    if not product_name:
+        return "UNK-000"
+        
+    # 1. Extract Prefix (First 3 uppercase letters)
+    clean_name = re.sub(r'[^a-zA-Z]', '', product_name).upper()
+    prefix = (clean_name[:3] if len(clean_name) >= 3 else clean_name.ljust(3, 'X'))
+    
+    # 2. Atomically Increment Counter for this Prefix
+    query = """
+    MERGE (c:SkuCounter {prefix: $prefix})
+    SET c.current_count = coalesce(c.current_count, 0) + 1
+    RETURN c.current_count as num
+    """
+    result = tx.run(query, prefix=prefix).single()
+    count = result["num"]
+    
+    # 3. Format SKU
+    return f"{prefix}-{count:03d}"
 
 def upsert_user(driver, user_data: Dict[str, Any]):
     """
@@ -34,7 +71,6 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
     """
     
     # Calculate Grand Total from line items to ensure consistency
-    # Calculate Grand Total from line items to ensure consistency
     grand_total = 0.0
     for item in normalized_items:
         try:
@@ -58,21 +94,16 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
             # Clean up existing line items if re-ingesting to prevent duplicates
             session.run("MATCH (i:Invoice {invoice_number: $no})-[r:CONTAINS]->(l:Line_Item) DELETE r, l", no=invoice_data.Invoice_No)
 
+            # Process each item using the atomic transaction
             for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
                 session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item, user_email)
                 
             # 4. Save Invoice Example for RAG (Few-Shot)
-            # Only if raw_text is available
             if invoice_data.raw_text:
                 logger.info("Generating Vector Embedding for Invoice Example...")
                 try:
-                    # Prepare JSON Payload (Full Extraction)
-                    # We save the verified extraction as the 'ground truth' for this text
                     json_payload = invoice_data.model_dump_json() if hasattr(invoice_data, 'model_dump_json') else invoice_data.json()
-                    
-                    # Generate Embedding
                     embedding = generate_embedding(invoice_data.raw_text)
-                    
                     if embedding:
                         session.execute_write(
                             _create_invoice_example_tx, 
@@ -82,12 +113,145 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
                             embedding
                         )
                 except Exception as e:
-                    # Non-blocking error for RAG
                     logger.error(f"Failed to save Invoice Example: {e}")
 
     except Exception as e:
         logger.error(f"Detailed Ingestion Error for Invoice {invoice_data.Invoice_No}: {e}")
         raise e
+
+def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: Any, user_email: str):
+    query = """
+    MATCH (u:User {email: $user_email})
+    MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
+    
+    // 1. Alias Lookup & Product Resolution
+    OPTIONAL MATCH (alias:ProductAlias {raw_name: $standard_item_name})-[:MAPS_TO]->(master:GlobalProduct)
+    
+    // Determine final name: Use Master if alias found, else use incoming name
+    WITH coalesce(master.name, $standard_item_name) as final_product_name, u, i
+    
+    // 2. Merge Global Product
+    MERGE (gp:GlobalProduct {name: final_product_name})
+    
+    // Ensure User manages this product
+    MERGE (u)-[:MANAGES]->(gp)
+    
+    ON CREATE SET 
+        gp.is_verified = false,
+        gp.needs_review = true,
+        gp.created_at = timestamp()
+        
+    // ----------------------------------------------------
+    // ATOMIC SKU GENERATION (Name-Based: AAA-NNN)
+    // ----------------------------------------------------
+    WITH gp, u, i,
+         toUpper(substring(replace(final_product_name, ' ', ''), 0, 3)) as raw_p
+    
+    WITH gp, u, i,
+         CASE WHEN size(raw_p) < 3 THEN raw_p + substring("XXX", 0, 3 - size(raw_p)) ELSE raw_p END as prefix
+         
+    // Conditional Lock & Increment if item_code is missing
+    FOREACH (_ IN CASE WHEN gp.item_code IS NULL THEN [1] ELSE [] END |
+        MERGE (c:SkuCounter {prefix: prefix})
+        SET c.current_count = coalesce(c.current_count, 0) + 1
+        SET gp.item_code = prefix + "-" + right("000" + toString(c.current_count), 3)
+    )
+    // ----------------------------------------------------
+    
+    // 3. Merge HSN Node
+    MERGE (h:HSN {code: $hsn_code})
+    
+    // 4. Create Line Item
+    CREATE (l:Line_Item {
+        pack_size: $pack_size,
+        quantity: $quantity,
+        net_amount: $net_amount,
+        batch_no: $batch_no,
+        hsn_code: $hsn_code,
+        mrp: $mrp,
+        expiry_date: $expiry_date,
+        landing_cost: $landing_cost,
+        logic_note: $logic_note,
+        
+        // Pharma Fields
+        salt: $salt,
+        category: $category,
+        manufacturer: $manufacturer,
+        unit_1st: $unit_1st,
+        unit_2nd: $unit_2nd,
+        sales_rate_a: $sales_rate_a,
+        sales_rate_b: $sales_rate_b,
+        sales_rate_c: $sales_rate_c,
+        sgst_percent: $sgst_percent,
+        cgst_percent: $cgst_percent,
+        igst_percent: $igst_percent
+    })
+    
+    // 5. Connect Graph
+    MERGE (i)-[:CONTAINS]->(l)
+    MERGE (l)-[:IS_VARIANT_OF]->(gp)
+    MERGE (l)-[:BELONGS_TO_HSN]->(h)
+    
+    // 6. Multi-Unit Packaging Tracking
+    MERGE (pv:PackagingVariant {pack_size: $pack_size, product_name: final_product_name})
+    MERGE (gp)-[:HAS_VARIANT]->(pv)
+    MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
+    
+    ON CREATE SET
+        pv.unit_name = $unit_2nd,
+        pv.mrp = $mrp,
+        pv.conversion_factor = 1,
+        pv.created_at = timestamp(),
+        gp.needs_review = true
+        
+    ON MATCH SET
+        pv.mrp = $mrp,
+        pv.updated_at = timestamp()
+        
+    // 7. Update Master Data with latest pricing
+    SET gp.sale_price = coalesce($mrp, gp.sale_price),
+        gp.purchase_price = coalesce($rate, gp.purchase_price),
+        gp.tax_rate = coalesce($total_tax_rate, gp.tax_rate),
+        gp.hsn_code = coalesce($hsn_code, gp.hsn_code)
+    """
+    
+    logger.info(f"DEBUG_TX: Ingesting '{item.get('Standard_Item_Name')}' (Pack: {item.get('Pack_Size_Description')})")
+    
+    # Calculate Total Tax %
+    s = item.get("SGST_Percent") or 0.0
+    c = item.get("CGST_Percent") or 0.0
+    i = item.get("IGST_Percent") or 0.0
+    total_tax_rate = s + c + i
+    
+    tx.run(query,
+           user_email=user_email,
+           invoice_no=invoice_no,
+           standard_item_name=item.get("Standard_Item_Name"),
+           pack_size=item.get("Pack_Size_Description") or "1x1",
+           quantity=item.get("Standard_Quantity"),
+           net_amount=item.get("Net_Line_Amount"),
+           batch_no=item.get("Batch_No"),
+           hsn_code=item.get("HSN_Code") or "UNKNOWN", 
+           mrp=item.get("MRP", 0.0),
+           rate=item.get("Rate", 0.0),
+           total_tax_rate=total_tax_rate,
+           expiry_date=item.get("Expiry_Date"),
+           landing_cost=item.get("Final_Unit_Cost", 0.0),
+           logic_note=item.get("Logic_Note", "N/A"),
+           
+           salt=item.get("Salt"),
+           category=item.get("Category"),
+           manufacturer=item.get("Manufacturer"),
+           unit_1st=item.get("Unit_1st"),
+           unit_2nd=item.get("Unit_2nd"),
+           sales_rate_a=item.get("Sales_Rate_A"),
+           sales_rate_b=item.get("Sales_Rate_B"),
+           sales_rate_c=item.get("Sales_Rate_C"),
+           sgst_percent=item.get("SGST_Percent"),
+           cgst_percent=item.get("CGST_Percent"),
+           igst_percent=item.get("IGST_Percent")
+    )
+
 
 def _merge_supplier_tx(tx, name, details, user_email):
     query = """
