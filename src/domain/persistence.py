@@ -34,7 +34,14 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
     """
     
     # Calculate Grand Total from line items to ensure consistency
-    grand_total = sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
+    # Calculate Grand Total from line items to ensure consistency
+    grand_total = 0.0
+    for item in normalized_items:
+        try:
+            val = float(item.get("Net_Line_Amount", 0.0))
+        except (ValueError, TypeError):
+            val = 0.0
+        grand_total += val
     
     try:
         with driver.session() as session:
@@ -576,34 +583,38 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
     MERGE (l)-[:BELONGS_TO_HSN]->(h)
     
     // 5. Multi-Unit Packaging Tracking
-    // We treat the 'pack_size' string (e.g., "1x10") as the unique identifier for a variant of this product.
-    // KEY CHANGE: We use final_product_name (resolved alias) instead of generic standard_item_name
     MERGE (pv:PackagingVariant {pack_size: $pack_size, product_name: final_product_name})
-    
-    // Link Product -> Variant
     MERGE (gp)-[:HAS_VARIANT]->(pv)
-    
-    // Link Line Item -> Variant (Track inventory per line specific to this pack)
     MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
     
-    // On Create of NEW Variant:
-    // 1. Set details
-    // 2. Mark Global Product as 'needs_review' because we found a new pack size
     ON CREATE SET
-        pv.unit_name = $unit_2nd, // Use extracted unit (e.g. Box/Strip) if available
+        pv.unit_name = $unit_2nd,
         pv.mrp = $mrp,
-        pv.conversion_factor = 1, // Default, needs manual update or deeper logic
+        pv.conversion_factor = 1,
         pv.created_at = timestamp(),
         gp.needs_review = true
         
-    // On Match (Existing Variant):
-    // 1. Update MRP (keep latest)
     ON MATCH SET
         pv.mrp = $mrp,
         pv.updated_at = timestamp()
+        
+    // 6. UPDATE MASTER DATA (GlobalProduct) with latest pricing
+    // Moved to end to avoid breaking MERGE (pv) ... ON CREATE flow
+    SET gp.sale_price = coalesce($mrp, gp.sale_price),
+        gp.purchase_price = coalesce($rate, gp.purchase_price),
+        gp.tax_rate = coalesce($total_tax_rate, gp.tax_rate),
+        gp.hsn_code = coalesce($hsn_code, gp.hsn_code)
     """
+
     
     logger.info(f"DEBUG_TX: Linking Variant pack_size={item.get('Pack_Size_Description')} to product={item.get('Standard_Item_Name')}")
+    
+    # Calculate Total Tax %
+    s = item.get("SGST_Percent") or 0.0
+    c = item.get("CGST_Percent") or 0.0
+    i = item.get("IGST_Percent") or 0.0
+    total_tax_rate = s + c + i
+    
     tx.run(query,
            user_email=user_email,
            invoice_no=invoice_no,
@@ -614,6 +625,8 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            batch_no=item.get("Batch_No"),
            hsn_code=item.get("HSN_Code") or "UNKNOWN", 
            mrp=item.get("MRP", 0.0),
+           rate=item.get("Rate", 0.0), # Pass Rate
+           total_tax_rate=total_tax_rate, # Pass Tax
            expiry_date=item.get("Expiry_Date"),
            landing_cost=item.get("Final_Unit_Cost", 0.0),
            logic_note=item.get("Logic_Note", "N/A"),

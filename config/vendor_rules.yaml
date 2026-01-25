@@ -31,6 +31,13 @@ vendors:
       "Pcode": "Batch"
       "P.Code": "Batch"
       "P Code": "Batch"
+      "Net Amt": "Amount"
+      "Net Amount": "Amount"
+      "SGST Amt": "SGST_Amount"
+      "CGST Amt": "CGST_Amount"
+    extraction_notes: |
+      - Ignore "Total Qty" column (it duplicates Pcs).
+      - Map "Pcs" to Quantity.
     calculation_rules: {}
   "sood medicos":
     calculation_rules: {}

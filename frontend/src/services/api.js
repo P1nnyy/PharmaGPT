@@ -138,13 +138,13 @@ export const saveProduct = async (productData) => {
 };
 
 export const renameProduct = async (oldName, newName) => {
-    const response = await api.post(`/products/${encodeURIComponent(oldName)}/rename`, { new_name: newName });
+    const response = await api.post(`/products/rename?name=${encodeURIComponent(oldName)}`, { new_name: newName });
     return response.data;
 };
 
 export const linkProductAlias = async (masterName, alias) => {
     console.log("Calling linkProductAlias", masterName, alias);
-    const response = await api.post(`/products/${encodeURIComponent(masterName)}/alias`, { alias });
+    const response = await api.post(`/products/alias?name=${encodeURIComponent(masterName)}`, { alias });
     return response.data;
 };
 
@@ -154,7 +154,7 @@ export const getAllProducts = async () => {
 };
 
 export const getProductHistory = async (name) => {
-    const response = await api.get(`/products/${encodeURIComponent(name)}/history`);
+    const response = await api.get(`/products/history?name=${encodeURIComponent(name)}`);
     return response.data;
 };
 

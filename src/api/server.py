@@ -45,8 +45,8 @@ app = FastAPI(title="Invoice Extractor API")
 
 
 # Mount Static Directory
-os.makedirs("static/invoices", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# os.makedirs("static/invoices", exist_ok=True)
+# app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- Middleware ---
 @app.middleware("http")
@@ -185,8 +185,6 @@ async def get_drafts(user_email: str = Depends(get_current_user_email)):
     from src.domain.persistence import get_draft_invoices
     return get_draft_invoices(driver, user_email)
 
-    return get_draft_invoices(driver, user_email)
-
 @app.delete("/invoices/drafts")
 async def clear_drafts(user_email: str = Depends(get_current_user_email)):
     """
@@ -264,25 +262,27 @@ async def upload_batch(
             shutil.copyfileobj(file.file, tmp)
             processing_path = tmp.name
         
-        # OPTIMIZATION: Skip Synchronous R2 Upload to prevent UI Blocking (15-20s delay)
-        # Always serve locally first for speed.
-        # We will upload to R2 in the background task if needed.
-        
-        local_dest = os.path.join("static/invoices", filename)
-        shutil.copy(processing_path, local_dest)
-        
-        # Construct Local URL
-        base = get_base_url().rstrip('/')
-        public_url = f"{base}/static/invoices/{filename}"
+        # 2. Upload to R2 Synchronously (Enforce Cloud Storage)
+        public_url = None
+        try:
+            # Re-open temp file for reading to upload
+            with open(processing_path, "rb") as f_read:
+                 public_url = upload_to_r2(f_read, filename)
+        except Exception as e:
+            logger.error(f"Failed to upload to R2: {e}")
             
-        # 2. Create Neo4j Node 'PROCESSING'
+        if not public_url:
+             logger.error(f"Critical: R2 Upload failed for {filename}. Persistence will rely on local temp path for now, but UI will fail.")
+             # We allow it to proceed so we don't lose the user's data processing, but the image might be broken.
+            
+        # 3. Create Neo4j Node 'PROCESSING'
         create_processing_invoice(driver, invoice_id, file.filename, public_url, user_email)
         
-        # 3. Trigger Background Task
-        # Check if upload_to_r2 is needed in background
-        background_tasks.add_task(process_invoice_background, invoice_id, processing_path, public_url, user_email, file.filename, True)
+        # 4. Trigger Background Task
+        # process_invoice_background will use local_path for OCR, but public_url for record.
+        background_tasks.add_task(process_invoice_background, invoice_id, processing_path, public_url, user_email, file.filename)
         
-        # 4. Return Placeholder
+        # 5. Return Placeholder
         temp_results.append({
             "id": invoice_id,
             "status": "processing",
@@ -292,24 +292,12 @@ async def upload_batch(
         
     return temp_results
 
-async def process_invoice_background(invoice_id, local_path, public_url, user_email, original_filename, upload_r2: bool = False):
+async def process_invoice_background(invoice_id, local_path, public_url, user_email, original_filename):
     """
     Background Task: Runs extraction and updates DB status.
     """
     from src.domain.persistence import update_invoice_status
     driver = get_db_driver()
-    
-    # Lazy Upload to R2 (if requested)
-    if upload_r2:
-        try:
-            with open(local_path, "rb") as f_read:
-                r2_url = upload_to_r2(f_read, original_filename)
-                if r2_url:
-                    public_url = r2_url
-                    print(f"Background R2 Upload Success: {public_url}")
-        except Exception as e:
-             print(f"Background R2 Upload Failed: {e}") 
-             # Continue with local URL
     
     try:
         print(f"Starting Background Processing for {invoice_id}...")
@@ -317,9 +305,6 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         # Run Extraction
         extracted_data = await run_extraction_pipeline(local_path, user_email, public_url=public_url)
         
-        if extracted_data is None:
-             raise ValueError("Extraction yielded None")
-             
         if extracted_data is None:
              raise ValueError("Extraction yielded None")
              

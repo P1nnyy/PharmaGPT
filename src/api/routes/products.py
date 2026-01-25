@@ -209,8 +209,8 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
         
     return {"status": "success", "message": f"Product '{product.name}' saved successfully."}
 
-@router.post("/{name}/rename", response_model=Dict[str, str])
-async def rename_product(name: str, payload: Dict[str, str], user_email: str = Depends(get_current_user_email)):
+@router.post("/rename", response_model=Dict[str, str])
+async def rename_product(payload: Dict[str, str], name: str = Query(..., description="Current product name"), user_email: str = Depends(get_current_user_email)):
     """
     Rename a product. If new name exists, merges them. 
     Creates an alias for the old name.
@@ -232,8 +232,8 @@ async def rename_product(name: str, payload: Dict[str, str], user_email: str = D
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{name}/alias", response_model=Dict[str, str])
-async def add_alias(name: str, payload: Dict[str, str], user_email: str = Depends(get_current_user_email)):
+@router.post("/alias", response_model=Dict[str, str])
+async def add_alias(payload: Dict[str, str], name: str = Query(..., description="Master product name"), user_email: str = Depends(get_current_user_email)):
     """
     Manually add an alias to a Master Product.
     Used for Review Queue confirmation.
@@ -261,8 +261,8 @@ async def add_alias(name: str, payload: Dict[str, str], user_email: str = Depend
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{name}/history", response_model=List[Dict[str, Any]])
-async def get_product_history(name: str, user_email: str = Depends(get_current_user_email)):
+@router.get("/history", response_model=List[Dict[str, Any]])
+async def get_product_history(name: str = Query(..., description="Product name"), user_email: str = Depends(get_current_user_email)):
     """
     Fetch purchase history for a specific product name.
     """
