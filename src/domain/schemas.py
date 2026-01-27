@@ -10,6 +10,7 @@ class RawLineItem(BaseModel):
     Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
     Free: Optional[Union[str, float]] = Field(None, description="Free/Bonus Quantity.")
     Batch: Optional[str] = Field(None, description="Batch number.")
+    Category: Optional[str] = Field(None, description="Extracted Category (Tablet, Syrup, Injection, etc).")
     
     # New Blind Fields
     Amount: Optional[Union[str, float]] = Field(None, description="The neutral column value (Amount/Total) found on the invoice.")
@@ -22,6 +23,12 @@ class RawLineItem(BaseModel):
     Net_Line_Amount: Optional[float] = Field(None, description="Calculated Net Amount (Reconciled) from Solver.")
     Calculated_Cost_Price_Per_Unit: Optional[float] = Field(None, description="Calculated Cost Price Per Unit (Reconciled).")
     Logic_Note: Optional[str] = Field(None, description="Explanation of Solver logic.")
+    
+    # Tax Field
+    Raw_GST_Percentage: Optional[float] = Field(None, description="Extracted GST Percentage (Sum of SGST+CGST or IGST).")
+
+    # New Field for Manufacturer Extraction
+    Manufacturer: Optional[str] = Field(None, description="The manufacturer or company name extracted from the line item.")
 
 class InvoiceExtraction(BaseModel):
     """
@@ -51,7 +58,8 @@ class NormalizedLineItem(BaseModel):
     """
     Standard_Item_Name: str = Field(..., description="Standardized name of the item.")
     Pack_Size_Description: str = Field(..., description="Description of the pack size.")
-    Standard_Quantity: float = Field(..., description="Total units/packs.")
+    Standard_Quantity: float = Field(..., description="Total units/packs (Billed + Free).")
+    Free_Quantity: float = Field(default=0.0, description="Bonus/Free quantity included in Standard_Quantity.")
     
     # Net Amount (Passed Through)
     Net_Line_Amount: float = Field(..., description="Total final cost of the line item (Invoice Value).")
@@ -66,11 +74,14 @@ class NormalizedLineItem(BaseModel):
     Rate: Optional[float] = Field(None, description="Unit Price (Rate).")
     Expiry_Date: Optional[str] = Field(None, description="Expiry date.")
     Batch_No: Optional[str] = Field(None)
+    
+    # Financials
+    Calculated_Tax_Amount: Optional[float] = Field(None, description="Calculated Tax Amount based on Rate.")
 
     # --- New Ops/Pharma Fields ---
     Salt: Optional[str] = Field(None, description="Composition / Salt.")
     Category: Optional[str] = Field(None, description="Item Category (TAB, SYP, INJ, etc).")
-    Manufacturer: Optional[str] = Field(None, description="Manufacturer Name.")
+    Manufacturer: str = Field("Unknown", description="Standardized manufacturer name.")
     
     # Units
     Unit_1st: Optional[str] = Field(None, description="Primary Unit (e.g. TAB).")
@@ -134,7 +145,12 @@ class ProductRequest(BaseModel):
     # New Fields for Redesign
     manufacturer: Optional[str] = Field(None, description="Manufacturer Name.")
     salt_composition: Optional[str] = Field(None, description="Drug Composition.")
+    
+    # Updated Core Fields
     category: Optional[str] = Field(None, description="Product Category (e.g. Tablet, Syrup).")
+    rack_location: Optional[str] = Field(None, description="Physical storage location (e.g. A-12-04).")
+    min_stock_alert: Optional[int] = Field(None, description="Minimum stock threshold.")
+    
     schedule: Optional[str] = Field(None, description="Drug Schedule (e.g. H, H1).")
     
     # New: Multi-Unit Support

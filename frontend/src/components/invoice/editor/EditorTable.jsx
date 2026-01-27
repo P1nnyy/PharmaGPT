@@ -14,10 +14,11 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                             <div className="grid grid-cols-12 gap-4 mb-2 text-xs font-bold text-gray-500 uppercase tracking-wider px-4">
                                 <div className="col-span-1 text-center">#</div>
                                 <div className="col-span-3">Item Name</div>
+                                <div className="col-span-2">Mfr</div>
                                 <div className="col-span-2">Batch / Expiry</div>
-                                <div className="col-span-2 text-center">MRP</div>
+                                <div className="col-span-1 text-center">MRP</div>
                                 <div className="col-span-1 text-center">Qty</div>
-                                <div className="col-span-3 text-right">Net Amount</div>
+                                <div className="col-span-2 text-right">Net Amount</div>
                             </div>
                         </div>
 
@@ -42,6 +43,17 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                         />
                                     </div>
 
+                                    {/* Manufacturer (NEW) */}
+                                    <div className="col-span-2">
+                                        <input
+                                            value={item.Manufacturer || ''}
+                                            onChange={(e) => onInputChange(idx, 'Manufacturer', e.target.value)}
+                                            className="w-full bg-transparent outline-none text-xs text-gray-400 focus:text-indigo-300 placeholder-gray-700 border-b border-transparent focus:border-indigo-500 transition-colors py-1"
+                                            placeholder="Mfr"
+                                            disabled={readOnly}
+                                        />
+                                    </div>
+
                                     {/* Batch/Expiry Combined */}
                                     <div className="col-span-2 flex flex-col gap-1">
                                         <input
@@ -61,7 +73,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     </div>
 
                                     {/* MRP */}
-                                    <div className="col-span-2">
+                                    <div className="col-span-1">
                                         <input
                                             type="number"
                                             value={item.MRP || 0}
@@ -83,7 +95,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     </div>
 
                                     {/* Net Amount & Alert */}
-                                    <div className="col-span-3 text-right flex items-center justify-end gap-3 pr-4">
+                                    <div className="col-span-2 text-right flex items-center justify-end gap-3 pr-4">
                                         {/* Price Hike Warning */}
                                         {item.is_price_hike && (
                                             <div className="group/alert relative flex items-center justify-center w-8 h-8 bg-red-500/10 rounded-full animate-pulse">

@@ -179,6 +179,22 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     - **Rate**: Unit Price.
     - **Amount**: Net Total (Inclusive of Tax).
     - **MRP**: Max Retail Price.
+    - **Category**: Analyze Product Name & Pack Size.
+        • If 'ml', 'susp', 'syp' -> 'Syrup'.
+        • If 'inj', 'vial' -> 'Injection'.
+        • If 'tab', 'cap', 'strip' -> 'Tablet'.
+        • Default -> 'Unit'.
+
+    **SMART EXTRACTION RULES:**
+    1. **Manufacturer**: Extract from columns labeled Mfr, Mfg, CMPNY, or Company. If the table has a specific column for this, use it. If not, check if the Product Description starts with the company name (e.g., 'Cipla Dolo').
+        - Also check if it's hidden in the Batch column (prefixes like LUPIN..., CIPLA...).
+    2. **Tax Logic**: If line-item tax columns are ambiguous or empty, check the Invoice Footer text (e.g. "SGST 2.5%"). Apply this rate to all items in that slab.
+         - Example: "SGST 2.5% + CGST 2.5%" -> Tax Rate = 5.0%
+         - EXTRACT "Raw_GST_Percentage" if you see columns like "GST%", "Tax%", or split "SGST" + "CGST". Sum them if needed.
+    3. **Scheme/Free Logic**: Look for columns labeled "Free", "Scheme", "Bonus", or "Sch".
+         - Example: "10+2" Scheme -> Qty = 10, Free = 2.
+         - If the column contains "10+2", split it: Qty=10, Free=2.
+         - If separate "Free" column exists, map it to "Free".
     
     CRITICAL:
     1. **Merges**: DO NOT merge distinct products.
@@ -203,7 +219,10 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                 "HSN": "str",
                 "MRP": float,
                 "Rate": float,
-                "Amount": float
+                "Amount": float,
+                "Category": "str",
+                "Manufacturer": "str",
+                "Raw_GST_Percentage": float
             }}
         ]
     }}

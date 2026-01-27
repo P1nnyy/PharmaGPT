@@ -313,6 +313,9 @@ function App() {
         const newItems = [...newResult.normalized_items];
         newItems[index] = { ...newItems[index], [field]: value };
 
+        // Auto-update standard manufacturer if manually corrected? 
+        // For now just setting the field locally.
+
         newResult.normalized_items = newItems;
         return { ...item, result: newResult };
       }

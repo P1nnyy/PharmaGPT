@@ -249,6 +249,44 @@ def refine_extracted_fields(raw_item: Dict) -> Dict:
 
     return raw_item
 
+def parse_pack_size(pack_str: str) -> Dict[str, Union[str, int]]:
+    """
+    Parses a pack size string into structured components.
+    Example: "10 T" -> {unit: "Tablet", pack: "1x10"}
+    Example: "15 S" -> {unit: "Strip", pack: "1x15"}
+    """
+    if not pack_str:
+        return {"unit": "Unit", "pack": "1x1"}
+        
+    s = pack_str.strip().lower()
+    
+    # Logic 1: "10 S", "10s", "10 T", "10 strips"
+    # Matches <digits><optional space><suffix>
+    match = re.search(r'(\d+)\s*([a-z]+)', s)
+    if match:
+        qty = match.group(1)
+        suffix = match.group(2)
+        
+        unit = "Unit"
+        if suffix in ['s', 'str', 'strip', 'strips']: unit = "Strip"
+        elif suffix in ['t', 'tab', 'tabs', 'tablet', 'tablets']: unit = "Tablet"
+        elif suffix in ['c', 'cap', 'caps', 'capsule', 'capsules']: unit = "Capsule"
+        elif suffix in ['v', 'vial', 'vials']: unit = "Vial"
+        elif suffix in ['a', 'amp', 'ampoule', 'ampoules']: unit = "Ampoule"
+        elif suffix in ['b', 'bot', 'bottle', 'bottles']: unit = "Bottle"
+        
+        # If suffix didn't match a known unit, maybe it's just noise, but if it was "10s" we assume Strip.
+        # But wait, "10 g" -> Grams? We shouldn't default "10 g" to strip.
+        # Let's be strict.
+        if unit == "Unit" and suffix not in ['s']: 
+             # If suffix matches nothing known, return original (e.g. 15GM)
+             return {"unit": "Unit", "pack": pack_str}
+
+        return {"unit": unit, "pack": f"1x{qty}"}
+        
+    # Default Fallback
+    return {"unit": "Unit", "pack": pack_str}
+
 import math
 
 def parse_quantity(value: Union[str, float, None], free_qty: Union[str, float, None] = 0) -> int:

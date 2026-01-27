@@ -32,11 +32,16 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             # Scenario A: Table Extraction
             # Inject Column Aliases
             aliases = load_column_aliases().get("global_column_aliases", {})
+            # Flatten aliases for prompt context
+            alias_context = "\n".join([f"- **{k}**: {', '.join(v)}" for k, v in aliases.items()])
             
             prompt = f"""
             Target Zone: {description}
             
             TASK: EXTRACT RAW TABLE DATA (VERBATIM).
+            
+            **KNOWN COLUMN HEADERS (LOOK FOR THESE):**
+            {alias_context}
             
             Instructions:
             1. Look at the table in this image.
@@ -59,6 +64,7 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
             - **NO MERGING**: Do not merge distinct visual rows.
             - **COLUMNS**: Aggressively look for "Net Amount", "Total", "Amount", "Value".
+            - **MANUFACTURER**: Aggressively look for "Mfr", "CMPNY", "Co", "Make" columns. extract them!
             
             NEGATIVE CONSTRAINTS (CRITICAL):
             - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.

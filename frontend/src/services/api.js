@@ -85,7 +85,8 @@ export const discardInvoice = async (invoiceId) => {
 export const ingestInvoice = async (data) => {
     // data should match the ConfirmInvoiceRequest structure:
     // { invoice_data: {...}, normalized_items: [...] }
-    const response = await api.post('/confirm-invoice', data);
+    // normalizes items: [...] }
+    const response = await api.post('/invoices/confirm', data);
     return response.data;
 };
 

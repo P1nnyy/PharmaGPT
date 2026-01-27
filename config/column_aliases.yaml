@@ -107,3 +107,13 @@ global_column_aliases:
     - "SGST"
     - "CGST"
     - "IGST"
+    
+  # 12. Manufacturer
+  Manufacturer_Column:
+    - "Mfr"
+    - "Mfr."
+    - "Mfg"
+    - "Company"
+    - "CMPNY"
+    - "Make"
+    - "Co."
