@@ -99,9 +99,9 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            landing_cost=item.get("Final_Unit_Cost", 0.0),
            logic_note=item.get("Logic_Note", "N/A"),
            
-           salt=item.get("Salt"),
-           category=item.get("Category"),
-           manufacturer=item.get("Manufacturer"),
+           salt=item.get("salt_composition"), # UPDATED KEY
+           category=item.get("category") or item.get("Category"),
+           manufacturer=item.get("manufacturer"), # UPDATED KEY
            unit_1st=item.get("Unit_1st") or final_unit,
            unit_2nd=item.get("Unit_2nd") or final_unit,
            sales_rate_a=item.get("Sales_Rate_A"),

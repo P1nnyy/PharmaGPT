@@ -79,9 +79,13 @@ class NormalizedLineItem(BaseModel):
     Calculated_Tax_Amount: Optional[float] = Field(None, description="Calculated Tax Amount based on Rate.")
 
     # --- New Ops/Pharma Fields ---
-    Salt: Optional[str] = Field(None, description="Composition / Salt.")
+    is_enriched: bool = Field(False, description="True if data was fetched from the internet.")
+    salt_composition: Optional[str] = Field(None, description="Detailed salt composition from web.")
+    manufacturer: Optional[str] = Field(None, description="Manufacturer from web.")
+    
+    Salt: Optional[str] = Field(None, description="Composition / Salt (Legacy).")
     Category: Optional[str] = Field(None, description="Item Category (TAB, SYP, INJ, etc).")
-    Manufacturer: str = Field("Unknown", description="Standardized manufacturer name.")
+    Manufacturer: str = Field("Unknown", description="Standardized manufacturer name (Legacy).")
     
     # Units
     Unit_1st: Optional[str] = Field(None, description="Primary Unit (e.g. TAB).")

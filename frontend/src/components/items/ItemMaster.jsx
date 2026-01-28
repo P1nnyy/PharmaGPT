@@ -29,6 +29,7 @@ const ItemMaster = () => {
         saved_by: '',
         base_unit: 'Tablet',
         is_verified: false,
+        is_enriched: false,
         packaging_variants: []
     });
 
@@ -108,14 +109,15 @@ const ItemMaster = () => {
             ...prev,
             name: product.name || '',
             hsn_code: product.hsn_code || '',
-            sale_price: product.sale_price ?? 0,
-            purchase_price: product.purchase_price ?? 0,
+            sale_price: product.sale_price ? parseFloat(parseFloat(product.sale_price).toFixed(2)) : 0,
+            purchase_price: product.purchase_price ? parseFloat(parseFloat(product.purchase_price).toFixed(2)) : 0,
             tax_rate: product.tax_rate ?? (product.gst_percent ?? 0),
             opening_stock: product.opening_stock ?? (!product.is_verified ? (product.quantity ?? 0) : 0),
             min_stock: product.min_stock ?? 0,
             item_code: product.item_code || '',
             rack_location: product.rack_location || product.location || '',
             is_verified: product.is_verified,
+            is_enriched: product.is_enriched || false,
             manufacturer: product.manufacturer || '',
             salt_composition: product.salt_composition || '',
             category: product.category || '',

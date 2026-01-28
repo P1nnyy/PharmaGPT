@@ -1,8 +1,16 @@
 import React from 'react';
-import { Tag, Factory, FlaskConical, Warehouse, Search } from 'lucide-react';
+import { Tag, Factory, FlaskConical, Warehouse, Search, Globe } from 'lucide-react';
 import { InputField } from '../InputField';
 
 export const ItemOverview = ({ formData, handleInputChange }) => {
+
+    // Enrichment Indicator
+    const enrichmentBadge = formData.is_enriched ? (
+        <span title="Data fetched from internet - Please Verify" className="text-blue-400 ml-2 animate-pulse cursor-help">
+            <Globe className="w-3 h-3 inline" />
+        </span>
+    ) : null;
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="col-span-2">
@@ -17,7 +25,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
             </div>
 
             <InputField
-                label="Manufacturer"
+                label={<span className="flex items-center">Manufacturer {enrichmentBadge}</span>}
                 name="manufacturer"
                 value={formData.manufacturer}
                 onChange={handleInputChange}
@@ -26,7 +34,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
             />
 
             <InputField
-                label="Salt Composition"
+                label={<span className="flex items-center">Salt Composition {enrichmentBadge}</span>}
                 name="salt_composition"
                 value={formData.salt_composition}
                 onChange={handleInputChange}
@@ -43,6 +51,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
                     onChange={handleInputChange}
                     icon={<Warehouse className="w-3 h-3 text-slate-500" />}
                     placeholder="Read Only"
+                    readOnly={true}
                 />
                 <InputField
                     label="Purchase Date"
@@ -51,6 +60,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
                     onChange={handleInputChange}
                     icon={<Tag className="w-3 h-3 text-slate-500" />}
                     placeholder="Read Only"
+                    readOnly={true}
                 />
                 <InputField
                     label="Saved By"
@@ -59,6 +69,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
                     onChange={handleInputChange}
                     icon={<Tag className="w-3 h-3 text-slate-500" />}
                     placeholder="System"
+                    readOnly={true}
                 />
             </div>
 

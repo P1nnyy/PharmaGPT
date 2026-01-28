@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from langfuse.langchain import CallbackHandler
 from src.workflow.state import InvoiceState
-from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics, supplier_extractor
+from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics, supplier_extractor, researcher
 from src.utils.logging_config import get_logger
 
 # Setup Logging
@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 def build_graph():
     """
     Constructs the Invoice Extraction Graph.
-    Flow: START -> Surveyor -> Worker -> Mapper -> Auditor -> Detective -> END
+    Flow: START -> Surveyor -> Worker -> Mapper -> Auditor -> Detective -> Researcher -> Critic -> END
     """
     workflow = StateGraph(InvoiceState)
     
@@ -20,6 +20,7 @@ def build_graph():
     workflow.add_node("mapper", mapper.execute_mapping)
     workflow.add_node("auditor", auditor.audit_extraction)
     workflow.add_node("detective", detective.detective_work)
+    workflow.add_node("researcher", researcher.enrich_line_items) # New Agent
     workflow.add_node("critic", critic.critique_extraction)
     workflow.add_node("solver", mathematics.apply_correction)
     workflow.add_node("supplier_extractor", supplier_extractor.extract_supplier_details)
@@ -36,7 +37,8 @@ def build_graph():
     workflow.add_edge("worker", "mapper")
     workflow.add_edge("mapper", "auditor")
     workflow.add_edge("auditor", "detective")
-    workflow.add_edge("detective", "critic")
+    workflow.add_edge("detective", "researcher") # WAS detective -> critic
+    workflow.add_edge("researcher", "critic")
     
     # Conditional Feedback Loop
     def route_critic(state):

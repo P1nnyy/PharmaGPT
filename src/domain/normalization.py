@@ -406,7 +406,14 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict: # Note
             if raw_item.get("Expiry") and re.search(r'[/\-.]', str(raw_item.get("Expiry"))) # Must have separator
             and not re.match(r'^\d{6,8}$', str(raw_item.get("Expiry")).replace(" ", "")) # Must not be pure 8-digit HSN
             else None
-        )
+        ),
+        
+        # --- ENRICHMENT PASS-THROUGH ---
+        "manufacturer": raw_item.get("manufacturer") or raw_item.get("Manufacturer"),
+        "salt_composition": raw_item.get("salt_composition") or raw_item.get("Salt"),
+        "is_enriched": raw_item.get("is_enriched", False),
+        # Ensure Pack Size from Researcher takes precedence if Standardize didn't find one
+        "Pack_Size_Description": raw_item.get("Pack_Size_Description") or pack_size
     }
 
 def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: float) -> list:
