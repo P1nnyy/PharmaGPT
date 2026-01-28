@@ -3,7 +3,11 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Dict, Any
 from src.services.database import get_db_driver
 from src.api.routes.auth import get_current_user_email
-from src.domain.schemas import ProductRequest
+from src.domain.schemas import ProductRequest, EnrichedProductResponse
+from src.services.enrichment_agent import EnrichmentAgent
+
+# Global instance of EnrichmentAgent
+enrichment_agent = EnrichmentAgent()
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -27,6 +31,20 @@ async def search_products(q: str = Query(..., min_length=2)):
     with driver.session() as session:
         result = session.run(query, q=q)
         return [dict(record) for record in result]
+
+@router.get("/enrich", response_model=EnrichedProductResponse)
+async def enrich_product(
+    q: str = Query(..., min_length=2, description="Product Name to enrich"),
+    pack_size: str = Query(None, description="Local Pack Size validation hint")
+):
+    """
+    Enrich product data using the EnrichmentAgent (1mg + Gemini).
+    """
+    try:
+        result = enrichment_agent.enrich_product(q, local_pack_size=pack_size)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/review-queue", response_model=List[Dict[str, Any]])
 async def get_review_queue(user_email: str = Depends(get_current_user_email)):

@@ -166,13 +166,23 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str):
 
 def delete_redundant_draft(driver, invoice_id: str, user_email: str):
     """
-    Safely deletes a draft invoice ONLY if it is still in DRAFT/PROCESSING state.
-    Used during confirmation to clean up if a new node was created instead of updating.
+    Safely deletes a draft invoice ONLY if it has not been confirmed.
+    This handles cases where the draft remains after a new node was created for the confirmed invoice.
+    If the draft node itself was updated to CONFIRMED, it will be skipped (preserved).
     """
     query = """
     MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_id: $invoice_id})
-    WHERE i.status IN ['DRAFT', 'PROCESSING', 'ERROR']
+    WHERE i.status <> 'CONFIRMED'
     DETACH DELETE i
+    RETURN count(i) as deleted_count
     """
-    with driver.session() as session:
-        session.run(query, user_email=user_email, invoice_id=invoice_id)
+    try:
+        with driver.session() as session:
+            result = session.run(query, user_email=user_email, invoice_id=invoice_id).single()
+            count = result["deleted_count"] if result else 0
+            if count > 0:
+                logger.info(f"SUCCESS: Deleted redundant draft {invoice_id} for {user_email}.")
+            else:
+                logger.info(f"SKIPPED: Draft {invoice_id} not deleted. Count={count}. (Status might be CONFIRMED or ID mismatch)")
+    except Exception as e:
+        logger.error(f"Failed to delete redundant draft {invoice_id}: {e}")

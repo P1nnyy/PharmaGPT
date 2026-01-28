@@ -6,7 +6,7 @@ import os
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File
 from src.services.database import get_db_driver
 from src.services.storage import upload_to_r2
-from src.services.tasks import process_invoice_background
+from src.services.tasks import process_invoice_background, enrich_invoice_items_background
 from src.api.routes.auth import get_current_user_email
 from src.utils.logging_config import get_logger
 from src.domain.schemas import InvoiceExtraction
@@ -130,7 +130,7 @@ async def analyze_invoice(
 # Ideally we change to /invoices/confirm. Let's make it /confirm for now relative to router.
 
 @router.post("/confirm", response_model=Dict[str, Any])
-async def confirm_invoice(request: ConfirmInvoiceRequest, user_email: str = Depends(get_current_user_email)):
+async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: BackgroundTasks, user_email: str = Depends(get_current_user_email)):
     driver = get_db_driver()
     if not driver:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -168,9 +168,17 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, user_email: str = Depe
         ingest_invoice(driver, invoice_obj, request.normalized_items, user_email=user_email, supplier_details=supplier_details)
         
         draft_id = request.invoice_data.get("id")
+        logger.info(f"Confirming Invoice {invoice_obj.Invoice_No}. Draft ID provided: {draft_id}")
+        
         if draft_id:
             delete_redundant_draft(driver, draft_id, user_email)
+        else:
+            logger.warning("No Draft ID provided in request. Skipping draft cleanup.")
         
+        
+        # Trigger Automated Enrichment
+        background_tasks.add_task(enrich_invoice_items_background, request.normalized_items, user_email)
+
         return {
             "status": "success",
             "message": f"Invoice {invoice_obj.Invoice_No} persisted successfully.",

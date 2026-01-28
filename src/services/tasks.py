@@ -69,3 +69,72 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         # cleanup
         if os.path.exists(local_path):
             os.remove(local_path)
+
+async def enrich_invoice_items_background(normalized_items: list, user_email: str):
+    """
+    Background Task: Enriches all items in a saved invoice with manufacturer/salt details.
+    """
+    from src.services.enrichment_agent import EnrichmentAgent
+    
+    logger.info(f"Starting Bulk Enrichment for {len(normalized_items)} items...")
+    driver = get_db_driver()
+    agent = EnrichmentAgent()
+    
+    # Iterate and Enrich
+    for item in normalized_items:
+        product_name = item.get("Standard_Item_Name")
+        if not product_name:
+            continue
+            
+        try:
+            # Check if already enriched in DB? 
+            # Optimization: If db already has manufacturer, skip? 
+            # For now, let's trust the "latest" source or maybe skip if valid.
+            # But user might want to fill gaps. Let's check first.
+            
+            check_query = """
+            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
+            RETURN gp.manufacturer as m, gp.salt_composition as s
+            """
+            
+            needs_enrichment = True
+            with driver.session() as session:
+                rec = session.run(check_query, user_email=user_email, name=product_name).single()
+                if rec and rec["m"] and rec["m"] != "Unknown" and rec["s"]:
+                     needs_enrichment = False
+            
+            if not needs_enrichment:
+                logger.info(f"Skipping enrichment for {product_name} (Already present)")
+                continue
+
+            logger.info(f"Enriching Invoice Item: {product_name}")
+            local_pack_size = item.get("Pack_Size_Description")
+            result = agent.enrich_product(product_name, local_pack_size=local_pack_size)
+            
+            if result.get("error"):
+                logger.warning(f"Enrichment Error for {product_name}: {result['error']}")
+                continue
+                
+            # Update DB
+            update_query = """
+            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
+            SET gp.manufacturer = $manufacturer,
+                gp.salt_composition = $salt,
+                gp.category = $category,
+                gp.is_verified = true,
+                gp.updated_at = timestamp()
+            """
+            
+            with driver.session() as session:
+                session.run(update_query, 
+                            user_email=user_email,
+                            name=product_name,
+                            manufacturer=result.get("manufacturer"),
+                            salt=result.get("salt_composition"),
+                            category=result.get("category"))
+                            
+            logger.info(f"Enriched {product_name}: {result.get('manufacturer')}")
+            
+        except Exception as e:
+            logger.error(f"Failed to enrich item {product_name}: {e}")
+

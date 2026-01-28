@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Save, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
-import { saveProduct, getReviewQueue, getAllProducts, getProductHistory } from '../../services/api';
+import { saveProduct, getReviewQueue, getAllProducts, getProductHistory, enrichProduct } from '../../services/api';
 
 // Sub-components
 import { ItemSidebar } from './ItemSidebar';
@@ -172,6 +172,8 @@ const ItemMaster = () => {
             setSaving(false);
         }
     };
+
+
 
     return (
         <div className="bg-slate-900 h-full text-slate-200">

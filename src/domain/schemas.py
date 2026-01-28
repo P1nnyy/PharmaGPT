@@ -159,3 +159,14 @@ class ProductRequest(BaseModel):
     
     # New: Multi-Unit Support
     packaging_variants: List[PackagingVariant] = Field(default_factory=list, description="List of packaging variants.")
+
+class EnrichedProductResponse(BaseModel):
+    """
+    Response model for product enrichment agent.
+    """
+    manufacturer: Optional[str] = Field(None, description="Enriched Manufacturer Name")
+    salt_composition: Optional[str] = Field(None, description="Enriched Salt Composition")
+    pack_size: Optional[str] = Field(None, description="Enriched Pack Size")
+    category: Optional[str] = Field(None, description="Enriched Category")
+    source_url: Optional[str] = Field(None, description="Source URL of the data")
+    error: Optional[str] = Field(None, description="Error message if any")

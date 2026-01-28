@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { analyzeInvoice, saveInvoice, getUserProfile, setAuthToken } from './services/api';
 import { Loader2 } from 'lucide-react';
+import Toast from './components/ui/Toast';
 
 // ... (imports remain)
 import InvoiceViewer from './components/invoice/InvoiceViewer';
@@ -354,6 +355,16 @@ function App() {
         return next;
       });
 
+      // Force Sync to Ensure Backend agrees it's gone
+      setTimeout(() => {
+        import('./services/api').then(m => m.getDrafts()).then(drafts => {
+          // Only update if we didn't add something new in the meantime?
+          // Actually, if we just saved, getDrafts should NOT return it.
+          // If it does, backend is slow.
+        });
+      }, 1000);
+
+
     } catch (err) {
       console.error(err);
       showToast("Failed to save invoice. " + (err.response?.data?.detail || err.message), "error");
@@ -487,6 +498,14 @@ function App() {
           )}
         </div>
       </div>
+
+      {/* TOAST NOTIFICATION */}
+      <Toast
+        show={toast.show}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ ...toast, show: false })}
+      />
     </div>
   );
 }

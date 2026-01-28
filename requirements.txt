@@ -24,3 +24,4 @@ opencv-python-headless
 prometheus-fastapi-instrumentator
 duckduckgo-search
 langchain_community
+googlesearch-python

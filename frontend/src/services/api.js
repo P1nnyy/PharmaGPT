@@ -164,6 +164,15 @@ export const submitFeedback = async (traceId, score, comment = null) => {
     return response.data;
 };
 
+export const enrichProduct = async (productName, packSize = null) => {
+    let url = `/products/enrich?q=${encodeURIComponent(productName)}`;
+    if (packSize) {
+        url += `&pack_size=${encodeURIComponent(packSize)}`;
+    }
+    const response = await api.get(url);
+    return response.data;
+};
+
 export default {
     analyzeInvoice,
     uploadBatchInvoices,
@@ -184,5 +193,6 @@ export default {
     getAllProducts,
     getProductHistory,
     getReviewQueue,
-    submitFeedback
+    submitFeedback,
+    enrichProduct
 };
