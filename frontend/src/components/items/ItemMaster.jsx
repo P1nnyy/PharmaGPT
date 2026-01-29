@@ -101,40 +101,71 @@ const ItemMaster = () => {
     };
 
     const populateForm = (product) => {
-        // Auto-fill Product Type from Category
-        let suggestedUnit = 'Tablet';
-        if (product.category) {
-            const cat = product.category.toLowerCase();
-            if (cat.includes('syp') || cat.includes('syrup') || cat.includes('liquid') || cat.includes('susp')) suggestedUnit = 'Syrup';
-            else if (cat.includes('inj') || cat.includes('vial')) suggestedUnit = 'Injection';
-            else if (cat.includes('cap')) suggestedUnit = 'Capsule';
-        }
+        // 1. Category Detection & Base Unit
+        let suggestedUnit = 'Unit'; // Default
+        const cat = (product.category || '').toLowerCase();
 
-        // Logic to extract Primary Packing info from legacy packaging_variants if present
-        let primaryPack = 10;
+        if (cat.includes('tab') || cat.includes('tablet')) suggestedUnit = 'Tablet';
+        else if (cat.includes('cap') || cat.includes('capsule')) suggestedUnit = 'Capsule';
+        else if (cat.includes('syp') || cat.includes('syrup') || cat.includes('liq') || cat.includes('susp')) suggestedUnit = 'Bottle';
+        else if (cat.includes('inj') || cat.includes('vial') || cat.includes('amp')) suggestedUnit = 'Vial';
+        else if (cat.includes('cream') || cat.includes('gel') || cat.includes('oint') || cat.includes('tube')) suggestedUnit = 'Tube';
+
+        // 2. Smart Packing Extraction
+        let primaryPack = 1;
         let secondaryPack = 1;
         let primaryMrp = 0;
 
-        if (product.packaging_variants && Array.isArray(product.packaging_variants)) {
-            // Try to find a 'Strip' or 'Box' variant
-            const stripVariant = product.packaging_variants.find(v => (v.unit_name || '').toLowerCase().includes('strip'));
-            const boxVariant = product.packaging_variants.find(v => (v.unit_name || '').toLowerCase().includes('box'));
+        // Defaults if no variants
+        if (!['Tablet', 'Capsule'].includes(suggestedUnit)) {
+            primaryMrp = product.sale_price ? parseFloat(parseFloat(product.sale_price).toFixed(2)) : 0;
+        }
 
-            if (stripVariant) {
-                primaryPack = stripVariant.conversion_factor || 10;
-                primaryMrp = stripVariant.mrp || 0;
-            } else if (product.packaging_variants.length > 0) {
-                // Fallback to first variant
-                primaryPack = product.packaging_variants[0].conversion_factor || 10;
-                primaryMrp = product.packaging_variants[0].mrp || 0;
+        const variants = Array.isArray(product.packaging_variants) ? product.packaging_variants : [];
+
+        // Strategy: First pass to find Primary Unit (Strip/Pack)
+        if (['Tablet', 'Capsule'].includes(suggestedUnit)) {
+            // Scenario A: Look for conversion > 1 (e.g. 10s, 15s) which usually means Strip
+            // We avoid massive numbers (like 100) which might be Box, unless that's the only one.
+            // Heuristic: 2 <= x <= 30 is likely a strip.
+            const stripVar = variants.find(v => {
+                const cf = parseFloat(v.conversion_factor);
+                return cf > 1 && cf <= 50;
+            });
+
+            if (stripVar) {
+                primaryPack = parseFloat(stripVar.conversion_factor);
+                primaryMrp = parseFloat(stripVar.mrp || 0);
+            } else {
+                // Fallback: if no variants, maybe generic default? stick to 10?
+                // Or if variants exist but are huge (only Boxes defined)?
+                primaryPack = 10; // Safe default for Tabs
             }
+        } else {
+            // Scenario B: Syrups/Creams -> Primary is 1 Unit
+            primaryPack = 1;
+            // mrp_primary is already set to sale_price as default, but check if variant 'Unit' exists with specific MRP
+            const unitVar = variants.find(v => parseFloat(v.conversion_factor) === 1);
+            if (unitVar && unitVar.mrp) {
+                primaryMrp = parseFloat(unitVar.mrp);
+            }
+        }
 
-            if (boxVariant) {
-                // If box defines how many strips are inside, it might be pack_size like "10x10" or conversion_factor
-                // Assuming secondary packing logic was: Box conversion = Strips_per_box * Tablets_per_strip
-                // So Strips_per_box = Box_conversion / Strip_conversion
-                const boxConversion = boxVariant.conversion_factor || 100;
-                secondaryPack = Math.max(1, Math.floor(boxConversion / primaryPack));
+        // Strategy: Second pass to find Secondary Unit (Box/Outer)
+        // Scenario C: Look for 'Box' or high conversion
+        const boxVar = variants.find(v => {
+            const name = (v.unit_name || '').toLowerCase();
+            const cf = parseFloat(v.conversion_factor);
+            return name.includes('box') || name.includes('outer') || (cf > primaryPack && cf > 1);
+        });
+
+        if (boxVar) {
+            const totalUnits = parseFloat(boxVar.conversion_factor);
+            // secondary = Total / Primary
+            // e.g. Box=100 tabs, Strip=10 tabs -> 100/10 = 10 strips/box
+            const calculatedSec = totalUnits / primaryPack;
+            if (calculatedSec >= 1) {
+                secondaryPack = Math.floor(calculatedSec);
             }
         }
 

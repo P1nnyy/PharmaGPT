@@ -10,8 +10,16 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange }) => {
     const outerPackSize = parseFloat(formData.pack_size_secondary) || 1;
 
     // Derived visual labels
-    const primaryUnitLabel = ['Tablet', 'Capsule'].includes(baseUnit) ? 'Strip' : 'Unit';
+    const isTabletLike = ['Tablet', 'Capsule'].includes(baseUnit);
+    const primaryUnitLabel = isTabletLike ? 'Strip' : 'Unit';
     const secondaryUnitLabel = 'Box';
+
+    // Unity Rule: Force pack_size_primary to 1 if not tablet/capsule
+    useEffect(() => {
+        if (!isTabletLike && formData.pack_size_primary !== 1) {
+            handleStockCalculation({ pack_size_primary: 1 });
+        }
+    }, [baseUnit]);
 
     // Calculate total stock whenever inputs change
     // We'll keep local tracking of boxes/strips if possible, but since we rely on formData,
@@ -94,7 +102,9 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange }) => {
                         value={formData.pack_size_primary}
                         onChange={(e) => handleStockCalculation({ pack_size_primary: e.target.value })}
                         icon={<Calculator className="w-3 h-3" />}
-                        placeholder="10"
+                        placeholder={isTabletLike ? "10" : "1"}
+                        disabled={!isTabletLike}
+                        className={!isTabletLike ? 'opacity-50 cursor-not-allowed bg-slate-800' : ''}
                     />
                     <InputField
                         label={`MRP per ${primaryUnitLabel}`}
@@ -108,7 +118,11 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange }) => {
                 </div>
                 <div className="mt-4 bg-blue-900/20 border border-blue-500/20 rounded-lg p-3 text-center">
                     <p className="text-xs text-blue-300 font-mono">
-                        1 {primaryUnitLabel} = <span className="font-bold text-white">{conversionFactor}</span> {baseUnit}s
+                        {isTabletLike ? (
+                            <>1 {primaryUnitLabel} = <span className="font-bold text-white">{conversionFactor}</span> {baseUnit}s</>
+                        ) : (
+                            <>Sold as Single Units (1x1)</>
+                        )}
                     </p>
                 </div>
             </div>

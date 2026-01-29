@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, Any
 from src.utils.config_loader import load_product_catalog, load_vendor_rules, load_hsn_master
 
 # Load the CSV map once when the module starts
@@ -115,6 +115,13 @@ def refine_extracted_fields(raw_item: Dict) -> Dict:
             
             raw_item["Batch"] = clean_batch if clean_batch else None
 
+    
+    # 4. Smart Hierarchy Detection (The Fix C)
+    struct_pack = structure_packaging_hierarchy(raw_item.get("Pack") or raw_item.get("Qty"))
+    if struct_pack:
+        raw_item["Analyzed_Base_Unit"] = struct_pack.get("base_unit") 
+        raw_item["Analyzed_Primary_Pack"] = struct_pack.get("primary_pack_size")
+
     return raw_item
 
 def parse_pack_size(pack_str: str) -> Dict[str, Union[str, int]]:
@@ -151,3 +158,68 @@ def parse_pack_size(pack_str: str) -> Dict[str, Union[str, int]]:
         
     # Default Fallback
     return {"unit": "Unit", "pack": pack_str}
+
+def structure_packaging_hierarchy(pack_string: str) -> Dict[str, Any]:
+    """
+    Parses a raw packaging string (e.g. '100ML', '10x10', '15s') into structured components.
+    
+    Fix C Rules:
+    1. Liquid/Cream: '100ML', '50GM', '1L' -> primary=1, base='Bottle'/'Tube'.
+    2. Tablet: '10x10', '15s', '10`s' -> primary=extracted, base='Tablet'.
+    """
+    if not pack_string:
+        return None
+        
+    s = str(pack_string).strip().upper()
+    
+    # Rule 1: Liquid/Cream/Ointment Detection
+    # Look for suffixes: ML, L, GM, G, OZ
+    if re.search(r'\d+\s*(ML|GM|L|G|OZ)\b', s):
+        # It's a volume/weight based item (Syrup, Cream, Gel)
+        # return primary_pack_size = 1 (Sold as 1 Bottle/Tube)
+        base_unit = 'Bottle'
+        if 'GM' in s or 'G' in s:
+            base_unit = 'Tube' # or Jar
+            
+        return {
+            "primary_pack_size": 1,
+            "base_unit": base_unit,
+            "type": "LIQUID_WEIGHT"
+        }
+        
+    # Rule 2: Tablet/Capsule Detection
+    # Pattern A: '10x10', '5x15' (Box logic, but usually means Total Tablets? or Strips per box?)
+    # Context: Usually invoices say "10x10" meaning 1 Box contains 10 Strips of 10.
+    # But financial line item usually refers to the Box or the Strip?
+    # If standard logic says "15s" -> 1 Strip of 15.
+    
+    # Pattern: '15s', '10`s', '10 s', '15 TAB'
+    match_strip = re.search(r'(\d+)\s*[\'`]?s\b|(\d+)\s*TAB', s, re.IGNORECASE)
+    if match_strip:
+        qty = int(match_strip.group(1) or match_strip.group(2))
+        return {
+            "primary_pack_size": qty,
+            "base_unit": 'Tablet',
+            "type": "TABLET_STRIP"
+        }
+        
+    # Pattern: '10x10'
+    # This is ambiguous. It could mean "10 Strips of 10".
+    # If the user buys 1 "10x10", they are buying 1 Box.
+    # Total Base Units = 100.
+    # Primary Pack (Strip) = 10. Secondary (Box) = 10 strips.
+    # For now, let's extract the "Strip Size" if possible. 
+    # Usually the second number is the strip size? OR the first? 
+    # "10x10" -> 10 strips of 10. 
+    # Let's assume the second number is the Primary Pack Size (Tabs per strip).
+    match_box = re.search(r'(\d+)\s*[xX]\s*(\d+)', s)
+    if match_box:
+        # outer = int(match_box.group(1))
+        inner = int(match_box.group(2))
+        return {
+            "primary_pack_size": inner,
+            "base_unit": 'Tablet',
+            "type": "TABLET_BOX"
+        }
+
+    return None
