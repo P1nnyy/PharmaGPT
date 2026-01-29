@@ -1,19 +1,58 @@
-import React from 'react';
-import { Warehouse, Package, AlertCircle, Tag, Plus, X } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Warehouse, Package, AlertCircle, Tag, Layers, Box, Calculator } from 'lucide-react';
 import { InputField } from '../InputField';
 
 export const ItemInventory = ({ formData, setFormData, handleInputChange }) => {
+
+    // Defaults
+    const baseUnit = formData.base_unit || 'Tablet';
+    const conversionFactor = parseFloat(formData.pack_size_primary) || 10;
+    const outerPackSize = parseFloat(formData.pack_size_secondary) || 1;
+
+    // Derived visual labels
+    const primaryUnitLabel = ['Tablet', 'Capsule'].includes(baseUnit) ? 'Strip' : 'Unit';
+    const secondaryUnitLabel = 'Box';
+
+    // Calculate total stock whenever inputs change
+    // We'll keep local tracking of boxes/strips if possible, but since we rely on formData,
+    // we'll assume formData.opening_boxes and formData.opening_strips are being tracked there.
+    // If not, we initialize them.
+    useEffect(() => {
+        if (formData.opening_boxes === undefined) {
+            setFormData(prev => ({ ...prev, opening_boxes: 0 }));
+        }
+        if (formData.opening_strips === undefined) {
+            setFormData(prev => ({ ...prev, opening_strips: 0 }));
+        }
+    }, []);
+
+    const handleStockCalculation = (updates) => {
+        const newData = { ...formData, ...updates };
+        const boxes = parseFloat(newData.opening_boxes) || 0;
+        const strips = parseFloat(newData.opening_strips) || 0;
+        const cf = parseFloat(newData.pack_size_primary) || 10;
+        const ops = parseFloat(newData.pack_size_secondary) || 1;
+
+        // Formula: (Boxes * Strips/Box * Tabs/Strip) + (Loose_Strips * Tabs/Strip)
+        const totalStock = (boxes * ops * cf) + (strips * cf);
+
+        setFormData({
+            ...newData,
+            opening_stock: totalStock
+        });
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
 
-            {/* 1. Inventory Control */}
+            {/* Section 1: Base Definition */}
             <div className="bg-slate-900/40 rounded-xl border border-slate-700/50 p-5">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5 flex items-center gap-2">
-                    <Warehouse className="w-4 h-4" /> Inventory Control
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Tag className="w-4 h-4" /> 1. Base Definition
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="col-span-2 md:col-span-1">
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Product Type</label>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Base Unit</label>
                         <div className="relative">
                             <select
                                 value={formData.base_unit || 'Tablet'}
@@ -22,122 +61,135 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange }) => {
                             >
                                 <option value="Tablet">Tablet</option>
                                 <option value="Capsule">Capsule</option>
-                                <option value="Syrup">Syrup</option>
+                                <option value="Bottle">Bottle</option>
+                                <option value="Vial">Vial</option>
                                 <option value="Injection">Injection</option>
-                                <option value="Softgel">Softgel</option>
-                                <option value="Powder">Powder</option>
-                                <option value="Liquid">Liquid</option>
-                                <option value="Cream">Cream</option>
-                                <option value="Gel">Gel</option>
-                                <option value="Drops">Drops</option>
-                                <option value="Spray">Spray</option>
+                                <option value="Tube">Tube</option>
+                                <option value="Sachet">Sachet</option>
                             </select>
                             <div className="absolute right-4 top-3 pointer-events-none text-slate-500">
                                 <Package className="w-4 h-4" />
                             </div>
                         </div>
+                        <p className="text-[10px] text-slate-500 mt-2 ml-1">
+                            This is the unit used for billing patients (e.g., 1 Tablet).
+                        </p>
                     </div>
-                    <div className="group relative">
-                        <InputField
-                            label={`Opening Stock (in ${formData.base_unit || 'Strip'}s)`}
-                            name="opening_stock"
-                            type="number"
-                            value={formData.opening_stock}
-                            onChange={handleInputChange}
-                            icon={<Warehouse className="w-3 h-3" />}
-                        />
-                        {(!formData.is_verified && formData.opening_stock > 0) && (
-                            <div className="absolute -top-8 left-0 hidden group-hover:block bg-slate-800 text-xs text-blue-300 px-2 py-1 rounded border border-blue-500/30 whitespace-nowrap z-50">
-                                Auto-filled from Invoice Qty
-                            </div>
-                        )}
-                    </div>
+                </div>
+            </div>
+
+            {/* Section 2: Primary Packing */}
+            <div className="bg-slate-900/40 rounded-xl border border-slate-700/50 p-5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5">
+                    <Layers className="w-24 h-24" />
+                </div>
+                <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Layers className="w-4 h-4" /> 2. Primary Packing (Sellable Unit)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
                     <InputField
-                        label="Minimum Stock Alert"
-                        name="min_stock"
+                        label={`Units per ${primaryUnitLabel}`}
+                        name="pack_size_primary"
                         type="number"
-                        value={formData.min_stock}
-                        onChange={handleInputChange}
-                        icon={<AlertCircle className="w-3 h-3" />}
+                        value={formData.pack_size_primary}
+                        onChange={(e) => handleStockCalculation({ pack_size_primary: e.target.value })}
+                        icon={<Calculator className="w-3 h-3" />}
+                        placeholder="10"
                     />
-                    <div className="col-span-2">
+                    <InputField
+                        label={`MRP per ${primaryUnitLabel}`}
+                        name="mrp_primary"
+                        type="number"
+                        value={formData.mrp_primary}
+                        onChange={handleInputChange}
+                        icon={<Tag className="w-3 h-3" />}
+                        placeholder="0.00"
+                    />
+                </div>
+                <div className="mt-4 bg-blue-900/20 border border-blue-500/20 rounded-lg p-3 text-center">
+                    <p className="text-xs text-blue-300 font-mono">
+                        1 {primaryUnitLabel} = <span className="font-bold text-white">{conversionFactor}</span> {baseUnit}s
+                    </p>
+                </div>
+            </div>
+
+            {/* Section 3: Secondary Packing */}
+            <div className="bg-slate-900/40 rounded-xl border border-slate-700/50 p-5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5">
+                    <Box className="w-24 h-24" />
+                </div>
+                <h3 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Box className="w-4 h-4" /> 3. Secondary Packing (Purchase Unit)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                    <InputField
+                        label={`${primaryUnitLabel}s per ${secondaryUnitLabel}`}
+                        name="pack_size_secondary"
+                        type="number"
+                        value={formData.pack_size_secondary}
+                        onChange={(e) => handleStockCalculation({ pack_size_secondary: e.target.value })}
+                        icon={<Package className="w-3 h-3" />}
+                        placeholder="1"
+                    />
+                </div>
+                <div className="mt-4 bg-emerald-900/20 border border-emerald-500/20 rounded-lg p-3 text-center">
+                    <p className="text-xs text-emerald-300 font-mono">
+                        1 {secondaryUnitLabel} = <span className="font-bold text-white">{outerPackSize}</span> {primaryUnitLabel}s = <span className="font-bold text-white">{outerPackSize * conversionFactor}</span> Total {baseUnit}s
+                    </p>
+                </div>
+            </div>
+
+            {/* Total Stock Calculation */}
+            <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Warehouse className="w-4 h-4" /> Opening Stock Calculator
+                </h3>
+                <div className="grid grid-cols-12 gap-4 items-end">
+                    <div className="col-span-5">
                         <InputField
-                            label="Rack Location"
+                            label={`Opening ${secondaryUnitLabel}s`}
+                            name="opening_boxes"
+                            type="number"
+                            value={formData.opening_boxes || ''}
+                            onChange={(e) => handleStockCalculation({ opening_boxes: e.target.value })}
+                            placeholder="0"
+                        />
+                    </div>
+                    <div className="col-span-5">
+                        <InputField
+                            label={`Loose ${primaryUnitLabel}s`}
+                            name="opening_strips"
+                            type="number"
+                            value={formData.opening_strips || ''}
+                            onChange={(e) => handleStockCalculation({ opening_strips: e.target.value })}
+                            placeholder="0"
+                        />
+                    </div>
+                    <div className="col-span-2 pb-1">
+                        <div className="text-right">
+                            <label className="block text-[10px] text-slate-500 uppercase mb-1">Total {baseUnit}s</label>
+                            <div className="text-xl font-bold text-white font-mono">
+                                {formData.opening_stock || 0}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center text-xs text-slate-500">
+                    <span>
+                        Inventory Location
+                    </span>
+                    <div className="w-48">
+                        <InputField
                             name="rack_location"
                             value={formData.rack_location}
                             onChange={handleInputChange}
-                            icon={<Tag className="w-3 h-3" />}
-                            placeholder="A-12-04"
+                            placeholder="Rack / Shelf"
+                            className="bg-slate-900 md:text-xs"
                         />
                     </div>
                 </div>
             </div>
 
-            {/* 2. Packaging Hierarchy */}
-            <div className="bg-slate-900/40 rounded-xl border border-slate-700/50 p-5">
-                <div className="flex justify-between items-center mb-5">
-                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                        <Package className="w-4 h-4" /> Packaging Hierarchy
-                    </h3>
-                    <button onClick={() => setFormData(p => ({ ...p, packaging_variants: [...p.packaging_variants, { unit_name: 'Box', pack_size: '1x10', mrp: 0, conversion_factor: 10 }] }))} className="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition-colors text-blue-400 border border-slate-600 flex items-center gap-1">
-                        <Plus className="w-3 h-3" /> Add Level
-                    </button>
-                </div>
-
-                <div className="space-y-3">
-                    {formData.packaging_variants.length === 0 ? (
-                        <div className="text-center py-8 border border-dashed border-slate-800 rounded-lg text-slate-500 text-xs italic">
-                            No alternative packaging defined (e.g. Boxes, Cartons).
-                        </div>
-                    ) : (
-                        formData.packaging_variants.map((v, i) => (
-                            <div key={i} className="grid grid-cols-12 gap-3 p-3 bg-slate-900 rounded-lg border border-slate-800 items-center">
-                                <div className="col-span-3">
-                                    <label className="text-[9px] text-slate-500 uppercase mb-1 block">Unit</label>
-                                    <input placeholder="Box" value={v.unit_name} onChange={e => {
-                                        const newV = [...formData.packaging_variants];
-                                        newV[i].unit_name = e.target.value;
-                                        setFormData({ ...formData, packaging_variants: newV });
-                                    }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500" />
-                                </div>
-                                <div className="col-span-3">
-                                    <label className="text-[9px] text-slate-500 uppercase mb-1 block">Pack</label>
-                                    <input placeholder="10x10" value={v.pack_size} onChange={e => {
-                                        const newV = [...formData.packaging_variants];
-                                        newV[i].pack_size = e.target.value;
-                                        setFormData({ ...formData, packaging_variants: newV });
-                                    }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500" />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="text-[9px] text-slate-500 uppercase mb-1 block">MRP</label>
-                                    <input type="number" placeholder="0" value={v.mrp} onChange={e => {
-                                        const newV = [...formData.packaging_variants];
-                                        newV[i].mrp = parseFloat(e.target.value);
-                                        setFormData({ ...formData, packaging_variants: newV });
-                                    }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500 text-right" />
-                                </div>
-                                <div className="col-span-3">
-                                    <label className="text-[9px] text-slate-500 uppercase mb-1 block">Units</label>
-                                    <input type="number" placeholder="10" value={v.conversion_factor} onChange={e => {
-                                        const newV = [...formData.packaging_variants];
-                                        newV[i].conversion_factor = parseFloat(e.target.value);
-                                        setFormData({ ...formData, packaging_variants: newV });
-                                    }} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:ring-1 focus:ring-blue-500 text-center" />
-                                </div>
-                                <div className="col-span-1 text-right pt-4">
-                                    <button onClick={() => {
-                                        const newV = [...formData.packaging_variants];
-                                        newV.splice(i, 1);
-                                        setFormData({ ...formData, packaging_variants: newV });
-                                    }} className="text-slate-600 hover:text-red-400 transition-colors">
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
         </div>
     );
 };

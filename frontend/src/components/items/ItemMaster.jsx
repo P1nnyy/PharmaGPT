@@ -19,6 +19,8 @@ const ItemMaster = () => {
         purchase_price: 0,
         tax_rate: 0,
         opening_stock: 0,
+        opening_boxes: 0,
+        opening_strips: 0,
         min_stock: 0,
         rack_location: '',
         manufacturer: '',
@@ -30,7 +32,10 @@ const ItemMaster = () => {
         base_unit: 'Tablet',
         is_verified: false,
         is_enriched: false,
-        packaging_variants: []
+        // Flat Packaging Fields
+        pack_size_primary: 10,  // e.g. 10 tablets per strip
+        pack_size_secondary: 1, // e.g. 1 strip per box (default)
+        mrp_primary: 0          // MRP per strip
     });
 
     const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'pricing' | 'inventory' | 'packaging' | 'history'
@@ -83,7 +88,7 @@ const ItemMaster = () => {
     // Handlers
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        const isNumeric = ['sale_price', 'purchase_price', 'tax_rate', 'opening_stock', 'min_stock'].includes(name);
+        const isNumeric = ['sale_price', 'purchase_price', 'tax_rate', 'opening_stock', 'min_stock', 'pack_size_primary', 'pack_size_secondary', 'mrp_primary'].includes(name);
         setFormData(prev => ({
             ...prev,
             [name]: isNumeric ? (parseFloat(value) || 0) : value
@@ -105,6 +110,34 @@ const ItemMaster = () => {
             else if (cat.includes('cap')) suggestedUnit = 'Capsule';
         }
 
+        // Logic to extract Primary Packing info from legacy packaging_variants if present
+        let primaryPack = 10;
+        let secondaryPack = 1;
+        let primaryMrp = 0;
+
+        if (product.packaging_variants && Array.isArray(product.packaging_variants)) {
+            // Try to find a 'Strip' or 'Box' variant
+            const stripVariant = product.packaging_variants.find(v => (v.unit_name || '').toLowerCase().includes('strip'));
+            const boxVariant = product.packaging_variants.find(v => (v.unit_name || '').toLowerCase().includes('box'));
+
+            if (stripVariant) {
+                primaryPack = stripVariant.conversion_factor || 10;
+                primaryMrp = stripVariant.mrp || 0;
+            } else if (product.packaging_variants.length > 0) {
+                // Fallback to first variant
+                primaryPack = product.packaging_variants[0].conversion_factor || 10;
+                primaryMrp = product.packaging_variants[0].mrp || 0;
+            }
+
+            if (boxVariant) {
+                // If box defines how many strips are inside, it might be pack_size like "10x10" or conversion_factor
+                // Assuming secondary packing logic was: Box conversion = Strips_per_box * Tablets_per_strip
+                // So Strips_per_box = Box_conversion / Strip_conversion
+                const boxConversion = boxVariant.conversion_factor || 100;
+                secondaryPack = Math.max(1, Math.floor(boxConversion / primaryPack));
+            }
+        }
+
         setFormData(prev => ({
             ...prev,
             name: product.name || '',
@@ -113,6 +146,8 @@ const ItemMaster = () => {
             purchase_price: product.purchase_price ? parseFloat(parseFloat(product.purchase_price).toFixed(2)) : 0,
             tax_rate: product.tax_rate ?? (product.gst_percent ?? 0),
             opening_stock: product.opening_stock ?? (!product.is_verified ? (product.quantity ?? 0) : 0),
+            opening_boxes: 0,   // Reset calculators
+            opening_strips: 0,
             min_stock: product.min_stock ?? 0,
             item_code: product.item_code || '',
             rack_location: product.rack_location || product.location || '',
@@ -125,13 +160,12 @@ const ItemMaster = () => {
             last_purchase_date: product.last_purchase_date || '',
             saved_by: product.saved_by || '',
             base_unit: product.base_unit || suggestedUnit,
-            packaging_variants: (product.packaging_variants || []).map(v => ({
-                ...v,
-                unit_name: v.unit_name || '',
-                pack_size: v.pack_size || '',
-                mrp: v.mrp ?? 0,
-                conversion_factor: v.conversion_factor ?? 1
-            })),
+
+            // New Flat Fields
+            pack_size_primary: primaryPack,
+            pack_size_secondary: secondaryPack,
+            mrp_primary: primaryMrp,
+
             needs_review: product.needs_review
         }));
 
@@ -153,7 +187,8 @@ const ItemMaster = () => {
             name: '', item_code: '', hsn_code: '', sale_price: 0, purchase_price: 0,
             tax_rate: 0, opening_stock: 0, min_stock: 0, rack_location: '',
             manufacturer: '', salt_composition: '', category: '',
-            is_verified: false, packaging_variants: [], base_unit: 'Tablet'
+            is_verified: false, base_unit: 'Tablet',
+            pack_size_primary: 10, pack_size_secondary: 1, mrp_primary: 0
         });
         setHistory([]);
         setShowMobileDetail(true);
