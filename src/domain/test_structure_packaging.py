@@ -6,7 +6,7 @@ def test_cases():
         ("50GM", {"primary_pack_size": 1, "base_unit": "Tube"}),
         ("1L", {"primary_pack_size": 1, "base_unit": "Bottle"}),
         ("15s", {"primary_pack_size": 15, "base_unit": "Tablet"}),
-        ("10x10", {"primary_pack_size": 10, "base_unit": "Tablet"}),
+        ("10x10", {"primary_pack_size": 10, "secondary_pack_size": 10, "base_unit": "Tablet"}),
         ("10 TAB", {"primary_pack_size": 10, "base_unit": "Tablet"}),
         ("Unknown", None)
     ]
@@ -17,7 +17,7 @@ def test_cases():
         
         # Simplify result for comparison
         if result:
-            simple_res = {k: result[k] for k in ["primary_pack_size", "base_unit"]}
+            simple_res = {k: result[k] for k in ["primary_pack_size", "base_unit", "secondary_pack_size"] if k in result}
         else:
             simple_res = None
             

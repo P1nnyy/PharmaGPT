@@ -115,12 +115,13 @@ def refine_extracted_fields(raw_item: Dict) -> Dict:
             
             raw_item["Batch"] = clean_batch if clean_batch else None
 
-    
     # 4. Smart Hierarchy Detection (The Fix C)
     struct_pack = structure_packaging_hierarchy(raw_item.get("Pack") or raw_item.get("Qty"))
     if struct_pack:
         raw_item["Analyzed_Base_Unit"] = struct_pack.get("base_unit") 
         raw_item["Analyzed_Primary_Pack"] = struct_pack.get("primary_pack_size")
+        if struct_pack.get("secondary_pack_size"):
+            raw_item["Analyzed_Secondary_Pack"] = struct_pack.get("secondary_pack_size")
 
     return raw_item
 
@@ -214,10 +215,11 @@ def structure_packaging_hierarchy(pack_string: str) -> Dict[str, Any]:
     # Let's assume the second number is the Primary Pack Size (Tabs per strip).
     match_box = re.search(r'(\d+)\s*[xX]\s*(\d+)', s)
     if match_box:
-        # outer = int(match_box.group(1))
+        outer = int(match_box.group(1))
         inner = int(match_box.group(2))
         return {
             "primary_pack_size": inner,
+            "secondary_pack_size": outer, # Extract explicit Outer Pack
             "base_unit": 'Tablet',
             "type": "TABLET_BOX"
         }

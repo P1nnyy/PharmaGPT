@@ -15,6 +15,7 @@ def get_activity_log(driver, user_email: str):
     RETURN i.invoice_number as invoice_number, 
            i.supplier_name as supplier_name, 
            i.created_at as created_at, 
+           i.updated_at as saved_at,
            i.grand_total as total,
            i.image_path as image_path,
            s.gstin as supplier_gst,
@@ -128,6 +129,8 @@ def get_grouped_invoice_history(driver, user_email: str):
                 formatted_invoices.append({
                     "invoice_number": inv.get("invoice_number"),
                     "date": inv.get("invoice_date"),
+                    "uploaded_at": inv.get("created_at"),
+                    "saved_at": inv.get("updated_at"),
                     "total": inv.get("grand_total"),
                     "image_path": inv.get("image_path") # Ensure we capture image path if stored on Invoice node
                 })

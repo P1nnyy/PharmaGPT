@@ -13,8 +13,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                         <div className="sticky top-0 z-10 bg-gray-900 pt-2 border-b border-gray-800">
                             <div className="grid grid-cols-12 gap-4 mb-2 text-xs font-bold text-gray-500 uppercase tracking-wider px-4">
                                 <div className="col-span-1 text-center">#</div>
-                                <div className="col-span-3">Item Name</div>
-                                <div className="col-span-2">Mfr</div>
+                                <div className="col-span-5">Item Name</div>
                                 <div className="col-span-2">Batch / Expiry</div>
                                 <div className="col-span-1 text-center">MRP</div>
                                 <div className="col-span-1 text-center">Qty</div>
@@ -33,23 +32,12 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     <div className="col-span-1 text-center text-gray-600 font-mono text-xs">{idx + 1}</div>
 
                                     {/* Name */}
-                                    <div className="col-span-3">
+                                    <div className="col-span-5">
                                         <input
                                             value={item.Standard_Item_Name || ''}
                                             onChange={(e) => onInputChange(idx, 'Standard_Item_Name', e.target.value)}
                                             className="w-full bg-transparent outline-none text-gray-300 focus:text-white placeholder-gray-600 font-medium text-sm border-b border-transparent focus:border-indigo-500 transition-colors py-1 disabled:opacity-75 disabled:cursor-not-allowed"
                                             placeholder="Item Description"
-                                            disabled={readOnly}
-                                        />
-                                    </div>
-
-                                    {/* Manufacturer (NEW) */}
-                                    <div className="col-span-2">
-                                        <input
-                                            value={item.Manufacturer || ''}
-                                            onChange={(e) => onInputChange(idx, 'Manufacturer', e.target.value)}
-                                            className="w-full bg-transparent outline-none text-xs text-gray-400 focus:text-indigo-300 placeholder-gray-700 border-b border-transparent focus:border-indigo-500 transition-colors py-1"
-                                            placeholder="Mfr"
                                             disabled={readOnly}
                                         />
                                     </div>

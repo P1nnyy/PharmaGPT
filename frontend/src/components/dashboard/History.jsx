@@ -108,13 +108,20 @@ const History = () => {
                                     <div className="bg-slate-950/30 border-t border-slate-800 p-4 animate-in slide-in-from-top-2">
                                         <div className="flex flex-wrap items-center justify-between gap-6">
 
-                                            {/* Date */}
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Uploaded</span>
-                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Uploaded</span>
-                                                <span className="text-slate-300 text-sm font-medium">
-                                                    {formatTimestamp(item.created_at, true)}
-                                                </span>
+                                            {/* Date Times */}
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Uploaded</span>
+                                                    <span className="text-slate-400 text-xs font-medium">
+                                                        {formatTimestamp(item.created_at, true)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] uppercase text-emerald-500/80 font-bold tracking-wider">Saved</span>
+                                                    <span className="text-emerald-300 text-sm font-medium">
+                                                        {formatTimestamp(item.saved_at, true)}
+                                                    </span>
+                                                </div>
                                             </div>
 
                                             {/* Saved By */}
@@ -124,7 +131,7 @@ const History = () => {
                                                     <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
                                                         PG
                                                     </div>
-                                                    <span className="text-slate-300 text-sm font-medium">{invoice.saved_by || 'Unknown'}</span>
+                                                    <span className="text-slate-300 text-sm font-medium">{item.saved_by || 'Unknown'}</span>
                                                 </div>
                                             </div>
 

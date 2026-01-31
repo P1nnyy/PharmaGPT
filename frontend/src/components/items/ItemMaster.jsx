@@ -228,7 +228,11 @@ const ItemMaster = () => {
     const handleSave = async () => {
         try {
             setSaving(true);
-            await saveProduct(formData);
+            const payload = {
+                ...formData,
+                name: (formData.name || '').trim()
+            };
+            await saveProduct(payload);
             if (sidebarTab === 'review') fetchQueue();
             else fetchAllItems();
         } catch (error) {
@@ -329,7 +333,7 @@ const ItemMaster = () => {
 
                             {/* Tabs */}
                             <div className="flex gap-6 text-sm font-medium overflow-x-auto no-scrollbar">
-                                {['overview', 'pricing', 'inventory_packaging', 'history'].map(tab => (
+                                {['overview', 'inventory_packaging', 'pricing', 'history'].map(tab => (
                                     <button
                                         key={tab}
                                         onClick={() => setActiveTab(tab)}
@@ -353,14 +357,14 @@ const ItemMaster = () => {
                                     <ItemOverview formData={formData} handleInputChange={handleInputChange} />
                                 )}
 
-                                {/* PRICING TAB */}
-                                {activeTab === 'pricing' && (
-                                    <ItemPricing formData={formData} handleInputChange={handleInputChange} />
-                                )}
-
                                 {/* INVENTORY & PACKAGING */}
                                 {activeTab === 'inventory_packaging' && (
                                     <ItemInventory formData={formData} setFormData={setFormData} handleInputChange={handleInputChange} />
+                                )}
+
+                                {/* PRICING TAB */}
+                                {activeTab === 'pricing' && (
+                                    <ItemPricing formData={formData} handleInputChange={handleInputChange} />
                                 )}
 
                                 {/* HISTORY TAB */}

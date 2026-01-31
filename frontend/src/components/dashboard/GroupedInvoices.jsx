@@ -29,6 +29,8 @@ const GroupedInvoices = () => {
         }
     };
 
+
+
     const toggleSupplier = (name) => {
         if (expandedSupplier === name) {
             setExpandedSupplier(null);

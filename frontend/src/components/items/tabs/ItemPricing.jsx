@@ -9,6 +9,14 @@ export const ItemPricing = ({ formData, handleInputChange }) => {
     const marginPercent = formData.sale_price > 0 ? (margin / formData.sale_price) * 100 : 0;
     const isHigh = marginPercent > 25;
     const isLow = marginPercent < 15;
+    // Unit Analysis (Per Tablet/Capsule)
+    const packSize = parseFloat(formData.pack_size_primary) || 1;
+    const showUnitAnalysis = packSize > 1;
+
+    const unitLanding = landing / packSize;
+    const unitMrp = (formData.sale_price || 0) / packSize;
+    const unitMargin = margin / packSize;
+
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -44,11 +52,36 @@ export const ItemPricing = ({ formData, handleInputChange }) => {
                             (₹{margin.toFixed(2)})
                         </div>
                     </div>
-                    <div className="text-[10px] mt-1 opacity-70">Profit per Unit</div>
+                    <div className="text-[10px] mt-1 opacity-70">Profit per Pack</div>
                 </div>
             </div>
 
-            {/* 2. Detailed Input Grid */}
+            {/* 2. Unit Level Analysis (Dynamic) */}
+            {showUnitAnalysis && (
+                <div className="bg-slate-800/50 p-4 rounded-xl border border-dashed border-slate-600">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="bg-slate-700 text-white px-1.5 py-0.5 rounded text-[10px]">{packSize}x</span> Unit Breakdown
+                    </h3>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <div className="text-[10px] text-slate-500 uppercase">Cost / Unit</div>
+                            <div className="font-mono font-bold text-slate-300">₹{unitLanding.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-slate-500 uppercase">MRP / Unit</div>
+                            <div className="font-mono font-bold text-slate-300">₹{unitMrp.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-slate-500 uppercase">Profit / Unit</div>
+                            <div className={`font-mono font-bold ${unitMargin > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                ₹{unitMargin.toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 3. Detailed Input Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
                 {/* Cost Side */}
