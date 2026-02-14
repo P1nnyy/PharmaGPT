@@ -35,7 +35,11 @@ const ItemMaster = () => {
         // Flat Packaging Fields
         pack_size_primary: 10,  // e.g. 10 tablets per strip
         pack_size_secondary: 1, // e.g. 1 strip per box (default)
-        mrp_primary: 0          // MRP per strip
+        mrp_primary: 0,         // MRP per strip
+
+        // Enrichment Fields
+        hsn_description: '',
+        is_tax_inferred: false
     });
 
     const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'pricing' | 'inventory' | 'packaging' | 'history'
@@ -172,10 +176,13 @@ const ItemMaster = () => {
         setFormData(prev => ({
             ...prev,
             name: product.name || '',
-            hsn_code: product.hsn_code || '',
-            sale_price: product.sale_price ? parseFloat(parseFloat(product.sale_price).toFixed(2)) : 0,
+            hsn_code: product.hsn_code || (product.HSN || ''),
+            // Logic: Backend now handles Base Rate calculation if tax was inferred.
             purchase_price: product.purchase_price ? parseFloat(parseFloat(product.purchase_price).toFixed(2)) : 0,
-            tax_rate: product.tax_rate ?? (product.gst_percent ?? 0),
+
+            sale_price: product.sale_price ? parseFloat(parseFloat(product.sale_price).toFixed(2)) : 0,
+
+            tax_rate: product.Raw_GST_Percentage ?? (product.tax_rate ?? (product.gst_percent ?? 0)),
             opening_stock: product.opening_stock ?? (!product.is_verified ? (product.quantity ?? 0) : 0),
             opening_boxes: 0,   // Reset calculators
             opening_strips: 0,
@@ -197,7 +204,11 @@ const ItemMaster = () => {
             pack_size_secondary: secondaryPack,
             mrp_primary: primaryMrp,
 
-            needs_review: product.needs_review
+            needs_review: product.needs_review,
+
+            // New Enrichment Data
+            hsn_description: product.hsn_description || '',
+            is_tax_inferred: product.is_tax_inferred || false
         }));
 
         // Fetch History

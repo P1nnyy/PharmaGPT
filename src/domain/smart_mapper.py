@@ -2,6 +2,59 @@ from typing import Dict, Any, List, Optional
 from src.services.database import get_db_driver
 import logging
 
+
+# Hardcoded fallback for common Pharma HSNs (Performance Optimization)
+COMMON_HSN_MAP = {
+    "96032100": {"desc": "Toothbrush", "tax": 18.0},
+    "30049011": {"desc": "Medicaments (Allopathic)", "tax": 12.0},
+    "3004": {"desc": "Medicaments", "tax": 12.0},
+    "2106": {"desc": "Food Supplement", "tax": 18.0}
+}
+
+def enrich_hsn_details(hsn_code: str) -> Dict[str, any]:
+    """
+    Looks up HSN description and standard tax rate.
+    Priority: 1. Hardcoded Map 2. Neo4j Master Graph 3. Default
+    """
+    clean_code = str(hsn_code).replace(" ", "").strip()
+    
+    # 1. Quick Lookup
+    if clean_code in COMMON_HSN_MAP:
+        return COMMON_HSN_MAP[clean_code]
+    
+    # 2. Database Lookup (If you have an HSN Master Node)
+    driver = get_db_driver()
+    if driver:
+        query = """
+        MATCH (h:HSN {code: $code})
+        RETURN h.description as desc, h.gst_rate as tax
+        LIMIT 1
+        """
+        try:
+            with driver.session() as session:
+                result = session.run(query, code=clean_code).single()
+                if result:
+                    return {"desc": result["desc"], "tax": result["tax"]}
+        except Exception:
+            pass # Fallback to None
+
+    return {"desc": "Unknown Category", "tax": 0.0}
+
+def validate_and_fix_hsn(hsn_code: str) -> str:
+    """
+    Fixes common OCR errors (e.g. '3004 90' -> '300490')
+    """
+    if not hsn_code:
+        return "0000"
+    
+    clean = ''.join(filter(str.isdigit, str(hsn_code)))
+    
+    # Logic: If < 4 digits, likely garbage or partial
+    if len(clean) < 4:
+        return clean.ljust(4, '0') # Pad? Or mark invalid?
+        
+    return clean
+
 logger = logging.getLogger(__name__)
 
 async def enrich_line_items_from_master(line_items: List[Dict[str, Any]], user_email: str) -> List[Dict[str, Any]]:
@@ -54,10 +107,13 @@ async def enrich_line_items_from_master(line_items: List[Dict[str, Any]], user_e
             if rec and rec["name"]:
                 logger.info(f"Smart Mapper: Matched '{raw_desc}' -> '{rec['name']}'")
                 
-                # A. HSN / Tax Auto-Fill
-                if not item.get("HSN") and rec["hsn"]:
-                    item["HSN"] = rec["hsn"]
-                    logic_notes.append(f"[Auto-filled HSN from '{rec['name']}']")
+                # A. HSN / Tax Auto-Fill (Enforce Master Consistency)
+                if rec["hsn"]:
+                    # Always prefer Master HSN for consistency
+                    if item.get("HSN") != rec["hsn"]:
+                        old_hsn = item.get("HSN", "None")
+                        item["HSN"] = rec["hsn"]
+                        logic_notes.append(f"[HSN Standardized: {old_hsn} -> {rec['hsn']}]")
                 
                 # B. MRP Logic
                 invoice_mrp = item.get("MRP")

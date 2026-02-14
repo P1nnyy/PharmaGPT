@@ -30,7 +30,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
                 value={formData.manufacturer}
                 onChange={handleInputChange}
                 icon={<Factory className="w-3 h-3" />}
-                placeholder="Cipla, Sun Pharma..."
+                placeholder="Enter manufacturer..."
             />
 
             <InputField
@@ -39,7 +39,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
                 value={formData.salt_composition}
                 onChange={handleInputChange}
                 icon={<FlaskConical className="w-3 h-3" />}
-                placeholder="Paracetamol 500mg..."
+                placeholder="Enter salt composition..."
             />
 
             {/* Source Information (Read Only) */}

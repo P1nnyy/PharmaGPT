@@ -102,9 +102,19 @@ export const ItemPricing = ({ formData, handleInputChange }) => {
                         value={formData.tax_rate}
                         onChange={handleInputChange}
                         icon={<span className="text-xs font-bold">%</span>}
+                        inputClassName={formData.is_tax_inferred ? 'bg-amber-900/20 border-amber-500/50 text-amber-200' : ''}
                     />
                     <InputField
-                        label="HSN / SAC Code"
+                        label={
+                            <span>
+                                HSN / SAC Code
+                                {formData.hsn_description && (
+                                    <span className="ml-2 text-[9px] text-slate-500 font-normal lowercase truncate">
+                                        ({formData.hsn_description})
+                                    </span>
+                                )}
+                            </span>
+                        }
                         name="hsn_code"
                         value={formData.hsn_code}
                         onChange={handleInputChange}

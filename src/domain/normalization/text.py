@@ -160,14 +160,39 @@ def parse_pack_size(pack_str: str) -> Dict[str, Union[str, int]]:
     # Default Fallback
     return {"unit": "Unit", "pack": pack_str}
 
-def structure_packaging_hierarchy(pack_string: str) -> Dict[str, Any]:
+def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = None) -> Dict[str, Any]:
     """
     Parses a raw packaging string (e.g. '100ML', '10x10', '15s') into structured components.
-    
-    Fix C Rules:
-    1. Liquid/Cream: '100ML', '50GM', '1L' -> primary=1, base='Bottle'/'Tube'.
-    2. Tablet: '10x10', '15s', '10`s' -> primary=extracted, base='Tablet'.
+    Accepts optional enrichment_category (e.g. 'Drops', 'Syrup') to override detection.
     """
+    # 0. Category Override Logic (Fix for LUBIMOIST)
+    if enrichment_category:
+        cat = str(enrichment_category).strip().upper()
+        
+        # Liquid/Drops/Syrup -> Bottle
+        if any(x in cat for x in ['DROPS', 'SYRUP', 'LIQUID', 'SOLUTION', 'SUSPENSION', 'LOTION']):
+            return {
+                "primary_pack_size": 1,
+                "base_unit": 'Bottle',
+                "type": "LIQUID_BOTTLE"
+            }
+            
+        # Cream/Gel/Ointment -> Tube
+        if any(x in cat for x in ['CREAM', 'GEL', 'OINTMENT']):
+             return {
+                "primary_pack_size": 1,
+                "base_unit": 'Tube',
+                "type": "TUBE"
+            }
+            
+        # Injection/Vial -> Vial
+        if any(x in cat for x in ['INJECTION', 'VIAL', 'AMPOULE']):
+             return {
+                "primary_pack_size": 1,
+                "base_unit": 'Vial',
+                "type": "VIAL"
+            }
+
     if not pack_string:
         return None
         

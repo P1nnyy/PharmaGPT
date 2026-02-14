@@ -7,6 +7,7 @@ from src.utils.logging_config import get_logger
 from src.services.embeddings import generate_embedding
 from src.utils.config_loader import load_vendor_rules
 from neo4j import GraphDatabase
+from src.domain.smart_mapper import validate_and_fix_hsn, enrich_hsn_details
 
 logger = get_logger("mapper")
 
@@ -243,6 +244,36 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
             with driver.session() as session:
                 for item in mapped_items:
                     raw_product_name = item.get("Product")
+                    
+                    # --- HSN & TAX ENRICHMENT (FIX I) ---
+                    # 1. Clean HSN
+                    raw_hsn = item.get("HSN", "")
+                    clean_hsn = validate_and_fix_hsn(raw_hsn)
+                    item["HSN"] = clean_hsn
+                    
+                    # 2. Tax Inference
+                    rate_extracted = item.get("Raw_GST_Percentage") or 0.0
+                    
+                    # If Tax is missing/zero but we have an HSN, try to infer it
+                    if rate_extracted == 0 and clean_hsn != "0000":
+                        enriched = enrich_hsn_details(clean_hsn)
+                        if enriched.get("tax", 0) > 0:
+                            item["Raw_GST_Percentage"] = enriched["tax"]
+                            item["is_tax_inferred"] = True
+                            item["hsn_description"] = enriched.get("desc", "")
+                            
+                            # REVERSE CALCULATION:
+                            # If we inferred tax, the invoice likely showed a Total (Landed) Rate.
+                            # We must extract the Base Rate.
+                            current_rate = item.get("Rate", 0.0)
+                            if current_rate > 0:
+                                tax_rate = enriched["tax"]
+                                base_rate = round(current_rate / (1 + (tax_rate / 100)), 2)
+                                item["Rate"] = base_rate
+                                item["Logic_Note"] = f"Tax Inferred ({tax_rate}%) & Base Rate Calc ({current_rate}->{base_rate})"
+                            
+                            logger.info(f"SmartMapper: Inferred Tax {enriched['tax']}% for HSN {clean_hsn} ({enriched.get('desc')})")
+
                     if not raw_product_name:
                         continue
                         

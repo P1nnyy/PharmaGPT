@@ -30,8 +30,15 @@ def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     except:
         anchor_total = 0.0
     
-    if not lines or anchor_total <= 0:
-        logger.warning("Critic: Missing lines or anchor total. Passing with warning.")
+    if not lines:
+        logger.warning("Critic: Missing lines. Requesting RETRY.")
+        return {
+            "critic_verdict": "RETRY_OCR",
+            "feedback_logs": ["Extraction yielded 0 items. Retry with Full Page Scan."]
+        }
+
+    if anchor_total <= 0:
+        logger.warning("Critic: Missing anchor total. Passing with warning.")
         return {"critic_verdict": "PASS_WITH_WARNING"} # Fail open
 
     # 2. Calculate Line Sum

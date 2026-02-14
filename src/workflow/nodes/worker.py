@@ -70,6 +70,7 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.
             - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
             - **IGNORE "Bank Details"**: Do not extract bank info as rows.
+            - **IGNORE "Header Info"**: Do not extract Supplier Name, Invoice No, or Date as a table row. ONLY extract the Product Line Items.
             
             Output Format Example:
             | Description | Pcode | Qty | Rate | Amount | Net Amount |
@@ -367,4 +368,9 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Worker Master Error: {e}")
-        return {"error_logs": [f"Worker Execution Failed: {str(e)}"]}
+        # Fix: Increment retry count even on crash to prevent infinite loop
+        retry_count = int(state.get("retry_count", 0)) + 1
+        return {
+            "error_logs": [f"Worker Execution Failed: {str(e)}"],
+            "retry_count": retry_count
+        }

@@ -167,67 +167,126 @@ class EnrichmentAgent:
             logger.error(f"Pack verification failed: {e}")
             return False
 
+            logger.error(f"1mg API search failed: {e}")
+            return []
+
+    def _clean_product_name(self, name: str) -> str:
+        """
+        Removes common noise words to improve search matching.
+        e.g. "LIVO-LUK SOLUTION 200ML" -> "LIVO-LUK"
+        """
+        # Remove pack sizes (e.g. 200ml, 10s, 1x15)
+        name = re.sub(r'\b\d+[gm]l?\b', '', name, flags=re.IGNORECASE) # 200ml, 50g
+        name = re.sub(r'\b\d+x\d+\b', '', name, flags=re.IGNORECASE)   # 1x15
+        
+        # Remove form factors if they might confuse search
+        # strategies usually work better with just Brand Name
+        banned = ['SOLUTION', 'SYRUP', 'TABLET', 'CAPSULE', 'INJECTION', 'EYE', 'EAR', 'DROPS', 'SUSPENSION']
+        for word in banned:
+            name = re.sub(r'\b' + word + r'\b', '', name, flags=re.IGNORECASE)
+            
+        # Remove extra spaces/dashes if they are isolated
+        name = name.replace('-', ' ').strip()
+        return " ".join(name.split())
+
     def search_product_multi(self, product_name: str, limit: int = 3) -> list:
         """
         Searches for the product and returns top N URLs.
-        Includes STRICT relevance filtering to avoid hallucinations.
+        Includes Stricter relevance filtering and Retry Logic.
         """
         logger.info(f"Searching 1mg API for top {limit}: {product_name}")
         search_url = "https://www.1mg.com/api/v1/search/autocomplete"
-        params = {"name": product_name, "pageSize": 10} 
+        
+        def fetch_results(query):
+            try:
+                params = {"name": query, "pageSize": 10}
+                response = requests.get(search_url, params=params, headers=self.headers, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                items = []
+                if isinstance(data, list): items = data
+                elif isinstance(data, dict):
+                    if 'results' in data: items = data['results']
+                    elif 'suggestions' in data: items = data['suggestions']
+                    elif 'result' in data: items = data['result']
+                return items
+            except Exception as e:
+                 logger.error(f"Search failed for '{query}': {e}")
+                 return []
+
+        # 1. Primary Search
+        items = fetch_results(product_name)
+        
+        # 2. Fallback Search (Cleaned Name) if no results or low relevance suspected
+        # We process primary results first. If none are relevant, we trigger fallback.
         
         urls = []
-        try:
-            response = requests.get(search_url, params=params, headers=self.headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            items = []
-            if isinstance(data, list):
-                items = data
-            elif isinstance(data, dict):
-                if 'results' in data: items = data['results']
-                elif 'suggestions' in data: items = data['suggestions']
-                elif 'result' in data: items = data['result']
-            
-            from difflib import SequenceMatcher
-            
-            for item in items:
+        from difflib import SequenceMatcher
+
+        def process_items(candidate_items, query_str):
+            # Clean the query for relevance check (remove noise like "Solution", "Tablet")
+            # We want to match BRAND NAME, not form factor.
+            clean_query_for_relevance = self._clean_product_name(query_str)
+            if len(clean_query_for_relevance) < 3:
+                clean_query_for_relevance = query_str # Fallback if cleaning stripped everything
+
+            found_urls = []
+            for item in candidate_items:
                 url_path = item.get('url_path', '')
                 result_name = item.get('name', '')
                 
                 # RELEVANCE CHECK
-                # Calculate similarity ratio
-                similarity = SequenceMatcher(None, product_name.lower(), result_name.lower()).ratio()
+                # 1. Similarity on full strings (still useful for close matches)
+                similarity = SequenceMatcher(None, query_str.lower(), result_name.lower()).ratio()
                 
-                # Check if query words are present in result (Token set approach simplified)
-                query_tokens = set(product_name.lower().split())
-                result_tokens = set(result_name.lower().split())
-                overlap = len(query_tokens.intersection(result_tokens))
+                # 2. Token Overlap on CLEANED strings
+                # This prevents "Solution" matching "Salytar Solution"
+                clean_result_name = self._clean_product_name(result_name)
+                
+                q_tokens = set(clean_query_for_relevance.lower().split())
+                r_tokens = set(clean_result_name.lower().split())
+                
+                overlap = len(q_tokens.intersection(r_tokens))
                 
                 is_relevant = False
-                if similarity > 0.4: # Basic string similarity
-                    is_relevant = True
-                elif overlap >= 1: # At least one significant word matches (e.g. "Ondero" in "Ondero Met")
-                     is_relevant = True
+                if similarity > 0.6: is_relevant = True # Bumped threshold
+                elif overlap >= 1: is_relevant = True
                 
+                # 3. Normalized Substring Check (Handle "Livo-Luk" vs "Livoluk")
+                # Remove spaces and check if query is inside result
+                norm_q = clean_query_for_relevance.lower().replace(" ", "")
+                norm_r = clean_result_name.lower().replace(" ", "")
+                
+                if len(norm_q) > 3 and norm_q in norm_r:
+                    is_relevant = True
+                
+                # Strict check: If query is short (brand name), ensures it's in result
+                if len(query_str) < 10 and query_str.lower() not in result_name.lower():
+                     # e.g. Query "Livo" should be in "Livo-Luk" (ok) but maybe not "Livogen" (ok)
+                     pass
+
                 if not is_relevant:
-                    logger.warning(f"Skipping irrelevant result: {result_name} (Similarity: {similarity:.2f})")
                     continue
 
                 if url_path and (url_path.startswith('/drugs/') or url_path.startswith('/otc/')):
                     full_url = f"https://www.1mg.com{url_path}"
-                    if full_url not in urls:
-                        urls.append(full_url)
-                    if len(urls) >= limit:
-                        break
-            
-            logger.info(f"Found {len(urls)} URLs for {product_name}")
-            return urls
-            
-        except Exception as e:
-            logger.error(f"1mg API search failed: {e}")
-            return []
+                    if full_url not in found_urls:
+                        found_urls.append(full_url)
+            return found_urls
+
+        urls = process_items(items, product_name)
+        
+        # 3. Retry with Clean Name if results are empty
+        if not urls:
+            clean_name = self._clean_product_name(product_name)
+            if clean_name and clean_name.lower() != product_name.lower() and len(clean_name) > 2:
+                logger.info(f"Primary search failed. Retrying with cleaned name: '{clean_name}'")
+                fallback_items = fetch_results(clean_name)
+                # Process with cleaned name as relevance target
+                urls = process_items(fallback_items, clean_name)
+        
+        logger.info(f"Found {len(urls)} URLs for {product_name} (final)")
+        return urls[:limit]
 
     def extract_details_multi(self, texts: list) -> Dict[str, Any]:
         """

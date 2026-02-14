@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   langfuse-server:
-    image: langfuse/langfuse:3.5.0
+    image: langfuse/langfuse:latest
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
       interval: 10s
@@ -22,6 +22,7 @@ services:
       - NEXTAUTH_SECRET=554850ce1900cbdde4c628e2cd1fafc0b918fb4c310187912dc7d221c858b222
       - SALT=ac1368bf27e6955a2524c20865f0241f7f3448ef05cff7734485434d9c17c389
       - NEXTAUTH_URL=http://localhost:3000
+      - HOSTNAME=0.0.0.0
       - TELEMETRY_ENABLED=false
       - CLICKHOUSE_HOST=clickhouse
       - CLICKHOUSE_USER=langfuse
@@ -32,7 +33,7 @@ services:
       - ENCRYPTION_SECRET=7ce657521cb028b57b65331bef2707d9a13c8f97ce7b1a6669f4d7dbd90e442d
 
   langfuse-worker:
-    image: langfuse/langfuse:3.5.0
+    image: langfuse/langfuse:latest
     depends_on:
       db:
         condition: service_started

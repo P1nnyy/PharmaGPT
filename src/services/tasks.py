@@ -115,6 +115,11 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                 logger.warning(f"Enrichment Error for {product_name}: {result['error']}")
                 continue
                 
+            # Check if valid data was returned
+            if not result.get("manufacturer") and not result.get("salt_composition"):
+                logger.warning(f"Enrichment returned empty data for {product_name}. Skipping save.")
+                continue
+
             # Update DB
             update_query = """
             MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
@@ -122,6 +127,7 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                 gp.salt_composition = $salt,
                 gp.category = $category,
                 gp.is_verified = true,
+                gp.is_enriched = true,
                 gp.updated_at = timestamp()
             """
             
@@ -134,7 +140,30 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                             category=result.get("category"))
                             
             logger.info(f"Enriched {product_name}: {result.get('manufacturer')}")
+
+            # ---------------------------------------------------------
+            # Fix: Update Packaging Unit based on Enriched Category
+            # ---------------------------------------------------------
+            from src.domain.normalization.text import structure_packaging_hierarchy
             
+            enrichment_category = result.get('category')
+            pack_info = structure_packaging_hierarchy(local_pack_size, enrichment_category=enrichment_category)
+            
+            if pack_info and pack_info.get("base_unit"):
+                new_base_unit = pack_info.get("base_unit")
+                logger.info(f"Correcting Base Unit for {product_name} -> {new_base_unit} (Cat: {enrichment_category})")
+                
+                unit_update_query = """
+                MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
+                SET gp.base_unit = $base_unit,
+                    gp.unit_name = $base_unit
+                """
+                with driver.session() as session:
+                    session.run(unit_update_query, 
+                                user_email=user_email, 
+                                name=product_name, 
+                                base_unit=new_base_unit)
+
         except Exception as e:
             logger.error(f"Failed to enrich item {product_name}: {e}")
 

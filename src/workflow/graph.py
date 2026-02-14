@@ -27,7 +27,23 @@ def build_graph():
     
     # Define Edges
     workflow.add_edge(START, "surveyor")
-    workflow.add_edge("surveyor", "worker")
+    # workflow.add_edge("surveyor", "worker")
+    
+    def route_surveyor(state):
+        plan = state.get("extraction_plan")
+        if not plan:
+            logger.error("Surveyor failed to generate a plan. Stopping execution to prevent infinite loop.")
+            return "end"
+        return "worker"
+
+    workflow.add_conditional_edges(
+        "surveyor",
+        route_surveyor,
+        {
+            "worker": "worker",
+            "end": END
+        }
+    )
     
     # Parallel Supplier Extraction (Start from Surveyor or Start? Start is fine, but Surveyor gives us image path reliably)
     # Let's run it parallel to Worker. Surveyor -> Supplier Extractor
