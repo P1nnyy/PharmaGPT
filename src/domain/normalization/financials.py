@@ -32,13 +32,15 @@ def parse_float(value: Union[str, float, None]) -> float:
             parts = cleaned_value.split('+')
             # Extract the FIRST number found (Billed Qty)
             first_part = parts[0]
-            match = re.search(r'\d+(\.\d+)?', first_part)
+            # UDPATED REGEX: Handle .250 as 0.250
+            match = re.search(r'-?(\d+\.\d+|\d+|\.\d+)', first_part)
             if match:
                 return float(match.group())
         except:
             pass # Fallback to standard regex if match fails
     
-    match = re.search(r'-?\d+(\.\d+)?', cleaned_value)
+    # UDPATED REGEX: Handle .250 as 0.250
+    match = re.search(r'-?(\d+\.\d+|\d+|\.\d+)', cleaned_value)
     if match:
         return float(match.group())
     return 0.0
@@ -66,11 +68,13 @@ def parse_quantity(value: Union[str, float, None], free_qty: Union[str, float, N
         if "+" in s:
             try:
                 parts = s.split('+')
-                return sum(float(re.search(r'-?\d+(\.\d+)?', p).group() or 0) for p in parts if re.search(r'-?\d+(\.\d+)?', p))
+                # UDPATED REGEX: Handle .250 as 0.250
+                return sum(float(re.search(r'-?(\d+\.\d+|\d+|\.\d+)', p).group() or 0) for p in parts if re.search(r'-?(\d+\.\d+|\d+|\.\d+)', p))
             except:
                 pass
                 
-        match = re.search(r'-?\d+(\.\d+)?', s)
+        # UDPATED REGEX: Handle .250 as 0.250
+        match = re.search(r'-?(\d+\.\d+|\d+|\.\d+)', s)
         return float(match.group()) if match else 0.0
 
     billed_q = clean_float(value)

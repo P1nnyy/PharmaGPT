@@ -156,7 +156,7 @@ const InvoiceViewer = ({
                         <label className="flex items-center justify-center gap-2 w-full p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 text-xs cursor-pointer transition-colors">
                             <Upload className="w-3 h-3" />
                             <span className={`${isMobile ? 'inline' : 'hidden md:inline'}`}>Add More</span>
-                            <input type="file" multiple className="hidden" accept="image/*" onChange={onFileChange} />
+                            <input type="file" multiple className="hidden" accept="image/*,application/pdf" onChange={onFileChange} />
                         </label>
                     </div>
                 </div>
@@ -225,7 +225,7 @@ const InvoiceViewer = ({
                             <p className="text-gray-400 font-medium text-sm md:text-base text-center px-4">
                                 Tap to upload Invoices
                             </p>
-                            <input type="file" multiple className="hidden" accept="image/*" onChange={onFileChange} />
+                            <input type="file" multiple className="hidden" accept="image/*,application/pdf" onChange={onFileChange} />
                         </label>
                     )}
                 </div>

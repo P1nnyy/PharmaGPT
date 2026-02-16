@@ -154,7 +154,17 @@ function App() {
           // Better approach: If the item exists in previous queue as 'completed', keept it as completed?
           // or rely on backend. 
 
-          return serverItems;
+          // Sync Logic: Preserve local "temp" items that haven't been confirmed yet
+          return prevQueue.filter(item => item.id.toString().startsWith('temp-')).concat(serverItems)
+            .sort((a, b) => {
+              const score = (status) => {
+                if (status === 'completed') return 3;
+                if (status === 'duplicate') return 3;
+                if (status === 'processing') return 2;
+                return 1;
+              };
+              return score(b.status) - score(a.status);
+            });
         });
 
       } catch (err) {
@@ -237,6 +247,7 @@ function App() {
 
   const handleFileChange = async (e) => {
     const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    console.log("HandleFileChange: Selected Files:", selectedFiles);
     if (selectedFiles.length === 0) return;
 
     // Create Temporary Queue for Immediate UI Feedback

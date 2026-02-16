@@ -118,6 +118,7 @@ async def get_all_products(user_email: str = Depends(get_current_user_email)):
 
     query = """
     MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct)
+    WHERE gp.is_verified = true
     OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant)
     RETURN gp.name as name, 
            gp.hsn_code as hsn_code, 
@@ -141,7 +142,7 @@ async def get_all_products(user_email: str = Depends(get_current_user_email)):
                conversion_factor: coalesce(pv.conversion_factor, 1)
            }) as packaging_variants
     ORDER BY gp.name
-    LIMIT 200
+    LIMIT 1000
     """
     
     with driver.session() as session:

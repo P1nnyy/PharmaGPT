@@ -1,4 +1,7 @@
 import os
+# CRITICAL: Fix for Tunnel/VPN DNS Resolution with GRPC
+os.environ["GRPC_DNS_RESOLVER"] = "native"
+
 import uuid
 import uvicorn
 from fastapi import FastAPI, Request

@@ -59,11 +59,7 @@ export const uploadBatchInvoices = async (files) => {
     });
 
     // Calls the async endpoint
-    const response = await api.post('/invoices/batch-upload', formData, {
-        headers: {
-            'Content-Type': 'multipart/form-data',
-        },
-    });
+    const response = await api.post('/invoices/batch-upload', formData);
     return response.data; // List of placeholders {id, status, previewUrl...}
 };
 

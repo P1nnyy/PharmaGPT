@@ -57,19 +57,33 @@ def fix_enrichment():
                 continue
 
             # ---------------------------------------------------------
-            # Fix: Update Packaging Unit based on Enriched Category
+            # Fix: Update Packaging Unit based on Enriched Category AND Pack Size
             # ---------------------------------------------------------
             from src.domain.normalization.text import structure_packaging_hierarchy
             
-            # Since this is a recovery script, we might not have 'local_pack_size' easily available 
-            # unless we query it or assume it's ambiguous. 
-            # But structure_packaging_hierarchy handles None/Empty by defaulting.
-            # However, for LUBIMOIST, the pack size IS likely ambiguous or "1".
-            pack_info = structure_packaging_hierarchy(None, enrichment_category=result.get("category"))
+            # Extract Pack Size string from Agent Result
+            agent_pack_size = result.get("pack_size")
+            category = result.get("category")
             
-            if pack_info and pack_info.get("base_unit"):
+            # Structure it
+            pack_info = structure_packaging_hierarchy(agent_pack_size, enrichment_category=category)
+            
+            # Default fallback if structure failed but we have category
+            if not pack_info:
+                 pack_info = structure_packaging_hierarchy(None, enrichment_category=category)
+
+            new_base_unit = None
+            primary_pack = None
+            secondary_pack = None
+            pack_type = None
+
+            if pack_info:
                 new_base_unit = pack_info.get("base_unit")
-                print(f"  > Correcting Base Unit -> {new_base_unit}")
+                primary_pack = pack_info.get("primary_pack_size")
+                secondary_pack = pack_info.get("secondary_pack_size")
+                pack_type = pack_info.get("type")
+                
+                print(f"  > Struct: {pack_info}")
 
             # Check validity
             if not result.get("manufacturer") and not result.get("salt_composition"):
@@ -84,9 +98,16 @@ def fix_enrichment():
                 gp.category = $category,
                 gp.is_verified = true,
                 gp.is_enriched = true,
+                gp.updated_at = timestamp(),
+                
+                // New Fields (TC-03/TC-04)
+                gp.pack_size = $pack_size_str,
+                gp.pack_size_primary = $primary,
+                gp.pack_size_secondary = $secondary,
+                gp.pack_type = $pack_type,
+                
                 gp.base_unit = CASE WHEN $base_unit IS NOT NULL THEN $base_unit ELSE gp.base_unit END,
-                gp.unit_name = CASE WHEN $base_unit IS NOT NULL THEN $base_unit ELSE gp.unit_name END,
-                gp.updated_at = timestamp()
+                gp.unit_name = CASE WHEN $base_unit IS NOT NULL THEN $base_unit ELSE gp.unit_name END
             """
             
             print("  - Updating DB...")
@@ -97,6 +118,10 @@ def fix_enrichment():
                             manufacturer=result.get("manufacturer"),
                             salt=result.get("salt_composition"),
                             category=result.get("category"),
+                            pack_size_str=agent_pack_size,
+                            primary=primary_pack,
+                            secondary=secondary_pack,
+                            pack_type=pack_type,
                             base_unit=new_base_unit)
                             
             print(f"  Success! Set Manufacturer: {result.get('manufacturer')}")

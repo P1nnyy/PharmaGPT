@@ -201,6 +201,10 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     1. **Merges**: DO NOT merge distinct products.
     2. **DUPLICATES**: If the raw text lists the SAME product twice, CREATE TWO JSON OBJECTS.
     3. **Noise**: Ignore header rows.
+    4. **MRP vs UFC**: 
+        - **IGNORE "UFC" / "Unit" / "Factor" / "Case" columns** when looking for MRP.
+        - **MRP is a Price**, usually > 10.0. "UFC" is usually small integer (e.g. 10, 20, 1). 
+        - If you see a column "UFC", "Unit", "Pack", DO NOT map it to MRP. Map it to "Pack" if appropriate.
     
     {cheat_sheet}
     
@@ -263,14 +267,29 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                             item["hsn_description"] = enriched.get("desc", "")
                             
                             # REVERSE CALCULATION:
-                            # If we inferred tax, the invoice likely showed a Total (Landed) Rate.
-                            # We must extract the Base Rate.
+                            # If we inferred tax, we must check if 'Rate' is Base or Landed.
+                            # Hypothesis: Rate is Landed (Net Unit Price) if Tax was 0.
                             current_rate = item.get("Rate", 0.0)
+                            
                             if current_rate > 0:
                                 tax_rate = enriched["tax"]
-                                base_rate = round(current_rate / (1 + (tax_rate / 100)), 2)
-                                item["Rate"] = base_rate
-                                item["Logic_Note"] = f"Tax Inferred ({tax_rate}%) & Base Rate Calc ({current_rate}->{base_rate})"
+                                qty = float(item.get("Qty", 1) or 1)
+                                amount = float(item.get("Amount", 0) or 0)
+                                
+                                # Check: Is Rate * Qty * (1+Tax) ~= Amount? (Rate is Base)
+                                is_already_base = False
+                                if amount > 0:
+                                    expected_if_base = current_rate * qty * (1 + tax_rate/100)
+                                    if abs(expected_if_base - amount) < (amount * 0.05 + 1.0): # 5% + 1.0 tolerance
+                                        is_already_base = True
+                                
+                                if not is_already_base:
+                                    # It was Landed. Strip tax.
+                                    base_rate = round(current_rate / (1 + (tax_rate / 100)), 2)
+                                    item["Rate"] = base_rate
+                                    item["Logic_Note"] = f"Tax Inferred ({tax_rate}%) & Base Rate Calc ({current_rate}->{base_rate})"
+                                else:
+                                    item["Logic_Note"] = f"Tax Inferred ({tax_rate}%) [Rate Preserved]"
                             
                             logger.info(f"SmartMapper: Inferred Tax {enriched['tax']}% for HSN {clean_hsn} ({enriched.get('desc')})")
 

@@ -6,6 +6,7 @@ import logging
 # Hardcoded fallback for common Pharma HSNs (Performance Optimization)
 COMMON_HSN_MAP = {
     "96032100": {"desc": "Toothbrush", "tax": 18.0},
+    "9603": {"desc": "Brushes/Brooms", "tax": 18.0},
     "30049011": {"desc": "Medicaments (Allopathic)", "tax": 12.0},
     "3004": {"desc": "Medicaments", "tax": 12.0},
     "2106": {"desc": "Food Supplement", "tax": 18.0}
