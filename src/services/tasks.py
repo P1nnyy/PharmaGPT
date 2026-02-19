@@ -126,7 +126,6 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
             SET gp.manufacturer = $manufacturer,
                 gp.salt_composition = $salt,
                 gp.category = $category,
-                gp.is_verified = true,
                 gp.is_enriched = true,
                 gp.updated_at = timestamp()
             """

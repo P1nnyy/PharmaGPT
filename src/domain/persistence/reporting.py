@@ -23,7 +23,7 @@ def get_activity_log(driver, user_email: str):
            s.dl_no as supplier_dl,
            s.address as supplier_address,
            u.name as saved_by
-    ORDER BY i.created_at DESC LIMIT 20
+    ORDER BY i.updated_at DESC LIMIT 20
     """
     with driver.session() as session:
         result = session.run(query, user_email=user_email)

@@ -127,6 +127,9 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
                 is_valid = True
                 errors = []
                 
+                # LOG RAW DATA for Debugging
+                logger.info(f"SupplierExtractor: Raw Data: {data}")
+
                 if not data:
                     is_valid = False
                     errors.append("Output was not valid JSON.")
@@ -134,30 +137,19 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
                     raw_gst = data.get("GSTIN")
                     if raw_gst:
                          g = str(raw_gst).replace(" ", "").replace("-", "").upper()
-                    else:
-                         g = ""
-
-                    if not g:
-                        # Fallback: Check if PAN looks like a GSTIN
-                        raw_pan = data.get("PAN")
-                        if raw_pan and len(str(raw_pan)) == 15:
-                             g = str(raw_pan).strip().upper()
-                             data["GSTIN"] = g
-                             data["PAN"] = g[2:12] # Extract PAN from GSTIN
-                             logger.info(f"SupplierExtractor: Promoted PAN {g} to GSTIN.")
-                        else:
-                            is_valid = False
-                            errors.append("GSTIN is Missing.")
+                         # Validate Length loosely
+                         if len(g) < 10 or len(g) > 18:
+                             logger.warning(f"SupplierExtractor: GSTIN '{g}' seems invalid length ({len(g)}). Keeping it anyway.")
                     
-                    if g:
-                        if len(g) != 15:
-                            if len(g) < 10 or len(g) > 18:
-                                is_valid = False
-                                errors.append(f"GSTIN '{g}' is invalid length ({len(g)}).")
-                            
                     if not data.get("Supplier_Name"):
                          is_valid = False
                          errors.append("Supplier Name is Missing.")
+                    
+                    # RELAXED VALIDATION:
+                    # If we have a Name, we accept the result.
+                    # We do NOT fail just because GSTIN is missing.
+                    if is_valid:
+                        logger.info("SupplierExtractor: Validation Passed (Relaxed Mode).")
 
                 if is_valid:
                     # Success!

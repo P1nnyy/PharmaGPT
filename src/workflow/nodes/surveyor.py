@@ -33,9 +33,28 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
     try:
         model = genai.GenerativeModel('gemini-2.0-flash') # Using 2.0 Flash as requested
         
-        # Upload file (or load bytes if standard API supports it, but File API is better for vision)
-        # Using standard file API for Gemini 2.0
-        sample_file = genai.upload_file(path=image_path, display_name="Invoice Surveyor")
+        # Validate Image
+        if os.path.getsize(image_path) == 0:
+            logger.error(f"Image is empty: {image_path}")
+            return {"extraction_plan": [], "error_logs": ["Image file is empty"]}
+
+        # Upload file with Retries
+        sample_file = None
+        upload_retries = 3
+        for attempt in range(upload_retries):
+            try:
+                # Use unique display name to avoid conflicts if that's a factor
+                import uuid
+                unique_name = f"invoice_{uuid.uuid4().hex}"
+                sample_file = genai.upload_file(path=image_path, display_name=unique_name)
+                logger.info(f"File uploaded successfully: {sample_file.name}")
+                break
+            except Exception as e:
+                logger.warning(f"Upload Attempt {attempt+1} failed: {e}")
+                import time
+                time.sleep(2) # Wait before retry
+                if attempt == upload_retries - 1:
+                     return {"extraction_plan": [], "error_logs": [f"Surveyor Upload Failed: {str(e)}"]}
         
         prompt = """
         Analyze this invoice and identify distinct layout zones.
