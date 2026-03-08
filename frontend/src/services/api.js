@@ -169,6 +169,37 @@ export const enrichProduct = async (productName, packSize = null) => {
     return response.data;
 };
 
+// --- Config / Admin API ---
+export const getCategories = async () => {
+    const response = await api.get('/config/categories');
+    return response.data;
+}
+
+export const updateCategoryConfig = async (name, configUpdates) => {
+    const response = await api.put(`/config/categories/${encodeURIComponent(name)}/config`, configUpdates);
+    return response.data;
+}
+
+export const createCategory = async (name, description = "", parent_name = null) => {
+    const response = await api.post('/config/categories', { name, description, parent_name });
+    return response.data;
+}
+
+export const deleteCategory = async (name) => {
+    const response = await api.delete(`/config/categories/${encodeURIComponent(name)}`);
+    return response.data;
+}
+
+export const getRoles = async () => {
+    const response = await api.get('/config/roles');
+    return response.data;
+}
+
+export const createRole = async (name, permissions = []) => {
+    const response = await api.post('/config/roles', { name, permissions });
+    return response.data;
+}
+
 export default {
     analyzeInvoice,
     uploadBatchInvoices,
@@ -190,5 +221,11 @@ export default {
     getProductHistory,
     getReviewQueue,
     submitFeedback,
-    enrichProduct
+    enrichProduct,
+    getCategories,
+    updateCategoryConfig,
+    createCategory,
+    deleteCategory,
+    getRoles,
+    createRole
 };

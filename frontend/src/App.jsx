@@ -18,6 +18,7 @@ import GroupedInvoices from './components/dashboard/GroupedInvoices';
 
 import MobileHeader from './components/layout/MobileHeader';
 import ItemMaster from './components/items/ItemMaster';
+import AdminDashboard from './components/dashboard/AdminDashboard';
 
 function App() {
   const [activeTab, setActiveTab] = useState('scan'); // 'scan' | 'history' | 'inventory' | 'settings' | 'invoices'
@@ -502,6 +503,7 @@ function App() {
           {activeTab === 'inventory' && <InventoryView />}
           {activeTab === 'invoices' && <GroupedInvoices />}
           {activeTab === 'items' && <ItemMaster />}
+          {activeTab === 'admin' && <AdminDashboard />}
           {activeTab === 'settings' && (
             <div className="p-8 text-center text-slate-500">
               <h2 className="text-xl text-slate-300 mb-2">Settings</h2>

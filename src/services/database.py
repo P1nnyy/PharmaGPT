@@ -26,6 +26,10 @@ def connect_db():
         # Initialize Vector Index on Startup
         init_vector_index(driver)
         
+        # Seed default Item Categories
+        from src.domain.persistence.config import seed_default_categories
+        seed_default_categories()
+        
     except Exception as e:
         logger.error(f"Failed to connect to Neo4j: {e} - Application will start in partial mode (No DB)")
         driver = None

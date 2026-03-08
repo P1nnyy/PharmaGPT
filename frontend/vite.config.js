@@ -11,7 +11,7 @@ export default defineConfig({
       clientPort: 443 // Force HMR to use HTTPS port 443 (Client -> Cloudflared -> Vite)
     },
     proxy: {
-      '^/(auth|analyze-invoice|confirm-invoice|report|activity-log|inventory|history|invoices|static|export-excel|products|feedback)': {
+      '^/(auth|analyze-invoice|confirm-invoice|report|activity-log|inventory|history|invoices|static|export-excel|products|feedback|config)': {
         target: 'http://127.0.0.1:5001',
         changeOrigin: true,
         secure: false

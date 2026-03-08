@@ -33,27 +33,41 @@ VENDOR_RULES = load_vendor_rules()
 
 def standardize_product(raw_desc: str) -> Tuple[str, Union[str, None]]:
     """
-    Matches raw description against the loaded product catalog.
-    Returns (Standard Name, Pack Size) if found.
+    Standardizes a product description by first extracting trailing packaging notations
+    using regex (Regex-First), then matching the cleaned name against the product catalog (Mapping-Second).
+    Returns (Standard Name, Pack Size) if found or extracted.
     Otherwise returns (Raw Description, None).
     """
     if not raw_desc:
         return "Unknown", None
         
-    # Normalize: lower, strip, remove extra spaces
-    key = str(raw_desc).lower().strip()
+    original_desc = str(raw_desc).strip()
+    
+    # 1. Regex-First: Extract trailing pack sizes
+    # Matches patterns like '10x15', '1x6', '10's', '15s', '10 Tabs', '15 Caps', '10 T', '15 C' at the end of the string
+    pack_match = re.search(r'\s+((?:\d+\s*[xX]\s*\d+)|\d+\s*[\'`]?s\b|\d+\s*(?:TAB|CAP|T|C|STRIP)S?\b)$', original_desc, re.IGNORECASE)
+    
+    extracted_pack = None
+    clean_name = original_desc
+    
+    if pack_match:
+        extracted_pack = pack_match.group(1).strip()
+        # Remove the pack size from the end of the name
+        clean_name = original_desc[:pack_match.start()].strip()
+    
+    # Normalize clean_name for dictionary lookup: lower, strip, remove extra spaces
+    key = clean_name.lower()
     key = re.sub(r'\s+', ' ', key)
     
-    # 1. Direct Match
+    # 2. Mapping-Second: Direct Match or Synonym Check
     if key in PRODUCT_MAPPING:
-        return PRODUCT_MAPPING[key]
+        std_name, cat_pack = PRODUCT_MAPPING[key]
+        # Prefer the newly extracted pack from the string, fallback to catalog pack
+        return std_name, extracted_pack if extracted_pack else cat_pack
         
-    # 2. Fuzzy Match / Synonym Check (Simplified)
-    # The PRODUCT_MAPPING already contains synonyms as keys (see load_and_transform_catalog)
-    # So we just check if the key exists.
-    
-    # If no match, return original (Title Case for aesthetics)
-    return str(raw_desc).strip(), None
+    # If no match in mapping, return the cleaned Title Case original with the extracted pack
+    # Title Case for aesthetics but preserving the parsed info
+    return clean_name.title() if clean_name.islower() or clean_name.isupper() else clean_name, extracted_pack
 
 def refine_extracted_fields(raw_item: Dict) -> Dict:
     """
@@ -127,45 +141,42 @@ def refine_extracted_fields(raw_item: Dict) -> Dict:
 
 def parse_pack_size(pack_str: str) -> Dict[str, Union[str, int]]:
     """
-    Parses a pack size string into structured components.
-    Example: "10 T" -> {unit: "Tablet", pack: "1x10"}
-    Example: "15 S" -> {unit: "Strip", pack: "1x15"}
+    Legacy wrapper for pack size parsing. Now uses `structure_packaging_hierarchy`
+    under the hood as the single source of truth for all packaging math.
+    Example: "10 T" -> {"unit": "Tablet", "pack": "1x10"}
+    Example: "10x15" -> {"unit": "Tablet", "pack": "10x15"}
     """
     if not pack_str:
         return {"unit": "Unit", "pack": "1x1"}
         
-    s = pack_str.strip().lower()
+    s = pack_str.strip()
+    struct = structure_packaging_hierarchy(s)
     
-    # Logic 1: "10 S", "10s", "10 T", "10 strips"
-    # Matches <digits><optional space><suffix>
-    match = re.search(r'(\d+)\s*([a-z]+)', s)
-    if match:
-        qty = match.group(1)
-        suffix = match.group(2)
+    if struct:
+        base_unit = struct.get("base_unit", "Unit")
+        primary = struct.get("primary_pack_size", 1)
+        secondary = struct.get("secondary_pack_size", 1)
         
-        unit = "Unit"
-        if suffix in ['s', 'str', 'strip', 'strips']: unit = "Strip"
-        elif suffix in ['t', 'tab', 'tabs', 'tablet', 'tablets']: unit = "Tablet"
-        elif suffix in ['c', 'cap', 'caps', 'capsule', 'capsules']: unit = "Capsule"
-        elif suffix in ['v', 'vial', 'vials']: unit = "Vial"
-        elif suffix in ['a', 'amp', 'ampoule', 'ampoules']: unit = "Ampoule"
-        elif suffix in ['b', 'bot', 'bottle', 'bottles']: unit = "Bottle"
-        
-        if unit == "Unit" and suffix not in ['s']: 
-             # If suffix matches nothing known, return original (e.g. 15GM)
-             return {"unit": "Unit", "pack": pack_str}
-
-        return {"unit": unit, "pack": f"1x{qty}"}
-        
+        # If it's a liquid or tube, keep the original string as the pack (e.g., '100ML')
+        if base_unit in ['Bottle', 'Tube', 'Vial', 'Ampoule']:
+            return {"unit": "Unit", "pack": s}
+            
+        # Reconstruct the string for tablets/capsules/strips
+        if secondary > 1 or 'x' in s.lower():
+            return {"unit": base_unit, "pack": f"{secondary}x{primary}"}
+        else:
+            return {"unit": base_unit, "pack": f"1x{primary}"}
+            
     # Default Fallback
-    return {"unit": "Unit", "pack": pack_str}
+    return {"unit": "Unit", "pack": s}
 
-def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = None) -> Dict[str, Any]:
+def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = None) -> Union[Dict[str, Any], None]:
     """
-    Parses a raw packaging string (e.g. '100ML', '10x10', '15s') into structured components.
+    Parses a raw packaging string (e.g. '100ML', '10x10', '15s', '10 Tabs') into structured components.
+    This acts as the single source of truth for packaging hierarchy, unit categorization, and math calculation.
     Accepts optional enrichment_category (e.g. 'Drops', 'Syrup') to override detection.
     """
-    # 0. Category Override Logic (Fix for LUBIMOIST)
+    # 0. Category Override Logic (Fix for LUBIMOIST and others)
     if enrichment_category:
         cat = str(enrichment_category).strip().upper()
         
@@ -173,6 +184,8 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
         if any(x in cat for x in ['DROPS', 'SYRUP', 'LIQUID', 'SOLUTION', 'SUSPENSION', 'LOTION']):
             return {
                 "primary_pack_size": 1,
+                "secondary_pack_size": 1,
+                "total_base_units": 1,
                 "base_unit": 'Bottle',
                 "type": "LIQUID_BOTTLE"
             }
@@ -181,6 +194,8 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
         if any(x in cat for x in ['CREAM', 'GEL', 'OINTMENT']):
              return {
                 "primary_pack_size": 1,
+                "secondary_pack_size": 1,
+                "total_base_units": 1,
                 "base_unit": 'Tube',
                 "type": "TUBE"
             }
@@ -189,6 +204,8 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
         if any(x in cat for x in ['INJECTION', 'VIAL', 'AMPOULE']):
              return {
                 "primary_pack_size": 1,
+                "secondary_pack_size": 1,
+                "total_base_units": 1,
                 "base_unit": 'Vial',
                 "type": "VIAL"
             }
@@ -201,51 +218,50 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
     # Rule 1: Liquid/Cream/Ointment Detection
     # Look for suffixes: ML, L, GM, G, OZ
     if re.search(r'\d+\s*(ML|GM|L|G|OZ)\b', s):
-        # It's a volume/weight based item (Syrup, Cream, Gel)
-        # return primary_pack_size = 1 (Sold as 1 Bottle/Tube)
         base_unit = 'Bottle'
         if 'GM' in s or 'G' in s:
-            base_unit = 'Tube' # or Jar
+            base_unit = 'Tube'
             
         return {
             "primary_pack_size": 1,
+            "secondary_pack_size": 1,
+            "total_base_units": 1,
             "base_unit": base_unit,
             "type": "LIQUID_WEIGHT"
         }
         
-    # Rule 2: Tablet/Capsule Detection
-    # Pattern A: '10x10', '5x15' (Box logic, but usually means Total Tablets? or Strips per box?)
-    # Context: Usually invoices say "10x10" meaning 1 Box contains 10 Strips of 10.
-    # But financial line item usually refers to the Box or the Strip?
-    # If standard logic says "15s" -> 1 Strip of 15.
-    
-    # Pattern: '15s', '10`s', '10 s', '15 TAB'
-    match_strip = re.search(r'(\d+)\s*[\'`]?s\b|(\d+)\s*TAB', s, re.IGNORECASE)
+    # Rule 2: Tablet/Capsule/Strip Detection
+    # Pattern A: '15s', '10`s', '10 s', '15 TAB', '15 CAP', '15 STRIPS', '10 T', '15 C'
+    match_strip = re.search(r'^(\d+)\s*(?:[\'`]?S\b|TAB|T\b|CAP|C\b|STRIP|V\b|A\b|B\b)', s)
     if match_strip:
-        qty = int(match_strip.group(1) or match_strip.group(2))
+        qty = int(match_strip.group(1))
+        unit = 'Tablet'
+        if 'CAP' in s or 'C' in s.split(): unit = 'Capsule'
+        elif 'V' in s.split(): unit = 'Vial'
+        elif 'A' in s.split(): unit = 'Ampoule'
+        elif 'B' in s.split(): unit = 'Bottle'
+        
         return {
             "primary_pack_size": qty,
-            "base_unit": 'Tablet',
-            "type": "TABLET_STRIP"
+            "secondary_pack_size": 1,
+            "total_base_units": qty,
+            "base_unit": unit,
+            "type": "TABLET_STRIP" if unit in ['Tablet', 'Capsule'] else "LIQUID_UNIT"
         }
         
-    # Pattern: '10x10'
-    # This is ambiguous. It could mean "10 Strips of 10".
-    # If the user buys 1 "10x10", they are buying 1 Box.
-    # Total Base Units = 100.
-    # Primary Pack (Strip) = 10. Secondary (Box) = 10 strips.
-    # For now, let's extract the "Strip Size" if possible. 
-    # Usually the second number is the strip size? OR the first? 
-    # "10x10" -> 10 strips of 10. 
-    # Let's assume the second number is the Primary Pack Size (Tabs per strip).
+    # Pattern B: '10x10', '1x6', '5x15' (NxM)
+    # The standard convention: Outer x Inner (e.g. 10 strips of 15 tablets -> 10x15)
+    # The first number is the outer pack (Strips per box).
+    # The second number is the inner pack (Tabs per strip).
     match_box = re.search(r'(\d+)\s*[xX]\s*(\d+)', s)
     if match_box:
         outer = int(match_box.group(1))
         inner = int(match_box.group(2))
         return {
             "primary_pack_size": inner,
-            "secondary_pack_size": outer, # Extract explicit Outer Pack
-            "base_unit": 'Tablet',
+            "secondary_pack_size": outer,
+            "total_base_units": inner * outer, 
+            "base_unit": 'Tablet', # Defaulting to Tablet/Capsule for NxM
             "type": "TABLET_BOX"
         }
 
