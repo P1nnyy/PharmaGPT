@@ -65,6 +65,11 @@ async def api_create_category(category: ItemCategoryCreate, user_email: str = De
         )
         if not created:
             raise HTTPException(status_code=400, detail="Failed to create category.")
+        
+        # Stringify created_at for Pydantic validation
+        if 'created_at' in created and created['created_at']:
+            created['created_at'] = str(created['created_at'])
+            
         return created
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

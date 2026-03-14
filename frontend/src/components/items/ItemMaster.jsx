@@ -56,6 +56,7 @@ const ItemMaster = () => {
     // History
     const [history, setHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [categories, setCategories] = useState([]);
 
     // UI State
     const [searchTerm, setSearchTerm] = useState('');
@@ -80,8 +81,19 @@ const ItemMaster = () => {
         }
     };
 
+    const fetchCategories = async () => {
+        const { getCategories } = await import('../../services/api');
+        try {
+            const data = await getCategories();
+            setCategories(data);
+        } catch (err) {
+            console.error("Failed to fetch categories", err);
+        }
+    };
+
     useEffect(() => {
         fetchQueue();
+        fetchCategories();
     }, []);
 
     useEffect(() => {
@@ -429,7 +441,12 @@ const ItemMaster = () => {
 
                                 {/* INVENTORY & PACKAGING */}
                                 {activeTab === 'inventory_packaging' && (
-                                    <ItemInventory formData={formData} setFormData={setFormData} handleInputChange={handleInputChange} />
+                                    <ItemInventory 
+                                        formData={formData} 
+                                        setFormData={setFormData} 
+                                        handleInputChange={handleInputChange} 
+                                        categories={categories}
+                                    />
                                 )}
 
                                 {/* PRICING TAB */}

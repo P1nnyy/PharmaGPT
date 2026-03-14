@@ -28,7 +28,7 @@ def create_item_category(category_name: str, base_unit: str = "Unit", supports_a
     if user_email:
         query += """
         WITH c
-        MATCH (u:User {email: $email})
+        MERGE (u:User {email: $email})
         MERGE (u)-[:OWNS_CATEGORY]->(c)
         """
         

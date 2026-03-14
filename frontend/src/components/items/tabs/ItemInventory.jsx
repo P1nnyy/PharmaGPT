@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Warehouse, Package, AlertCircle, Tag, Layers, Box, Calculator, Plus, Trash2 } from 'lucide-react';
 import { InputField } from '../InputField';
 
-export const ItemInventory = ({ formData, setFormData, handleInputChange }) => {
+export const ItemInventory = ({ formData, setFormData, handleInputChange, categories }) => {
 
     // Defaults
     const baseUnit = formData.base_unit || 'Tablet';
@@ -91,13 +91,21 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange }) => {
                                 onChange={(e) => setFormData({ ...formData, base_unit: e.target.value })}
                                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none appearance-none"
                             >
-                                <option value="Tablet">Tablet</option>
-                                <option value="Capsule">Capsule</option>
-                                <option value="Bottle">Bottle</option>
-                                <option value="Vial">Vial</option>
-                                <option value="Injection">Injection</option>
-                                <option value="Tube">Tube</option>
-                                <option value="Sachet">Sachet</option>
+                                {(!Array.isArray(categories) || categories.length === 0) ? (
+                                    <>
+                                        <option value="Tablet">Tablet</option>
+                                        <option value="Capsule">Capsule</option>
+                                        <option value="Bottle">Bottle</option>
+                                        <option value="Vial">Vial</option>
+                                        <option value="Injection">Injection</option>
+                                        <option value="Tube">Tube</option>
+                                        <option value="Sachet">Sachet</option>
+                                    </>
+                                ) : (
+                                    categories.map(cat => (
+                                        <option key={cat.name} value={cat.name}>{cat.name}</option>
+                                    ))
+                                )}
                             </select>
                             <div className="absolute right-4 top-3 pointer-events-none text-slate-500">
                                 <Package className="w-4 h-4" />
