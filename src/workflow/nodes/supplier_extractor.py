@@ -31,44 +31,45 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         model = genai.GenerativeModel('gemini-2.0-flash')
         
         prompt = """
-        TASK: EXTRACT SUPPLIER / SELLER DETAILED METADATA.
+        TASK: EXTRACT SUPPLIER / SELLER DETAILS FROM A PHARMA DISTRIBUTOR TAX INVOICE.
         
-        CRITICAL INSTRUCTION: HANDLE STRUCTURAL AMBIGUITY.
-        The layout is UNPREDICTABLE. The Supplier info could be:
-        - Top Left / Top Right / Center Header.
-        - In a "Side Margin" (Left or Right).
-        - At the very BOTTOM Footer (sometimes Address is there).
-        - Inside a "Stamp" or "Seal".
+        ═══════════════════════════════════════════════════════════
+        MOST CRITICAL RULE — READ BEFORE ANYTHING ELSE:
+        ═══════════════════════════════════════════════════════════
+        A pharmaceutical distributor invoice has TWO parties:
+        1. **SELLER / SUPPLIER** (the company generating the invoice):
+           - Found under labels like: "Registered Name", "Firm Name", "Company Name",
+             "From:", "Sold By:", "Distributor:", "Retailer Name" at the top.
+           - They have a GSTIN, DL No, and PAN.
+           - This is WHO YOU WANT.
         
+        2. **BUYER / CUSTOMER** (the shop receiving the goods):
+           - Found under labels like: **"Customer Name"**, **"Bill To"**, **"Party Name"**,
+             **"Customer:"**, **"Consignee"**, "Purchaser".
+           - **NEVER extract the Buyer as the Supplier.**
+           - **If you see the word "Customer" before a name, that name is the BUYER. IGNORE IT.**
+        
+        ═══════════════════════════════════════════════════════════
         STRATEGY:
-        1. Scan the whole document for the "Seller" or "Party" identity. 
-           - Look for 'Sold By', 'From', or just the header block.
-           - **INFERENCE**: If a bold name appears at the top left/center and is NOT the "Bill To" party, assume it is the Supplier.
-        2. Distinguish from "Buyer" (Bill To). The Supplier is the entity generating the invoice.
-        3. Look for "GSTIN", "VAT", "CST", "DL" to anchor the supplier block.
+        ═══════════════════════════════════════════════════════════
+        Step 1: Find the block labeled "Customer Name", "Bill To", or "Party Name". 
+                EXCLUDE that entity completely from your result.
+        Step 2: Look for the entity with GSTIN/DL No. That is almost always the Seller.
+        Step 3: The Seller name is often in the TOP-LEFT header or labeled "Registered Name".
+        Step 4: Use the GSTIN to confirm — the Seller is always the one with a GSTIN on the invoice.
         
-        TARGET FIELDS:
-        1. **Supplier_Name**: Name of the shop/distributor. 
-           - **Heuristic**: Usually Top-Center or Top-Left. often Bold.
-           - If text is "Deepak Agencies" or similar, capture it.
-           - **FALLBACK**: If no explicit label, take the top-most meaningful text block.
-        2. **Address**: Full physical address. 
-           - Look for: "Near", "Road", "Market", "Pin", "Plot", "Shop".
-           - It might be immediately below the Supplier Name.
-           - It might be split across lines. capture all of it.
-        3. **GSTIN**: GST Number (15 Chars).
-           - Pattern: 2 Digits + 5 Letters + 4 Digits + 1 Letter + 1 Digit + 1 Letter/Digit (e.g. 03AADFM6641E1ZO).
-           - **CRITICAL**: Sometimes unlabeled. Look for the pattern `^\d{2}[A-Z]{5}\d{4}`.
-           - Punjab invoices often start with '03'.
-           - Aliases: "GST", "CST", "TIN", "Sales Tax".
-           - **CRITICAL**: If missing, try to construct from PAN (if present) by looking for a 15-char string nearby.
-        4. **DL_No**: Drug License Numbers.
-           - Keywords: "D.L.", "Lic No", "20B", "21B", "R.C.".
-           - Capture BOTH if available.
-        5. **Phone_Number**: Contact numbers. 
-           - Look for `Ph`, `Mob`, `Tel` anywhere (Header/Footer/Margin).
+        ═══════════════════════════════════════════════════════════
+        TARGET FIELDS (for the SELLER only):
+        ═══════════════════════════════════════════════════════════
+        1. **Supplier_Name**: Name of the seller/distributor.
+           - This is NEVER the entity next to "Customer Name:", "Bill To:", or "Consignee:".
+           - Usually near the top, near the GSTIN, DL No.
+        2. **Address**: Full physical address of the seller.
+        3. **GSTIN**: 15-character GST Number.
+        4. **DL_No**: Drug License Numbers (keywords: D.L., Lic No, 20B, 21B).
+        5. **Phone_Number**: Contact number.
         6. **Email**: Email address.
-        7. **PAN**: PAN Number (10 chars).
+        7. **PAN**: PAN Number.
         
         Return JSON structure:
         {
@@ -81,9 +82,9 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
             "PAN": "string"
         }
         
-        - If a field is missing, return None. 
+        - Return null for missing fields.
         - DO NOT hallucinate.
-        - Output pure JSON only.
+        - Output PURE JSON only.
         """
         
         # RETRY LOGIC (Max 3 Attempts with Feedback)

@@ -5,17 +5,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true,
+    host: '0.0.0.0', 
+    port: 5173,
     allowedHosts: ['pharmagpt.co', 'api.pharmagpt.co', 'www.pharmagpt.co', 'local.pharmagpt.co', 'dev.pharmagpt.co', '.trycloudflare.com'],
     hmr: {
       clientPort: 443 // Force HMR to use HTTPS port 443 (Client -> Cloudflared -> Vite)
-    },
-    proxy: {
-      '^/(auth|analyze-invoice|confirm-invoice|report|activity-log|inventory|history|invoices|static|export-excel|products|feedback|config)': {
-        target: 'http://127.0.0.1:5001',
-        changeOrigin: true,
-        secure: false
-      }
     }
   }
 })

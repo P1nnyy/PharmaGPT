@@ -180,8 +180,8 @@ export const updateCategoryConfig = async (name, configUpdates) => {
     return response.data;
 }
 
-export const createCategory = async (name, description = "", parent_name = null) => {
-    const response = await api.post('/config/categories', { name, description, parent_name });
+export const createCategory = async (name, base_unit, supports_atomic = false, description = '') => {
+    const response = await api.post('/config/categories', { name, base_unit, supports_atomic, description });
     return response.data;
 }
 
@@ -197,6 +197,11 @@ export const getRoles = async () => {
 
 export const createRole = async (name, permissions = []) => {
     const response = await api.post('/config/roles', { name, permissions });
+    return response.data;
+}
+
+export const assignRole = async (email, roleName) => {
+    const response = await api.post('/config/users/assign-role', { email, role_name: roleName });
     return response.data;
 }
 
@@ -227,5 +232,6 @@ export default {
     createCategory,
     deleteCategory,
     getRoles,
-    createRole
+    createRole,
+    assignRole
 };

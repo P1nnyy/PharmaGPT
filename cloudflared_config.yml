@@ -3,5 +3,5 @@ credentials-file: /Users/pranavgupta/.cloudflared/173e5515-cdf3-4140-b8c4-ad87bf
 
 ingress:
   - hostname: dev.pharmagpt.co
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5001
   - service: http_status:404

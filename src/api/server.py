@@ -6,7 +6,7 @@ import uuid
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -98,6 +98,14 @@ app.include_router(config_router)
 
 # --- Observability ---
 Instrumentator().instrument(app).expose(app)
+
+# --- Static Frontend Serving ---
+frontend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist"))
+
+# Mount the entire dist directory as a static fallback (serves assets, logo, etc.)
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+
 
 # --- Startup / Shutdown ---
 @app.on_event("startup")

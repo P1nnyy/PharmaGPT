@@ -1,5 +1,5 @@
 # Base Image
-FROM node:18-bullseye-slim
+FROM node:20-bullseye-slim
 
 # Set Working Directory
 WORKDIR /app
@@ -11,7 +11,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install Dependencies
-RUN npm install --omit=dev
+RUN npm install
 
 # Copy Source Code
 COPY src/ ./src/

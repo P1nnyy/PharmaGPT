@@ -143,14 +143,31 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
             
             Task: Extract invoice header details.
             
+            ═══════════════════════════════════════════════════════════
+            CRITICAL DISTINCTION — SELLER vs BUYER:
+            ═══════════════════════════════════════════════════════════
+            This invoice has TWO parties. You must extract the SELLER only.
+            
+            SELLER (extract this):
+            - The company ISSUING the invoice.
+            - Found near labels: "Registered Name", "From:", "Firm Name", or at the top-left header.
+            - Has a GSTIN/DL No associated with it.
+            
+            BUYER (DO NOT extract this as Supplier_Name):
+            - Found near labels: "Customer Name", "Bill To", "Party:", "Consignee".
+            - **If you see "Customer Name: Ram Chand and Sons", do NOT return "Ram Chand and Sons" as Supplier_Name.**
+            - The Buyer does NOT have the invoice's GSTIN.
+            ═══════════════════════════════════════════════════════════
+            
             Fields:
-            - Supplier_Name
+            - Supplier_Name: The SELLER's company name (NOT the Customer Name).
             - Invoice_No
             - Invoice_Date (YYYY-MM-DD format preferred)
             
             NEGATIVE CONSTRAINTS:
             - IGNORE "Bank Details"
             - IGNORE "Outstanding"
+            - NEVER return the value next to "Customer Name:" or "Bill To:" as Supplier_Name.
             
             CRITICAL INSTRUCTION:
             - RETURN ONLY VALID JSON.

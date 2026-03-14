@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Shield, Tags, Plus, Trash2, Loader2, RefreshCw, ToggleLeft, ToggleRight, Lock, ChevronDown, ChevronRight } from 'lucide-react';
-import { getCategories, createCategory, deleteCategory, updateCategoryConfig, getRoles, createRole } from '../../services/api';
+import { getCategories, createCategory, deleteCategory, updateCategoryConfig, getRoles, createRole, assignRole } from '../../services/api';
 import Toast from '../ui/Toast';
 
 const AdminDashboard = () => {
@@ -18,10 +18,14 @@ const AdminDashboard = () => {
 
     // Form States
     const [newCatName, setNewCatName] = useState('');
-    const [newCatDesc, setNewCatDesc] = useState('');
-    const [newCatParent, setNewCatParent] = useState('');
+    const [newCatBaseUnit, setNewCatBaseUnit] = useState('Unit');
+    const [newCatIsAtomic, setNewCatIsAtomic] = useState(false);
+
     const [newRoleName, setNewRoleName] = useState('');
     const [newRolePerms, setNewRolePerms] = useState('');
+
+    const [assignEmail, setAssignEmail] = useState('');
+    const [assignRoleName, setAssignRoleName] = useState('');
 
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
@@ -55,12 +59,11 @@ const AdminDashboard = () => {
         e.preventDefault();
         if (!newCatName.trim()) return;
         try {
-            // Updated to pass parent_name if it is not empty
-            await createCategory(newCatName, newCatDesc, newCatParent || null);
+            await createCategory(newCatName, newCatBaseUnit, newCatIsAtomic);
             showToast(`Category '${newCatName}' created!`, "success");
             setNewCatName('');
-            setNewCatDesc('');
-            setNewCatParent('');
+            setNewCatBaseUnit('Unit');
+            setNewCatIsAtomic(false);
             fetchData();
         } catch (error) {
             showToast("Failed to create category", "error");
@@ -124,6 +127,19 @@ const AdminDashboard = () => {
             fetchData();
         } catch (error) {
             showToast("Failed to create role", "error");
+        }
+    };
+
+    const handleAssignRole = async (e) => {
+        e.preventDefault();
+        if (!assignEmail.trim() || !assignRoleName) return;
+        try {
+            await assignRole(assignEmail, assignRoleName);
+            showToast(`Role assigned to ${assignEmail}!`, "success");
+            setAssignEmail('');
+            setAssignRoleName('');
+        } catch (error) {
+            showToast("Failed to assign role", "error");
         }
     };
 
@@ -297,30 +313,34 @@ const AdminDashboard = () => {
                                         value={newCatName}
                                         onChange={(e) => setNewCatName(e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="e.g. Antibiotics, Surgical"
+                                        placeholder="e.g. Syrup"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">Description</label>
-                                    <textarea
-                                        value={newCatDesc}
-                                        onChange={(e) => setNewCatDesc(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[80px]"
-                                        placeholder="Optional details about this category..."
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">Parent Category (Optional)</label>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">Base Unit</label>
                                     <select
-                                        value={newCatParent}
-                                        onChange={(e) => setNewCatParent(e.target.value)}
+                                        value={newCatBaseUnit}
+                                        onChange={(e) => setNewCatBaseUnit(e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 appearance-none"
                                     >
-                                        <option value="">-- None (Top Level) --</option>
-                                        {categories.map((cat, idx) => (
-                                            <option key={idx} value={cat.name}>{cat.name}</option>
-                                        ))}
+                                        <option value="Tablet">Tablet</option>
+                                        <option value="Capsule">Capsule</option>
+                                        <option value="Bottle">Bottle</option>
+                                        <option value="Tube">Tube</option>
+                                        <option value="Ampoule">Ampoule</option>
+                                        <option value="Unit">Unit</option>
                                     </select>
+                                </div>
+                                <div className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5">
+                                    <label className="block text-sm font-medium text-slate-200">Supports Atomic Sizing (Hierarchical Packaging)</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewCatIsAtomic(!newCatIsAtomic)}
+                                        className={`transition-colors ${newCatIsAtomic ? 'text-indigo-400' : 'text-slate-600 hover:text-slate-400'}`}
+                                        title={newCatIsAtomic ? "Enabled" : "Disabled"}
+                                    >
+                                        {newCatIsAtomic ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+                                    </button>
                                 </div>
                                 <button
                                     type="submit"
@@ -410,6 +430,47 @@ const AdminDashboard = () => {
                                     className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg py-2.5 transition-colors shadow-lg shadow-emerald-500/20"
                                 >
                                     Create Role
+                                </button>
+                            </form>
+                        </div>
+
+                        {/* Assign Role Form */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 h-fit shadow-sm mt-6">
+                            <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                <Shield className="w-4 h-4 text-emerald-400" /> Assign Role
+                            </h2>
+                            <form onSubmit={handleAssignRole} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">User Email</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={assignEmail}
+                                        onChange={(e) => setAssignEmail(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                        placeholder="user@example.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">Select Role</label>
+                                    <select
+                                        required
+                                        value={assignRoleName}
+                                        onChange={(e) => setAssignRoleName(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 appearance-none"
+                                    >
+                                        <option value="">-- Choose Role --</option>
+                                        {roles.map((role, idx) => (
+                                            <option key={idx} value={role.name}>{role.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={!assignEmail.trim() || !assignRoleName}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg py-2.5 transition-colors shadow-lg shadow-emerald-500/20"
+                                >
+                                    Assign
                                 </button>
                             </form>
                         </div>

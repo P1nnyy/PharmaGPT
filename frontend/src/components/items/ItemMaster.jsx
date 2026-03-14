@@ -12,6 +12,7 @@ import { ItemHistory } from './tabs/ItemHistory';
 const ItemMaster = () => {
     // State
     const [formData, setFormData] = useState({
+        original_name: '',
         name: '',
         item_code: '',
         hsn_code: '',
@@ -175,6 +176,7 @@ const ItemMaster = () => {
 
         setFormData(prev => ({
             ...prev,
+            original_name: product.name || '',
             name: product.name || '',
             hsn_code: product.hsn_code || (product.HSN || ''),
             // Logic: Backend now handles Base Rate calculation if tax was inferred.
@@ -226,7 +228,7 @@ const ItemMaster = () => {
 
     const handleNewItem = () => {
         setFormData({
-            name: '', item_code: '', hsn_code: '', sale_price: 0, purchase_price: 0,
+            original_name: '', name: '', item_code: '', hsn_code: '', sale_price: 0, purchase_price: 0,
             tax_rate: 0, opening_stock: 0, min_stock: 0, rack_location: '',
             manufacturer: '', salt_composition: '', category: '',
             is_verified: false, base_unit: 'Tablet',
@@ -239,11 +241,68 @@ const ItemMaster = () => {
     const handleSave = async () => {
         try {
             setSaving(true);
+            const newName = (formData.name || '').trim();
+            const oldName = formData.original_name;
+
+            // If the name changed and it's not a new product, call rename API first
+            if (oldName && newName && oldName !== newName) {
+                const { renameProduct } = await import('../../services/api');
+                await renameProduct(oldName, newName);
+            }
+
+            // Build packaging variants from flat fields
+            const variants = [];
+            const isTabletCapsule = ['Tablet', 'Capsule'].includes(formData.base_unit);
+
+            if (isTabletCapsule) {
+                // Primary is Strip
+                variants.push({
+                    unit_name: 'Strip',
+                    pack_size: `${formData.pack_size_primary}'s`,
+                    mrp: parseFloat(formData.mrp_primary) || 0,
+                    conversion_factor: parseInt(formData.pack_size_primary) || 1
+                });
+
+                // Secondary is Box
+                if (formData.pack_size_secondary > 1) {
+                    const totalUnits = (parseInt(formData.pack_size_primary) || 1) * (parseInt(formData.pack_size_secondary) || 1);
+                    variants.push({
+                        unit_name: 'Box',
+                        pack_size: `${formData.pack_size_secondary}x${formData.pack_size_primary}'s`,
+                        mrp: 0, // usually MRP is per strip, box mrp is calculated or left 0
+                        conversion_factor: totalUnits
+                    });
+                }
+            } else {
+                // Primary is Unit (Bottle/Tube/Vial)
+                variants.push({
+                    unit_name: 'Unit',
+                    pack_size: '1',
+                    mrp: parseFloat(formData.mrp_primary) || parseFloat(formData.sale_price) || 0,
+                    conversion_factor: 1
+                });
+
+                // Secondary is Box (e.g. Box of 10 vials)
+                if (formData.pack_size_secondary > 1) {
+                    variants.push({
+                        unit_name: 'Box',
+                        pack_size: `${formData.pack_size_secondary}x1`,
+                        mrp: 0,
+                        conversion_factor: parseInt(formData.pack_size_secondary) || 1
+                    });
+                }
+            }
+
             const payload = {
                 ...formData,
-                name: (formData.name || '').trim()
+                name: newName,
+                packaging_variants: variants
             };
             await saveProduct(payload);
+
+            // Update the original_name so subsequent saves don't rename again
+            setFormData(prev => ({ ...prev, original_name: newName }));
+
             if (sidebarTab === 'review') fetchQueue();
             else fetchAllItems();
         } catch (error) {

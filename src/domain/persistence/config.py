@@ -4,13 +4,15 @@ from src.services.database import get_db_driver
 logger = logging.getLogger(__name__)
 
 # --- ITEM CATEGORIES ---
-def create_item_category(category_name: str, description: str = "", parent_name: str = None, user_email: str = None) -> dict:
+def create_item_category(category_name: str, base_unit: str = "Unit", supports_atomic: bool = False, description: str = "", parent_name: str = None, user_email: str = None) -> dict:
     """Creates a new ItemCategory node and optionally links it to a parent. If user_email provided, assigns ownership."""
     
     # Base query for creating/updating the node
     query = """
     MERGE (c:ItemCategory {name: $name})
     SET c.description = $description,
+        c.base_unit = $base_unit,
+        c.supports_atomic = $supports_atomic,
         c.created_at = coalesce(c.created_at, datetime()),
         c.is_default = coalesce(c.is_default, false)
     """
@@ -30,11 +32,16 @@ def create_item_category(category_name: str, description: str = "", parent_name:
         MERGE (u)-[:OWNS_CATEGORY]->(c)
         """
         
-    query += "RETURN c { .name, .description, .created_at, is_default: c.is_default } as category"
+    query += "RETURN c { .name, .description, .base_unit, .supports_atomic, .created_at, is_default: c.is_default } as category"
 
     db = get_db_driver()
     try:
-        params = {"name": category_name.strip(), "description": description}
+        params = {
+            "name": category_name.strip(), 
+            "description": description,
+            "base_unit": base_unit,
+            "supports_atomic": supports_atomic
+        }
         if parent_name:
             params["parent_name"] = parent_name.strip()
         if user_email:
@@ -218,3 +225,21 @@ def get_all_system_roles() -> list:
     except Exception as e:
         logger.error(f"Error fetching SystemRoles: {e}")
         return []
+
+def assign_user_role(user_email: str, role_name: str) -> bool:
+    """Assigns a SystemRole to a User"""
+    query = """
+    MATCH (u:User {email: $email})
+    MATCH (r:SystemRole {name: $role_name})
+    MERGE (u)-[:HAS_ROLE]->(r)
+    RETURN u, r
+    """
+    db = get_db_driver()
+    try:
+        with db.session() as session:
+            result = session.run(query, email=user_email, role_name=role_name)
+            record = result.single()
+            return True if record else False
+    except Exception as e:
+        logger.error(f"Error assigning role: {e}")
+        return False

@@ -5,14 +5,14 @@ services:
   # (Assuming frontend is served via Vite Dev Server for now based on conversation)
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ./frontend
+      dockerfile: ../Dockerfile
     command: npm run dev
     ports:
       - "5173:5173"
       - "8000:8000" # If Gateway runs here
     volumes:
-      - .:/app
+      - ./frontend:/app
       - /app/node_modules
     environment:
       - VITE_API_BASE_URL=http://localhost:5001
