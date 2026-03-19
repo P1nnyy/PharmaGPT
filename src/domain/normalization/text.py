@@ -159,16 +159,28 @@ def parse_pack_size(pack_str: str) -> Dict[str, Union[str, int]]:
         
         # If it's a liquid or tube, keep the original string as the pack (e.g., '100ML')
         if base_unit in ['Bottle', 'Tube', 'Vial', 'Ampoule']:
-            return {"unit": "Unit", "pack": s}
+            return {
+                "unit": "Unit", 
+                "pack": s,
+                "conversion_factor": 1
+            }
             
         # Reconstruct the string for tablets/capsules/strips
         if secondary > 1 or 'x' in s.lower():
-            return {"unit": base_unit, "pack": f"{secondary}x{primary}"}
+            return {
+                "unit": base_unit, 
+                "pack": f"{secondary}x{primary}",
+                "conversion_factor": secondary * primary
+            }
         else:
-            return {"unit": base_unit, "pack": f"1x{primary}"}
+            return {
+                "unit": base_unit, 
+                "pack": f"1x{primary}",
+                "conversion_factor": primary
+            }
             
     # Default Fallback
-    return {"unit": "Unit", "pack": s}
+    return {"unit": "Unit", "pack": s, "conversion_factor": 1}
 
 def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = None) -> Union[Dict[str, Any], None]:
     """
@@ -186,6 +198,7 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
                 "primary_pack_size": 1,
                 "secondary_pack_size": 1,
                 "total_base_units": 1,
+                "conversion_factor": 1,
                 "base_unit": 'Bottle',
                 "type": "LIQUID_BOTTLE"
             }
@@ -196,6 +209,7 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
                 "primary_pack_size": 1,
                 "secondary_pack_size": 1,
                 "total_base_units": 1,
+                "conversion_factor": 1,
                 "base_unit": 'Tube',
                 "type": "TUBE"
             }
@@ -206,6 +220,7 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
                 "primary_pack_size": 1,
                 "secondary_pack_size": 1,
                 "total_base_units": 1,
+                "conversion_factor": 1,
                 "base_unit": 'Vial',
                 "type": "VIAL"
             }
@@ -226,6 +241,7 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "primary_pack_size": 1,
             "secondary_pack_size": 1,
             "total_base_units": 1,
+            "conversion_factor": 1,
             "base_unit": base_unit,
             "type": "LIQUID_WEIGHT"
         }
@@ -245,6 +261,7 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "primary_pack_size": qty,
             "secondary_pack_size": 1,
             "total_base_units": qty,
+            "conversion_factor": qty,
             "base_unit": unit,
             "type": "TABLET_STRIP" if unit in ['Tablet', 'Capsule'] else "LIQUID_UNIT"
         }
@@ -261,6 +278,7 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "primary_pack_size": inner,
             "secondary_pack_size": outer,
             "total_base_units": inner * outer, 
+            "conversion_factor": inner * outer,
             "base_unit": 'Tablet', # Defaulting to Tablet/Capsule for NxM
             "type": "TABLET_BOX"
         }

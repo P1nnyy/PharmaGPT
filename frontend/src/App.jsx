@@ -39,9 +39,10 @@ function App() {
   // Global Loading is true if ANY are processing
   const isAnalyzing = fileQueue.some(f => f.status === 'processing');
 
-  const [isSaving, setIsSaving] = useState(false);
   // Replaced successMsg/errorMsg with Toast
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' }); // type: success | error
+  const [recentlySavedIds, setRecentlySavedIds] = useState(new Set()); // IDs to ignore from polling
+  const [isSaving, setIsSaving] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
@@ -114,11 +115,10 @@ function App() {
           // For now, let's just map status updates to preserve local UI state if needed (like selection)
 
           // Map server drafts to UI model
-          // STATUS MAPPING: 
-          // 'draft' + is_duplicate -> 'duplicate'
-          // 'draft' -> 'completed'
-          const serverItems = drafts.map(d => {
-            let uiStatus = d.status;
+          const serverItems = drafts
+            .filter(d => !recentlySavedIds.has(d.id)) // CRITICAL: Filter out recently saved items
+            .map(d => {
+              let uiStatus = d.status;
             if (d.status === 'draft') {
               if (d.is_duplicate) {
                 uiStatus = 'duplicate';
@@ -351,6 +351,9 @@ function App() {
 
       await saveInvoice(payload);
       showToast("Invoice Saved Successfully!", "success");
+
+      // ADD TO IGNORE LIST before removing from queue to prevent race condition with polling
+      setRecentlySavedIds(prev => new Set(prev).add(selectedQueueId));
 
       // OPTIMISTIC REMOVAL: Remove from Queue immediately
       setFileQueue(prev => {

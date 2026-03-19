@@ -142,7 +142,12 @@ def seed_default_categories():
     """Seeds default categories like Tablet and Bottle, and cleans up legacy ones."""
     defaults = [
         {"name": "Tablet", "description": "Solid dosage form"},
+        {"name": "Capsule", "description": "Capsule dosage form"},
         {"name": "Bottle", "description": "Liquid container"},
+        {"name": "Vial", "description": "Vial container"},
+        {"name": "Injection", "description": "Injectable form"},
+        {"name": "Tube", "description": "Tube container"},
+        {"name": "Sachet", "description": "Sachet pack"},
     ]
     
     valid_names = [d["name"] for d in defaults]

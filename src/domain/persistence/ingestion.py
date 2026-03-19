@@ -35,9 +35,8 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
                 supplier_name = invoice_data.Supplier_Name
                 session.execute_write(_merge_supplier_tx, supplier_name, supplier_details, user_email)
             
-            # 3. Process Line Items
             # Clean up existing line items if re-ingesting to prevent duplicates
-            session.run("MATCH (i:Invoice {invoice_number: $no})-[r:CONTAINS]->(l:Line_Item) DELETE r, l", no=invoice_data.Invoice_No)
+            session.run("MATCH (i:Invoice {invoice_number: $no})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", no=invoice_data.Invoice_No)
 
             # Process each item using the atomic transaction
             for raw_item, item in zip(invoice_data.Line_Items, normalized_items):

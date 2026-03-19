@@ -14,6 +14,10 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
     const primaryUnitLabel = isTabletLike ? 'Strip' : 'Unit';
     const secondaryUnitLabel = 'Box';
 
+    // Safeguard for the select: if baseUnit is not in categories, we should still show it
+    const categoryOptions = Array.isArray(categories) ? categories : [];
+    const hasCurrentUnit = categoryOptions.some(cat => cat.name === baseUnit);
+
     // Lazy Loading State: Show Secondary Packing only if it exists (>1)
     const [showSecondary, setShowSecondary] = useState(false);
 
@@ -42,22 +46,20 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
     }, []);
 
     const handleStockCalculation = (updates) => {
-        const newData = { ...formData, ...updates };
-        const boxes = parseFloat(newData.opening_boxes) || 0;
-        const strips = parseFloat(newData.opening_strips) || 0;
-        const cf = parseFloat(newData.pack_size_primary) || 10;
+        setFormData(prev => {
+            const newData = { ...prev, ...updates };
+            const boxes = parseFloat(newData.opening_boxes) || 0;
+            const strips = parseFloat(newData.opening_strips) || 0;
+            const cf = parseFloat(newData.pack_size_primary) || 10;
+            const ops = parseFloat(newData.pack_size_secondary) || 1;
 
-        // If hidden, treat secondary pack size as 1 (or ignore boxes)
-        // Note: The UI hides the box input, so boxes *should* be 0 conceptually if hidden.
-        // We'll use the actual pack size from data, but if !showSecondary, we technically shouldn't have boxes.
-        const ops = parseFloat(newData.pack_size_secondary) || 1;
+            // Formula: (Boxes * Strips/Box * Tabs/Strip) + (Loose_Strips * Tabs/Strip)
+            const totalStock = (boxes * ops * cf) + (strips * cf);
 
-        // Formula: (Boxes * Strips/Box * Tabs/Strip) + (Loose_Strips * Tabs/Strip)
-        const totalStock = (boxes * ops * cf) + (strips * cf);
-
-        setFormData({
-            ...newData,
-            opening_stock: totalStock
+            return {
+                ...newData,
+                opening_stock: totalStock
+            };
         });
     };
 
@@ -91,7 +93,7 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
                                 onChange={(e) => setFormData({ ...formData, base_unit: e.target.value })}
                                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none appearance-none"
                             >
-                                {(!Array.isArray(categories) || categories.length === 0) ? (
+                                {categoryOptions.length === 0 ? (
                                     <>
                                         <option value="Tablet">Tablet</option>
                                         <option value="Capsule">Capsule</option>
@@ -102,9 +104,14 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
                                         <option value="Sachet">Sachet</option>
                                     </>
                                 ) : (
-                                    categories.map(cat => (
-                                        <option key={cat.name} value={cat.name}>{cat.name}</option>
-                                    ))
+                                    <>
+                                        {!hasCurrentUnit && baseUnit && (
+                                            <option value={baseUnit}>{baseUnit}</option>
+                                        )}
+                                        {categoryOptions.map(cat => (
+                                            <option key={cat.name} value={cat.name}>{cat.name}</option>
+                                        ))}
+                                    </>
                                 )}
                             </select>
                             <div className="absolute right-4 top-3 pointer-events-none text-slate-500">
@@ -161,7 +168,12 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
                             <Box className="w-4 h-4" /> 3. Secondary Packing (Purchase Unit)
                         </h3>
                         <button
-                            onClick={handleRemoveBoxLayer}
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleRemoveBoxLayer();
+                            }}
                             className="text-slate-500 hover:text-red-400 transition-colors p-1"
                             title="Remove Box Details"
                         >

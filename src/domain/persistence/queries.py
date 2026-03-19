@@ -78,7 +78,7 @@ QUERY_CREATE_LINE_ITEM = """
     ON CREATE SET
         pv.unit_name = $unit_2nd,
         pv.mrp = $mrp,
-        pv.conversion_factor = 1,
+        pv.conversion_factor = $conversion_factor,
         pv.created_at = timestamp(),
         gp.needs_review = true
         

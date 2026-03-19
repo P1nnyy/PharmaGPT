@@ -55,13 +55,16 @@ async def get_current_user_email(token: str = Depends(oauth2_scheme)):
     If fails, raises 401. STRICT MODE.
     """
     try:
+        # logger.debug(f"Decoding token: {token[:10]}...") 
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
+             logger.warning("Token decoded but 'sub' field missing.")
              raise HTTPException(status_code=401, detail="Invalid credentials")
         return email
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    except JWTError as e:
+        logger.error(f"JWT Validation Failed: {e}")
+        raise HTTPException(status_code=401, detail=f"Could not validate credentials: {str(e)}")
 
 # --- Endpoints ---
 

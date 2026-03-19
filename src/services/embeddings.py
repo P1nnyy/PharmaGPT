@@ -24,7 +24,7 @@ def generate_embedding(text: str) -> List[float]:
         # Let's check if we can parameterize. 
         # But 'text-embedding-004' is robust.
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             content=text,
             task_type="retrieval_document" 
         )

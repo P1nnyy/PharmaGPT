@@ -87,6 +87,7 @@ def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: An
            invoice_no=invoice_no,
            final_product_name=final_name,
            pack_size=final_pack,
+           conversion_factor=pack_data.get("conversion_factor", 1),
            quantity=item.get("Standard_Quantity"),
            free_quantity=item.get("Free_Quantity", 0.0),
            net_amount=item.get("Net_Line_Amount"),
