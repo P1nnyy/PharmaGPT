@@ -1,7 +1,7 @@
 import os
 import json
 from langfuse import Langfuse
-from src.workflow.nodes.mapper import Mapper
+from src.workflow.nodes.mapper import execute_mapping
 from src.workflow.state import ExtractionState
 
 # Setup
@@ -14,6 +14,10 @@ langfuse = Langfuse(
     secret_key=LANGFUSE_SECRET_KEY,
     host=LANGFUSE_HOST
 )
+
+# Debug Environment
+print(f"DEBUG: GOOGLE_API_KEY present: {bool(os.getenv('GOOGLE_API_KEY'))}")
+print(f"DEBUG: LANGFUSE_PUBLIC_KEY present: {bool(LANGFUSE_PUBLIC_KEY)}")
 
 # Test Data (Gold Standard)
 TEST_CASES = [
@@ -41,7 +45,7 @@ TEST_CASES = [
     }
 ]
 
-from src.workflow.nodes.mapper import execute_mapping
+# Removed redundant import
 
 # ... (skipped imports/setup)
 
