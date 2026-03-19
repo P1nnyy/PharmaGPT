@@ -5,8 +5,8 @@ import unittest
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.schemas import RawLineItem
-from src.normalization import calculate_cost_price, calculate_financials
+from src.domain.schemas import RawLineItem
+from src.domain.normalization import calculate_cost_price, calculate_financials
 
 class TestFinancials(unittest.TestCase):
     

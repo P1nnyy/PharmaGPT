@@ -31,7 +31,7 @@ async def main():
         print(json.dumps(final_output, indent=2, default=str))
         
         # normalization
-        from src.normalization import normalize_line_item
+        from src.domain.normalization import normalize_line_item
         print("\n--- NORMALIZED OUTPUT (Simulating Server) ---")
         normalized_items = []
         if final_output and final_output.get("Line_Items"):

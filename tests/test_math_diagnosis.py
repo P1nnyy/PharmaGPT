@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 load_dotenv()
 
-from src.normalization import normalize_line_item, parse_float
-from src.schemas import InvoiceExtraction
+from src.domain.normalization import normalize_line_item, parse_float
+from src.domain.schemas import InvoiceExtraction
 from src.workflow.graph import run_extraction_pipeline
 
 def test_specific_invoice(image_path):
@@ -53,7 +53,7 @@ def test_specific_invoice(image_path):
         freight = parse_float(raw_data.get("Freight_Charges", 0.0))
         
         if global_discount > 0 or freight > 0:
-            from src.normalization import distribute_global_modifiers
+            from src.domain.normalization import distribute_global_modifiers
             normalized_items = distribute_global_modifiers(normalized_items, global_discount, freight)
 
         # Print Results

@@ -4,7 +4,7 @@ import os
 # Add the project root to the python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.schemas import RawLineItem, InvoiceExtraction, NormalizedLineItem
+from src.domain.schemas import RawLineItem, InvoiceExtraction, NormalizedLineItem
 
 def test_normalized_line_item():
     print("\nTesting NormalizedLineItem...")

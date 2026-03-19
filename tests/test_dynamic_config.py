@@ -7,7 +7,7 @@ from unittest.mock import patch, mock_open
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.utils.config_loader import load_product_catalog, load_vendor_rules
-from src.normalization import load_and_transform_catalog, VENDOR_RULES, PRODUCT_MAPPING
+from src.domain.normalization import load_and_transform_catalog, VENDOR_RULES, PRODUCT_MAPPING
 
 class TestDynamicConfig(unittest.TestCase):
     

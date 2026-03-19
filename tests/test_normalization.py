@@ -5,8 +5,8 @@ import unittest
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.schemas import RawLineItem
-from src.normalization import calculate_cost_price, parse_float
+from src.domain.schemas import RawLineItem
+from src.domain.normalization import calculate_cost_price, parse_float
 
 class TestNormalization(unittest.TestCase):
     
@@ -64,8 +64,8 @@ class TestNormalization(unittest.TestCase):
 
     def test_hsn_transport(self):
         """Test that Raw_HSN_Code is transported to normalized output"""
-        from src.normalization import normalize_line_item
-        from src.schemas import RawLineItem
+        from src.domain.normalization import normalize_line_item
+        from src.domain.schemas import RawLineItem
         
         item = RawLineItem(
             Original_Product_Description="Test Item",

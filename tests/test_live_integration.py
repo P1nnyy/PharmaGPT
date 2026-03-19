@@ -10,9 +10,9 @@ load_dotenv()
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.schemas import InvoiceExtraction, RawLineItem
+from src.domain.schemas import InvoiceExtraction, RawLineItem
 from src.persistence import ingest_invoice
-from src.normalization import normalize_line_item
+from src.domain.normalization import normalize_line_item
 
 # Neo4j Config
 # Neo4j Config

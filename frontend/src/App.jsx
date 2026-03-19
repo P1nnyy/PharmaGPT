@@ -448,6 +448,9 @@ function App() {
       {/* MAIN CONTENT AREA */}
       <div className={`flex-1 flex flex-col h-full overflow-hidden bg-slate-950 text-slate-200 ${isMobile ? 'pt-[60px]' : ''}`}>
 
+        {/* Main Dashboard Heading (for accessibility/testing) */}
+        <h1 className="sr-only">PharmaGPT Dashboard - Scan Invoice</h1>
+
         {/* Only Render Split View for "Scan Invoice" Tab */}
         <div className={`flex flex-col md:flex-row h-full w-full ${activeTab !== 'scan' ? 'hidden' : 'flex'}`}>
           {/* LEFT SIDE: INVOICE & CAMERA */}

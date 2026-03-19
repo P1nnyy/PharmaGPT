@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.schemas import InvoiceExtraction, RawLineItem
+from src.domain.schemas import InvoiceExtraction, RawLineItem
 from src.persistence import ingest_invoice
 
 class TestPersistence(unittest.TestCase):
