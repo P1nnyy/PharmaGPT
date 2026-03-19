@@ -39,7 +39,7 @@ test('has title and dashboard renders', async ({ page }) => {
   await expect(page.locator('span:has-text("PharmaCouncil")')).toBeVisible();
 
   // Check for "Scan Invoice" tab being present
-  await expect(page.getByText('Scan Invoice')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Scan Invoice' })).toBeVisible();
 
   // Check for main dashboard header (added for accessibility)
   await expect(page.locator('h1')).toContainText(/Dashboard/i);
@@ -49,7 +49,7 @@ test('navigation between tabs works', async ({ page }) => {
   await page.goto('/');
 
   // Wait for sidebar to be visible (confirms we are past login)
-  await expect(page.getByText('Scan Invoice')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Scan Invoice' })).toBeVisible();
 
   // Click on Items tab
   await page.click('text=Items');
