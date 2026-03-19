@@ -61,7 +61,6 @@ def close_db():
     """
     Closes the Neo4j driver.
     """
-    global driver
     if driver:
         driver.close()
         logger.info("Neo4j driver closed.")

@@ -92,7 +92,7 @@ def test_specific_invoice(image_path):
         print("-" * 100)
                   
     except Exception as e:
-        print(f"Processing Error: {data}")
+        print(f"Processing Error: {e}")
         import traceback
         traceback.print_exc()
 
