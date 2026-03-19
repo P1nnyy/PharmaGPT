@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
+from src.utils.ai_retry import ai_retry
 
 # Setup Logging
 logger = get_logger("surveyor")
@@ -18,6 +19,7 @@ genai.configure(api_key=API_KEY)
 
 from langfuse import observe
 
+@ai_retry
 @observe(name="surveyor_layout_analysis")
 def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
     """
@@ -95,27 +97,15 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         ]
         """
 
-        # RETRY LOGIC (Max 3 Attempts)
-        max_retries = 3
-        extraction_plan = []
+        # Use ai_retry decorator on the function instead of manual loop
+        response = model.generate_content([prompt, sample_file])
+        response_text = response.text
         
-        for attempt in range(max_retries):
-            try:
-                response = model.generate_content([prompt, sample_file])
-                response_text = response.text
-                
-                # Clean Code Blocks
-                clean_json = response_text.replace("```json", "").replace("```", "").strip()
-                extraction_plan = json.loads(clean_json)
-                
-                logger.info(f"Surveyor Plan: {len(extraction_plan)} zones identified.")
-                return {"extraction_plan": extraction_plan}
-                
-            except Exception as e:
-                logger.warning(f"Surveyor Attempt {attempt+1} failed: {e}")
-                if attempt == max_retries - 1:
-                    raise e
-                    
+        # Clean Code Blocks
+        clean_json = response_text.replace("```json", "").replace("```", "").strip()
+        extraction_plan = json.loads(clean_json)
+        
+        logger.info(f"Surveyor Plan: {len(extraction_plan)} zones identified.")
         return {"extraction_plan": extraction_plan}
 
     except Exception as e:

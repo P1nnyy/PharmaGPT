@@ -8,201 +8,203 @@ from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.config_loader import load_column_aliases
 from src.utils.logging_config import get_logger
 from src.utils.image_processing import preprocess_image_for_ocr
+from src.utils.ai_retry import ai_retry
 import tempfile
 
 logger = get_logger(__name__)
 
 # Initialize Gemini
 API_KEY = os.getenv("GOOGLE_API_KEY")
-if not API_KEY:
-    logger.warning("GOOGLE_API_KEY not found in environment variables.")
-
 genai.configure(api_key=API_KEY)
 
+# Limit concurrent API calls to avoid 429 errors from RPM/TPM quotas
+# 5 is a safe default for most tiers
+api_semaphore = asyncio.Semaphore(5)
+
+@ai_retry
 async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str, Any]:
     """
     Helper function to process a single zone.
     Returns a dict with specific keys based on zone type.
     """
-    zone_type = zone.get("type", "table")
-    description = zone.get("description", "")
-    
-    try:
-        if "table" in zone_type.lower():
-            # Scenario A: Table Extraction
-            # Inject Column Aliases
-            aliases = load_column_aliases().get("global_column_aliases", {})
-            # Flatten aliases for prompt context
-            alias_context = "\n".join([f"- **{k}**: {', '.join(v)}" for k, v in aliases.items()])
+    async with api_semaphore:
+        zone_type = zone.get("type", "table")
+        description = zone.get("description", "")
+        
+        try:
+            if "table" in zone_type.lower():
+                # Scenario A: Table Extraction
+                # Inject Column Aliases
+                aliases = load_column_aliases().get("global_column_aliases", {})
+                # Flatten aliases for prompt context
+                alias_context = "\n".join([f"- **{k}**: {', '.join(v)}" for k, v in aliases.items()])
+                
+                prompt = f"""
+                Target Zone: {description}
+                
+                TASK: EXTRACT RAW TABLE DATA (VERBATIM).
+                
+                **KNOWN COLUMN HEADERS (LOOK FOR THESE):**
+                {alias_context}
+                
+                Instructions:
+                1. Look at the table in this image.
+                2. Extract EVERY row of text you see.
+                3. Format as a PIPE-SEPARATED Table (Markdown format).
+                4. Include headers if visible.
+                5. **Do not simplify**: If a cell contains "Batch: A123", write "Batch: A123". Do not just write "Batch". Capture ALL text.
+                
+                CRITICAL TABLE PARSING RULES:
+                - **ROW ALIGNMENT (THE MOST IMPORTANT RULE)**: You MUST preserve the exact row alignment. 
+                   - **DO NOT SHIFT COLUMNS VERTICALLY**. 
+                   - If "Product A" is on Line 1, its Batch, Expiry, and Rate MUST be on Line 1. Do not pull "Batch" from Line 2 up to Line 1.
+                   - Treat horizontal grid lines as **HARD WALLS**. Data cannot cross these lines.
+                - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free" or capture as "10+2" in one cell. DO NOT shift data left/right.
+                - **Prices are NOT Quantities**: "MRP" (e.g. 200.00) and "Rate" (e.g. 150.00) are typically larger than "Qty" (e.g. 1, 10). Do not mix them up.
+                - **IGNORE UFC/FACTOR**: Do not extract "UFC", "Factor", "Case" columns as "MRP". Identify them as "Pack" or "Unit" if needed, but NEVER as a price column.
+                
+                IMPORTANT:
+                - **DENSITY**: If a cell has multiple lines (e.g. "Batch\n123"), capture BOTH lines in the markdown cell (use <br> or space).
+                - **DUPLICATES**: If the Exact Same Item appears on multiple lines (e.g. "Dolo 650" twice), LIST IT TWICE. Do not combine them.
+                - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
+                - **NO MERGING**: Do not merge distinct visual rows.
+                - **COLUMNS**: Aggressively look for "Net Amount", "Total", "Amount", "Value".
+                - **MANUFACTURER**: Aggressively look for "Mfr", "CMPNY", "Co", "Make" columns. extract them!
+                
+                NEGATIVE CONSTRAINTS (CRITICAL):
+                - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.
+                - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
+                - **IGNORE "Bank Details"**: Do not extract bank info as rows.
+                - **IGNORE "Header Info"**: Do not extract Supplier Name, Invoice No, or Date as a table row. ONLY extract the Product Line Items.
+                
+                Output Format Example:
+                | Description | Pcode | Qty | Rate | Amount | Net Amount |
+                | Vicks 5gm | 80811 | 1 | 100 | 100 | 112 |
+                
+                Return ONLY the markdown table string. No JSON.
+                """
+                response = await model.generate_content_async([prompt, image_file])
+                text = response.text.strip()
+                # Return raw text wrapped in a dict
+                return {"type": "raw_text", "data": [text]} 
+                
+            elif "footer" in zone_type.lower():
+                # Scenario B: Footer Extraction
+                prompt = f"""
+                Target Zone: {description}
+                
+                Task: Extract global financial fields from this section. Ignore line items.
+                
+                Fields to Extract:
+                - **Global_Discount_Amount**: 
+                    - SUM of ALL broad discounts in the footer (e.g. "Less 5%", "Cash Discount", "Scheme Discount", "CD", "Trade Discount").
+                    - IF multiple discounts exist (e.g. Discount + CD), ADD THEM TOGETHER.
+                    - Ignore line-item level discount sums unless they are clearly deducted from the SubTotal.
+                - **Freight_Charges**: Shipping/Transport costs.
+                - Round_Off
+                - SGST_Amount (Total S.GST from footer summary)
+                - CGST_Amount (Total C.GST from footer summary)
+                - IGST_Amount (Total I.GST from footer summary)
+                - Stated_Grand_Total (The final 'Net Payable' or 'Grand Total'). This is the **ANCHOR** truth for the invoice.
+                
+                CRITICAL:
+                - The 'Stated_Grand_Total' is the most important field. If it is ambiguous, look for the double-bolded or final bottom-right figure.
+                
+                Return JSON:
+                {{
+                    "Global_Discount_Amount": float,
+                    "Freight_Charges": float,
+                    "Round_Off": float,
+                    "SGST_Amount": float,
+                    "CGST_Amount": float,
+                    "IGST_Amount": float,
+                    "Stated_Grand_Total": float
+                }}
+                """
+                response = await model.generate_content_async([prompt, image_file])
+                text = response.text.strip()
+                
+                # Robust JSON Extraction
+                import re
+                json_match = re.search(r"\{.*\}", text, re.DOTALL)
+                if json_match:
+                    clean_json = json_match.group(0)
+                    data = json.loads(clean_json)
+                    return {"type": "modifiers", "data": data}
+                else:
+                     # Fallback: Try raw load or return empty
+                     try:
+                         data = json.loads(text)
+                         return {"type": "modifiers", "data": data}
+                     except:
+                         return {"type": "error", "error": f"Invalid JSON from Header: {text[:50]}..."}
+                
+            elif "header" in zone_type.lower():
+                # Scenario C: Header Extraction
+                prompt = f"""
+                Target Zone: {description}
+                
+                Task: Extract invoice header details.
+                
+                视觉区═══════════════════════════════════════════════════════
+                CRITICAL DISTINCTION — SELLER vs BUYER:
+                ═══════════════════════════════════════════════════════════
+                This invoice has TWO parties. You must extract the SELLER only.
+                
+                SELLER (extract this):
+                - The company ISSUING the invoice.
+                - Found near labels: "Registered Name", "From:", "Firm Name", or at the top-left header.
+                - Has a GSTIN/DL No associated with it.
+                
+                BUYER (DO NOT extract this as Supplier_Name):
+                - Found near labels: "Customer Name", "Bill To", "Party:", "Consignee".
+                - **If you see "Customer Name: Ram Chand and Sons", do NOT return "Ram Chand and Sons" as Supplier_Name.**
+                - The Buyer does NOT have the invoice's GSTIN.
+                ═══════════════════════════════════════════════════════════
+                
+                Fields:
+                - Supplier_Name: The SELLER's company name (NOT the Customer Name).
+                - Invoice_No
+                - Invoice_Date (YYYY-MM-DD format preferred)
+                
+                NEGATIVE CONSTRAINTS:
+                - IGNORE "Bank Details"
+                - IGNORE "Outstanding"
+                - NEVER return the value next to "Customer Name:" or "Bill To:" as Supplier_Name.
+                
+                CRITICAL INSTRUCTION:
+                - RETURN ONLY VALID JSON.
+                - NO CONVERSATIONAL TEXT. NO "Here is the JSON".
+                - IF DATA IS MISSING, RETURN NULL/NONE.
+                
+                Return JSON:
+                {{
+                    "Supplier_Name": "string",
+                    "Invoice_No": "string",
+                    "Invoice_Date": "string"
+                }}
+                """
+                response = await model.generate_content_async([prompt, image_file])
+                text = response.text.strip()
+                
+                # Robust JSON Extraction
+                import re
+                json_match = re.search(r"\{.*\}", text, re.DOTALL)
+                if json_match:
+                    clean_json = json_match.group(0)
+                    data = json.loads(clean_json)
+                    return {"type": "modifiers", "data": data}
+                else:
+                     # Fallback: Try raw load or return empty
+                     try:
+                         data = json.loads(text)
+                         return {"type": "modifiers", "data": data}
+                     except:
+                         return {"type": "error", "error": f"Invalid JSON from Header: {text[:50]}..."}
             
-            prompt = f"""
-            Target Zone: {description}
-            
-            TASK: EXTRACT RAW TABLE DATA (VERBATIM).
-            
-            **KNOWN COLUMN HEADERS (LOOK FOR THESE):**
-            {alias_context}
-            
-            Instructions:
-            1. Look at the table in this image.
-            2. Extract EVERY row of text you see.
-            3. Format as a PIPE-SEPARATED Table (Markdown format).
-            4. Include headers if visible.
-            5. **Do not simplify**: If a cell contains "Batch: A123", write "Batch: A123". Do not just write "Batch". Capture ALL text.
-            
-            CRITICAL TABLE PARSING RULES:
-            - **ROW ALIGNMENT (THE MOST IMPORTANT RULE)**: You MUST preserve the exact row alignment. 
-               - **DO NOT SHIFT COLUMNS VERTICALLY**. 
-               - If "Product A" is on Line 1, its Batch, Expiry, and Rate MUST be on Line 1. Do not pull "Batch" from Line 2 up to Line 1.
-               - Treat horizontal grid lines as **HARD WALLS**. Data cannot cross these lines.
-            - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free" or capture as "10+2" in one cell. DO NOT shift data left/right.
-            - **Prices are NOT Quantities**: "MRP" (e.g. 200.00) and "Rate" (e.g. 150.00) are typically larger than "Qty" (e.g. 1, 10). Do not mix them up.
-            - **IGNORE UFC/FACTOR**: Do not extract "UFC", "Factor", "Case" columns as "MRP". Identify them as "Pack" or "Unit" if needed, but NEVER as a price column.
-            
-            IMPORTANT:
-            - **DENSITY**: If a cell has multiple lines (e.g. "Batch\n123"), capture BOTH lines in the markdown cell (use <br> or space).
-            - **DUPLICATES**: If the Exact Same Item appears on multiple lines (e.g. "Dolo 650" twice), LIST IT TWICE. Do not combine them.
-            - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
-            - **NO MERGING**: Do not merge distinct visual rows.
-            - **COLUMNS**: Aggressively look for "Net Amount", "Total", "Amount", "Value".
-            - **MANUFACTURER**: Aggressively look for "Mfr", "CMPNY", "Co", "Make" columns. extract them!
-            
-            NEGATIVE CONSTRAINTS (CRITICAL):
-            - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.
-            - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
-            - **IGNORE "Bank Details"**: Do not extract bank info as rows.
-            - **IGNORE "Header Info"**: Do not extract Supplier Name, Invoice No, or Date as a table row. ONLY extract the Product Line Items.
-            
-            Output Format Example:
-            | Description | Pcode | Qty | Rate | Amount | Net Amount |
-            | Vicks 5gm | 80811 | 1 | 100 | 100 | 112 |
-            
-            Return ONLY the markdown table string. No JSON.
-            """
-            response = await model.generate_content_async([prompt, image_file])
-            text = response.text.strip()
-            # Return raw text wrapped in a dict
-            return {"type": "raw_text", "data": [text]} 
-            
-        elif "footer" in zone_type.lower():
-            # Scenario B: Footer Extraction
-            prompt = f"""
-            Target Zone: {description}
-            
-            Task: Extract global financial fields from this section. Ignore line items.
-            
-            Fields to Extract:
-            - **Global_Discount_Amount**: 
-                - SUM of ALL broad discounts in the footer (e.g. "Less 5%", "Cash Discount", "Scheme Discount", "CD", "Trade Discount").
-                - IF multiple discounts exist (e.g. Discount + CD), ADD THEM TOGETHER.
-                - Ignore line-item level discount sums unless they are clearly deducted from the SubTotal.
-            - **Freight_Charges**: Shipping/Transport costs.
-            - Round_Off
-            - SGST_Amount (Total S.GST from footer summary)
-            - CGST_Amount (Total C.GST from footer summary)
-            - IGST_Amount (Total I.GST from footer summary)
-            - Stated_Grand_Total (The final 'Net Payable' or 'Grand Total'). This is the **ANCHOR** truth for the invoice.
-            
-            CRITICAL:
-            - The 'Stated_Grand_Total' is the most important field. If it is ambiguous, look for the double-bolded or final bottom-right figure.
-            
-            Return JSON:
-            {{
-                "Global_Discount_Amount": float,
-                "Freight_Charges": float,
-                "Round_Off": float,
-                "SGST_Amount": float,
-                "CGST_Amount": float,
-                "IGST_Amount": float,
-                "Stated_Grand_Total": float
-            }}
-            """
-            response = await model.generate_content_async([prompt, image_file])
-            text = response.text.strip()
-            
-            # Robust JSON Extraction
-            import re
-            json_match = re.search(r"\{.*\}", text, re.DOTALL)
-            if json_match:
-                clean_json = json_match.group(0)
-                data = json.loads(clean_json)
-                return {"type": "modifiers", "data": data}
-            else:
-                 # Fallback: Try raw load or return empty
-                 try:
-                     data = json.loads(text)
-                     return {"type": "modifiers", "data": data}
-                 except:
-                     return {"type": "error", "error": f"Invalid JSON from Header: {text[:50]}..."}
-            return {"type": "modifiers", "data": data}
-            
-        elif "header" in zone_type.lower():
-            # Scenario C: Header Extraction
-            prompt = f"""
-            Target Zone: {description}
-            
-            Task: Extract invoice header details.
-            
-            ═══════════════════════════════════════════════════════════
-            CRITICAL DISTINCTION — SELLER vs BUYER:
-            ═══════════════════════════════════════════════════════════
-            This invoice has TWO parties. You must extract the SELLER only.
-            
-            SELLER (extract this):
-            - The company ISSUING the invoice.
-            - Found near labels: "Registered Name", "From:", "Firm Name", or at the top-left header.
-            - Has a GSTIN/DL No associated with it.
-            
-            BUYER (DO NOT extract this as Supplier_Name):
-            - Found near labels: "Customer Name", "Bill To", "Party:", "Consignee".
-            - **If you see "Customer Name: Ram Chand and Sons", do NOT return "Ram Chand and Sons" as Supplier_Name.**
-            - The Buyer does NOT have the invoice's GSTIN.
-            ═══════════════════════════════════════════════════════════
-            
-            Fields:
-            - Supplier_Name: The SELLER's company name (NOT the Customer Name).
-            - Invoice_No
-            - Invoice_Date (YYYY-MM-DD format preferred)
-            
-            NEGATIVE CONSTRAINTS:
-            - IGNORE "Bank Details"
-            - IGNORE "Outstanding"
-            - NEVER return the value next to "Customer Name:" or "Bill To:" as Supplier_Name.
-            
-            CRITICAL INSTRUCTION:
-            - RETURN ONLY VALID JSON.
-            - NO CONVERSATIONAL TEXT. NO "Here is the JSON".
-            - IF DATA IS MISSING, RETURN NULL/NONE.
-            
-            Return JSON:
-            {{
-                "Supplier_Name": "string",
-                "Invoice_No": "string",
-                "Invoice_Date": "string"
-            }}
-            """
-            response = await model.generate_content_async([prompt, image_file])
-            text = response.text.strip()
-            
-            # Robust JSON Extraction
-            import re
-            json_match = re.search(r"\{.*\}", text, re.DOTALL)
-            if json_match:
-                clean_json = json_match.group(0)
-                data = json.loads(clean_json)
-                return {"type": "modifiers", "data": data}
-            else:
-                 # Fallback: Try raw load or return empty
-                 try:
-                     data = json.loads(text)
-                     return {"type": "modifiers", "data": data}
-                 except:
-                     return {"type": "error", "error": f"Invalid JSON from Header: {text[:50]}..."}
-            return {"type": "modifiers", "data": data}
-            
-    except Exception as e:
-        logger.error(f"Failed to extract zone {zone}: {e}")
-        return {"type": "error", "error": str(e)}
+        except Exception as e:
+            logger.error(f"Failed to extract zone {zone}: {e}")
+            return {"type": "error", "error": str(e)}
 
     return {}
 

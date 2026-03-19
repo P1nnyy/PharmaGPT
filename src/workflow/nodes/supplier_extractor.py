@@ -5,10 +5,12 @@ from typing import Dict, Any
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 from src.utils.image_processing import preprocess_image_for_ocr
+from src.utils.ai_retry import ai_retry
 import tempfile
 
 logger = get_logger(__name__)
 
+@ai_retry
 async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Specialized Node to extract Supplier details (GST, DL, Phone, Address).
@@ -87,84 +89,40 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         - Output PURE JSON only.
         """
         
-        # RETRY LOGIC (Max 3 Attempts with Feedback)
-        max_retries = 3
-        data = {}
-        feedback_instruction = ""
+        # Using ai_retry decorator instead of manual loop
+        logger.info("SupplierExtractor: Executing extraction task")
         
-        for attempt in range(max_retries):
-            logger.info(f"SupplierExtractor: Attempt {attempt+1}/{max_retries}")
-            
-            # Append feedback if this is a retry
-            current_prompt = prompt + feedback_instruction
-            
-            try:
-                response = await model.generate_content_async(
-                    [current_prompt, sample_file],
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                text = response.text.strip()
-                
-                # Parse JSON
-                import re
-                clean_text = text.replace("```json", "").replace("```", "").strip()
-                
+        response = await model.generate_content_async(
+            [prompt, sample_file],
+            generation_config={"response_mime_type": "application/json"}
+        )
+        text = response.text.strip()
+        
+        # Parse JSON
+        import re
+        clean_text = text.replace("```json", "").replace("```", "").strip()
+        
+        try:
+            data = json.loads(clean_text)
+        except:
+            json_match = re.search(r"\{.*\}", text, re.DOTALL)
+            if json_match:
                 try:
-                    data = json.loads(clean_text)
-                except:
-                    json_match = re.search(r"\{.*\}", text, re.DOTALL)
-                    if json_match:
-                        try:
-                            data = json.loads(json_match.group(0))
-                        except Exception as e:
-                           pass
-                           
-                # Handle List output (common with Gemini JSON mode)
-                if isinstance(data, list):
-                    data = data[0] if data else {}
-                           
-                # --- VERIFICATION SYSTEM ---
-                # Check for Critical Fields & Format
-                is_valid = True
-                errors = []
-                
-                # LOG RAW DATA for Debugging
-                logger.info(f"SupplierExtractor: Raw Data: {data}")
+                    data = json.loads(json_match.group(0))
+                except Exception:
+                    data = {}
+        
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        
+        if not data or not data.get("Supplier_Name"):
+            logger.warning("SupplierExtractor: Verification Failed. Missing Name.")
+            raise ValueError("Incomplete Supplier data extracted")
 
-                if not data:
-                    is_valid = False
-                    errors.append("Output was not valid JSON.")
-                else:
-                    raw_gst = data.get("GSTIN")
-                    if raw_gst:
-                         g = str(raw_gst).replace(" ", "").replace("-", "").upper()
-                         # Validate Length loosely
-                         if len(g) < 10 or len(g) > 18:
-                             logger.warning(f"SupplierExtractor: GSTIN '{g}' seems invalid length ({len(g)}). Keeping it anyway.")
-                    
-                    if not data.get("Supplier_Name"):
-                         is_valid = False
-                         errors.append("Supplier Name is Missing.")
-                    
-                    # RELAXED VALIDATION:
-                    # If we have a Name, we accept the result.
-                    # We do NOT fail just because GSTIN is missing.
-                    if is_valid:
-                        logger.info("SupplierExtractor: Validation Passed (Relaxed Mode).")
-
-                if is_valid:
-                    # Success!
-                    raw_gst = data.get("GSTIN")
-                    if raw_gst:
-                        data["GSTIN"] = str(raw_gst).replace(" ", "").replace("-", "").upper()
-                    break
-                else:
-                    logger.warning(f"SupplierExtractor: Attempt {attempt+1} Failed Verification: {errors}")
-                    feedback_instruction = f"\n\nPREVIOUS ATTEMPT FAILED. ISSUES: {', '.join(errors)}. PLEASE EXTRACT CAREFULLY."
-                    data = {} # Clear partial data
-                    
-            except Exception as e:
-                logger.error(f"SupplierExtractor: Attempt {attempt+1} Exception: {e}")
+        # Success!
+        raw_gst = data.get("GSTIN")
+        if raw_gst:
+            data["GSTIN"] = str(raw_gst).replace(" ", "").replace("-", "").upper()
             
         if not data:
             return {"error_logs": ["SupplierExtractor: Failed to extract valid data after retries."]}

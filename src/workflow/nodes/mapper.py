@@ -8,6 +8,7 @@ from src.services.embeddings import generate_embedding
 from src.utils.config_loader import load_vendor_rules
 from neo4j import GraphDatabase
 from src.domain.smart_mapper import validate_and_fix_hsn, enrich_hsn_details
+from src.utils.ai_retry import ai_retry
 
 logger = get_logger("mapper")
 
@@ -22,6 +23,7 @@ genai.configure(api_key=API_KEY)
 
 from langfuse import observe
 
+@ai_retry
 @observe(name="mapper_execution")
 def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     """

@@ -2,6 +2,7 @@ import google.generativeai as genai
 import os
 from typing import List
 from src.utils.logging_config import get_logger
+from src.utils.ai_retry import ai_retry
 
 logger = get_logger(__name__)
 
@@ -12,6 +13,7 @@ if API_KEY:
 else:
     logger.warning("GOOGLE_API_KEY not found. Embeddings will fail.")
 
+@ai_retry
 def generate_embedding(text: str) -> List[float]:
     """
     Generates a vector embedding for the given text using Gemini (text-embedding-004).
