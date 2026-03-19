@@ -3,8 +3,10 @@ import uuid
 import shutil
 import tempfile
 import os
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File, StreamingResponse
 from src.services.database import get_db_driver
+import asyncio
+import json
 from src.services.storage import upload_to_r2
 from src.services.tasks import process_invoice_background, enrich_invoice_items_background
 from src.api.routes.auth import get_current_user_email
@@ -53,6 +55,42 @@ async def discard_invoice(invoice_id: str, user_email: str = Depends(get_current
          raise HTTPException(status_code=503, detail="Database unavailable")
     delete_invoice_by_id(driver, invoice_id, user_email)
     return {"status": "success", "message": f"Invoice {invoice_id} discarded"}
+
+@router.get("/stream-status")
+async def stream_status(user_email: str = Depends(get_current_user_email)):
+    """
+    SSE endpoint to push status updates to the frontend.
+    """
+    async def event_generator():
+        driver = get_db_driver()
+        last_state_hash = None
+        
+        while True:
+            try:
+                drafts = get_draft_invoices(driver, user_email)
+                # Create a simple hash of IDs and statuses to detect changes
+                current_state = [(d['id'], d.get('status')) for d in drafts]
+                current_hash = hash(tuple(current_state))
+                
+                if current_hash != last_state_hash:
+                    yield f"data: {json.dumps({'type': 'update', 'drafts': drafts})}\n\n"
+                    last_state_hash = current_hash
+                
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"SSE Stream Error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Internal stream error'})}\n\n"
+                break
+                
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no" # For Nginx compatibility
+        }
+    )
 
 @router.get("/{invoice_number}/items")
 async def read_invoice_items(invoice_number: str, user_email: str = Depends(get_current_user_email)):

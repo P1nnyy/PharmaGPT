@@ -3,22 +3,27 @@ import { LayoutGrid } from 'lucide-react';
 import EditorHeader from './editor/EditorHeader';
 import EditorTable from './editor/EditorTable';
 import EditorFooter from './editor/EditorFooter';
+import { useInvoice } from '../../context/InvoiceContext';
 
 const DataEditor = ({
-    invoiceData,
-    lineItems,
-    warnings,
-    successMsg,
-    errorMsg,
-    isSaving,
-    isAnalyzing,
-    onHeaderChange,
-    onInputChange,
-    onAddRow,
-    onConfirm,
-    onExport,
     readOnly = false
 }) => {
+    const {
+        activeQueueItem,
+        isSaving,
+        isAnalyzing,
+        handleHeaderChange,
+        handleLineItemChange,
+        handleSaveInvoice,
+    } = useInvoice();
+
+    const invoiceData = activeQueueItem?.result?.invoice_data || null;
+    const lineItems = activeQueueItem?.result?.normalized_items || [];
+    const warnings = activeQueueItem?.result?.validation_flags || [];
+
+    const onHeaderChange = handleHeaderChange;
+    const onInputChange = handleLineItemChange;
+    const onConfirm = handleSaveInvoice;
 
     if (!invoiceData && !isAnalyzing) {
         return (
