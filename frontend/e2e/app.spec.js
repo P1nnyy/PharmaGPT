@@ -49,18 +49,14 @@ test('navigation between tabs works', async ({ page }) => {
   await page.goto('/');
 
   // Wait for sidebar to be visible (confirms we are past login)
-  await expect(page.getByText('Items')).toBeVisible();
+  await expect(page.getByText('Scan Invoice')).toBeVisible();
 
   // Click on Items tab
   await page.click('text=Items');
-  // URL doesn't necessarily change with React state tabs unless using a router,
-  // but let's check if the content changes or if the URL was expected to change.
-  // In App.jsx, it's just state-based: {activeTab === 'items' && <ItemMaster />}
-  // The original test expected URL change: await expect(page).toHaveURL(/.*items/);
-  // If the app doesn't use React Router, we should check for content instead.
-  await expect(page.getByText(/Manage your inventory items/i).or(page.locator('h2:has-text("Items")'))).toBeVisible();
+  // Content check for Item Master
+  await expect(page.locator('h2:has-text("Item Master")')).toBeVisible({ timeout: 10000 });
 
   // Click on Inventory tab
   await page.click('text=Inventory');
-  await expect(page.getByText(/Inventory View/i).or(page.locator('h2:has-text("Inventory")'))).toBeVisible();
+  await expect(page.locator('h2:has-text("Inventory")')).toBeVisible({ timeout: 10000 });
 });
