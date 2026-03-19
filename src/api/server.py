@@ -79,7 +79,7 @@ app.add_middleware(
 app.add_middleware(
     SessionMiddleware, 
     secret_key=SECRET_KEY, 
-    https_only=False,  
+    https_only=True,  # REQUIRED for HTTPS Tunnel to ensure Secure flag
     same_site='lax',   
     max_age=86400      
 )

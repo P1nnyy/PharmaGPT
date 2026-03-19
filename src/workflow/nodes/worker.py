@@ -19,7 +19,7 @@ client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 # Limit concurrent API calls to avoid 429 errors from RPM/TPM quotas
 # 5 is a safe default for most tiers
-api_semaphore = asyncio.Semaphore(5)
+api_semaphore = asyncio.Semaphore(3)
 
 @ai_retry
 async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> Dict[str, Any]:
@@ -256,7 +256,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
 
     try:
         # Upload the PROCESSED image
-        sample_file = client.files.upload(path=tmp_image_path)
+        sample_file = client.files.upload(file=tmp_image_path)
         
         # Check Retry State
         retry_count = int(state.get("retry_count", 0))

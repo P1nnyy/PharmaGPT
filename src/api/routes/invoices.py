@@ -89,24 +89,15 @@ async def upload_batch(
             shutil.copyfileobj(file.file, tmp)
             processing_path = tmp.name
         
-        public_url = None
-        try:
-            with open(processing_path, "rb") as f_read:
-                 public_url = upload_to_r2(f_read, filename)
-        except Exception as e:
-            logger.error(f"Failed to upload to R2: {e}")
-            
-        if not public_url:
-             logger.error(f"Critical: R2 Upload failed for {filename}. UI will fail.")
-            
-        create_processing_invoice(driver, invoice_id, file.filename, public_url, user_email)
-        background_tasks.add_task(process_invoice_background, invoice_id, processing_path, public_url, user_email, file.filename)
+        # Move Storage to background task to avoid Cloudflare 524 timeout
+        create_processing_invoice(driver, invoice_id, file.filename, None, user_email)
+        background_tasks.add_task(process_invoice_background, invoice_id, processing_path, None, user_email, file.filename)
         
         temp_results.append({
             "id": invoice_id,
             "status": "processing",
             "file": {"name": file.filename},
-            "previewUrl": public_url
+            "previewUrl": None # UI can fall back to local blob URL or show loading
         })
         
     return temp_results

@@ -92,14 +92,7 @@ async def verify_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        
-        # Upload file properly if needed, but assuming path works for now or re-upload
-        # Re-using the logic from worker for upload might be safer
-        # For speed, let's try direct path (GenAI python SDK handles it often?)
-        # Actually standard practice is upload_file
-        
-        sample_file = client.files.upload(path=image_path)
+        sample_file = client.files.upload(file=image_path)
         
         response = await client.aio.models.generate_content(
             model='gemini-2.0-flash',

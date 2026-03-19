@@ -17,7 +17,31 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
     try:
         print(f"Starting Background Processing for {invoice_id}...")
         
-        # Run Extraction
+        # 1. R2 Upload (Move from API to background to avoid timeout)
+        if not public_url:
+            import asyncio
+            from src.services.storage import upload_to_r2
+            
+            logger.info(f"Uploading {invoice_id} to R2 in background...")
+            file_ext = f".{original_filename.split('.')[-1]}" if '.' in original_filename else ".png"
+            filename = f"{invoice_id}{file_ext}"
+            
+            try:
+                with open(local_path, "rb") as f_read:
+                    # Run blocking S3 upload in a separate thread
+                    public_url = await asyncio.to_thread(upload_to_r2, f_read, filename)
+                
+                if public_url:
+                    logger.info(f"R2 Upload Complete for {invoice_id}: {public_url}")
+                    # Update Neo4j node with the URL immediately so UI can show it
+                    # result_state=None for now, just updating the metadata
+                    update_invoice_status(driver, invoice_id, "PROCESSING", result_state={"image_path": public_url})
+                else:
+                    logger.warning(f"R2 Upload failed for {invoice_id}. Preview might be missing.")
+            except Exception as e:
+                 logger.error(f"Failed to upload to R2 in background: {e}")
+
+        # 2. Run Extraction
         extracted_data = await run_extraction_pipeline(local_path, user_email, public_url=public_url)
         
         if extracted_data is None:

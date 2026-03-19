@@ -144,6 +144,7 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
     invoice_no = result_state.get("invoice_data", {}).get("Invoice_No") if result_state else None
     supplier = result_state.get("invoice_data", {}).get("Supplier_Name") if result_state else None
     grand_total = result_state.get("invoice_data", {}).get("Stated_Grand_Total") if result_state else None
+    image_path = result_state.get("image_path") if result_state else None
     
     # Check for duplicate Invoice Number
     if invoice_no:
@@ -186,21 +187,25 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
         SET i.raw_state = $state_json,
             i.invoice_number = coalesce($invoice_no, i.invoice_number),
             i.supplier_name = coalesce($supplier, i.supplier_name),
-            i.grand_total = coalesce($grand_total, i.grand_total)
+            i.grand_total = coalesce($grand_total, i.grand_total),
+            i.image_path = coalesce($image_path, i.image_path)
     )
     
     FOREACH (_ IN CASE WHEN $error IS NOT NULL THEN [1] ELSE [] END |
         SET i.error_message = $error
     )
     """
-    tx.run(query,
-           invoice_id=invoice_id,
-           status=status,
-           state_json=state_json,
-           error=error,
-           invoice_no=invoice_no,
-           supplier=supplier,
-           grand_total=grand_total)
+    result = tx.run(query,
+                   invoice_id=invoice_id,
+                   status=status,
+                   state_json=state_json,
+                   error=error,
+                   invoice_no=invoice_no,
+                   supplier=supplier,
+                   grand_total=grand_total,
+                   image_path=image_path)
+    summary = result.consume()
+    logger.info(f"Updated status for {invoice_id} to {status}. Nodes updated: {summary.counters.properties_set}")
 
 def _mark_duplicate_tx(tx, invoice_id, result_state):
     import json

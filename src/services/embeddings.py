@@ -21,9 +21,9 @@ def generate_embedding(text: str) -> List[float]:
     """
     if not text or not client: return []
     try:
-        # Use text-embedding-004 which is the current best model
+        # Use gemini-embedding-001 which is verified available
         result = client.models.embed_content(
-            model="text-embedding-004",
+            model="models/gemini-embedding-001",
             contents=text
         )
         # Note: The new SDK returns embeddings in a slightly different structure

@@ -34,7 +34,7 @@ def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
     
     # Load Image once
     try:
-        sample_file = client.files.upload(path=image_path)
+        sample_file = client.files.upload(file=image_path)
     except Exception as e:
         logger.error(f"Detective: Failed to upload image: {e}")
         return {}

@@ -33,7 +33,7 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         # as Gemini handles images well.
         
         # Upload file using the new SDK
-        sample_file = client.files.upload(path=image_path)
+        sample_file = client.files.upload(file=image_path)
         # Use the new Client for generation
         
         prompt = """

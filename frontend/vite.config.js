@@ -9,7 +9,8 @@ export default defineConfig({
     port: 5173,
     allowedHosts: ['pharmagpt.co', 'api.pharmagpt.co', 'www.pharmagpt.co', 'local.pharmagpt.co', 'dev.pharmagpt.co', '.trycloudflare.com'],
     hmr: {
-      clientPort: 443 // Force HMR to use HTTPS port 443 (Client -> Cloudflared -> Vite)
+      // Use 443 for Cloudflare Tunnel, but allow fallback for local dev
+      clientPort: process.env.VITE_CLIENT_PORT ? parseInt(process.env.VITE_HMR_PORT) : (process.env.DOCKER_ENV ? 443 : 5173)
     },
     proxy: {
       '/auth': 'http://backend:5001',

@@ -44,7 +44,7 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         for attempt in range(upload_retries):
             try:
                 # In the new SDK, upload is via client.files.upload
-                sample_file = client.files.upload(path=image_path)
+                sample_file = client.files.upload(file=image_path)
                 logger.info(f"File uploaded successfully: {sample_file.name}")
                 break
             except Exception as e:
