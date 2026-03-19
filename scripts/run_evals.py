@@ -8,12 +8,17 @@ from src.workflow.state import InvoiceState
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+has_langfuse = bool(LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY)
 
-langfuse = Langfuse(
-    public_key=LANGFUSE_PUBLIC_KEY,
-    secret_key=LANGFUSE_SECRET_KEY,
-    host=LANGFUSE_HOST
-)
+if has_langfuse:
+    langfuse = Langfuse(
+        public_key=LANGFUSE_PUBLIC_KEY,
+        secret_key=LANGFUSE_SECRET_KEY,
+        host=LANGFUSE_HOST
+    )
+else:
+    langfuse = None
+    print("DEBUG: Langfuse keys missing. Tracing will be skipped.")
 
 # Debug Environment
 print(f"DEBUG: GOOGLE_API_KEY present: {bool(os.getenv('GOOGLE_API_KEY'))}")
@@ -72,19 +77,23 @@ def run_eval():
             score = 1
         
         # Log to Langfuse
-        langfuse.trace(
-            name="Extraction-Eval",
-            id=trace_id,
-            input=case["input"],
-            output=json.dumps(extracted)
-        )
-        
-        langfuse.score(
-            trace_id=trace_id,
-            name="accuracy",
-            value=score,
-            comment=f"Expected: {case['expected']['name']}, Got: {extracted.get('description')}"
-        )
+        if has_langfuse:
+            langfuse.trace(
+                name="Extraction-Eval",
+                id=trace_id,
+                input=case["input"],
+                output=json.dumps(extracted)
+            )
+            
+            langfuse.score(
+                trace_id=trace_id,
+                name="accuracy",
+                value=score,
+                comment=f"Expected: {case['expected']['name']}, Got: {extracted.get('description')}"
+            )
+        else:
+            print(f"   -> Result: {extracted.get('description')} (Score: {score})")
+            print("   -> Skipping Langfuse tracing (Keys not found)")
         
     print("Evals completed and pushed to Langfuse.")
 
