@@ -1,5 +1,5 @@
 # Base Image
-FROM node:20-bullseye-slim
+FROM node:24-bullseye-slim
 
 # Set Working Directory
 WORKDIR /app
