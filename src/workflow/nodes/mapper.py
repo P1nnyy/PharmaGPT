@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import json
 import os
 from typing import Dict, Any, List
@@ -12,14 +12,14 @@ from src.utils.ai_retry import ai_retry
 
 logger = get_logger("mapper")
 
-# Neo4j Config (Ad-hoc connection for Mapper RAG)
+# Neo4j Config
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
-# Initialize Gemini
+# Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
 from langfuse import observe
 
@@ -66,8 +66,7 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     rules_list = MEMORY.get_rules()
     memory_rules = "\n    ".join([f"- {r}" for r in rules_list]) if rules_list else "- No previous mistakes recorded."
     
-    # C. Model Setup
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    # C. Model Setup (Context Handling)
     context_text = "\n".join(raw_rows)
     
     # --- D. RAG: Dynamic Few-Shotting ---
@@ -236,7 +235,10 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
         text = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(text)
         

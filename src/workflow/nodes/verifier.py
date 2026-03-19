@@ -2,16 +2,15 @@ from typing import Dict, Any, List
 import logging
 import json
 import os
-import google.generativeai as genai
+from google import genai
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 
 logger = get_logger("verifier")
 
-# Initialize Gemini
+# Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-if API_KEY:
-    genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
 async def verify_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
@@ -100,9 +99,12 @@ async def verify_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         # For speed, let's try direct path (GenAI python SDK handles it often?)
         # Actually standard practice is upload_file
         
-        sample_file = genai.upload_file(path=image_path, display_name="Verifier Check")
+        sample_file = client.files.upload(path=image_path)
         
-        response = await model.generate_content_async([prompt, sample_file])
+        response = await client.aio.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[prompt, sample_file]
+        )
         text = response.text.replace("```json", "").replace("```", "").strip()
         
         data = json.loads(text)

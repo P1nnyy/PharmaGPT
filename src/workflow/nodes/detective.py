@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import json
 import os
 from typing import Dict, Any, List
@@ -7,9 +7,9 @@ from src.utils.logging_config import get_logger
 
 logger = get_logger("detective")
 
-# Initialize Gemini
+# Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
 from langfuse import observe
 
@@ -34,12 +34,12 @@ def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
     
     # Load Image once
     try:
-        sample_file = genai.upload_file(image_path, mime_type="image/jpeg")
+        sample_file = client.files.upload(path=image_path)
     except Exception as e:
         logger.error(f"Detective: Failed to upload image: {e}")
         return {}
 
-    model = genai.GenerativeModel("gemini-2.0-flash")
+            # Use the new Client for generation
 
     for item in line_items:
         # Check if Batch No is missing
@@ -69,7 +69,10 @@ def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
             """
             
             try:
-                response = model.generate_content([sample_file, prompt])
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[sample_file, prompt]
+                )
                 text = response.text.replace("```json", "").replace("```", "").strip()
                 result = json.loads(text)
                 

@@ -1,7 +1,7 @@
 import os
 import requests
 import json
-import google.generativeai as genai
+from google import genai
 
 # Setup
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
@@ -48,9 +48,8 @@ def main():
         print("No diff found.")
         return
 
-    # Initialize Gemini
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-pro')
+    # Initialize Gemini Client
+    client = genai.Client(api_key=GOOGLE_API_KEY)
 
     prompt = f"""
     You are an expert software engineer reviewing a pull request for a project called "PharmaGPT".
@@ -69,7 +68,10 @@ def main():
     If the changes look great, just say "LGTM! 🚀" with a short nice message.
     """
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model='gemini-2.0-flash',
+        contents=prompt
+    )
     review_body = response.text
 
     # Post comment back to GitHub

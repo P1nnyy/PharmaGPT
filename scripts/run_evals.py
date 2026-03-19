@@ -2,7 +2,7 @@ import os
 import json
 from langfuse import Langfuse
 from src.workflow.nodes.mapper import execute_mapping
-from src.workflow.state import ExtractionState
+from src.workflow.state import InvoiceState
 
 # Setup
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")

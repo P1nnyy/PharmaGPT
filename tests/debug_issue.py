@@ -18,7 +18,7 @@ from src.workflow.graph import run_extraction_pipeline
 from src.workflow.nodes.surveyor import survey_document
 from src.workflow.nodes.worker import execute_extraction
 from src.workflow.nodes.auditor import audit_extraction
-import google.generativeai as genai
+from google import genai
 
 from src.utils.logging_config import setup_logging, get_logger
 
@@ -30,7 +30,7 @@ logger = get_logger("debug_script")
 API_KEY = os.getenv("GOOGLE_API_KEY")
 print(f"API Key Found: {bool(API_KEY)}")
 if API_KEY:
-    genai.configure(api_key=API_KEY)
+    client = genai.Client(api_key=API_KEY)
 
 from src.utils.logging_config import setup_logging
 setup_logging(log_dir="logs", log_file="debug.log") # Separate log for this script

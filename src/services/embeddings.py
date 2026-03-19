@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import os
 from typing import List
 from src.utils.logging_config import get_logger
@@ -6,31 +6,28 @@ from src.utils.ai_retry import ai_retry
 
 logger = get_logger(__name__)
 
-# Initialize Gemini
+# Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-if API_KEY:
-    genai.configure(api_key=API_KEY)
-else:
+if not API_KEY:
     logger.warning("GOOGLE_API_KEY not found. Embeddings will fail.")
+    client = None
+else:
+    client = genai.Client(api_key=API_KEY)
 
 @ai_retry
 def generate_embedding(text: str) -> List[float]:
     """
-    Generates a vector embedding for the given text using Gemini (text-embedding-004).
+    Generates a vector embedding for the given text using the new Google Gen AI SDK.
     """
-    if not text: return []
+    if not text or not client: return []
     try:
-        # task_type='retrieval_document' is good for storage
-        # For queries, strictly strictly it should be 'retrieval_query' but 
-        # for symmetric search or generic usages, document is often fine or default.
-        # Let's check if we can parameterize. 
-        # But 'text-embedding-004' is robust.
-        result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=text,
-            task_type="retrieval_document" 
+        # Use text-embedding-004 which is the current best model
+        result = client.models.embed_content(
+            model="text-embedding-004",
+            contents=text
         )
-        return result['embedding']
+        # Note: The new SDK returns embeddings in a slightly different structure
+        return result.embeddings[0].values
     except Exception as e:
         logger.error(f"Embedding generation failed: {e}")
         return []

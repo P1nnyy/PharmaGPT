@@ -6,7 +6,7 @@ jinja2
 requests
 httpx
 pytest
-google-generativeai
+google-genai
 python-multipart
 importlib-metadata
 PyYAML

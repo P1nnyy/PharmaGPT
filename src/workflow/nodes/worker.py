@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import asyncio
 import json
 import os
@@ -13,16 +13,16 @@ import tempfile
 
 logger = get_logger(__name__)
 
-# Initialize Gemini
+# Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
 # Limit concurrent API calls to avoid 429 errors from RPM/TPM quotas
 # 5 is a safe default for most tiers
 api_semaphore = asyncio.Semaphore(5)
 
 @ai_retry
-async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str, Any]:
+async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> Dict[str, Any]:
     """
     Helper function to process a single zone.
     Returns a dict with specific keys based on zone type.
@@ -83,7 +83,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                 
                 Return ONLY the markdown table string. No JSON.
                 """
-                response = await model.generate_content_async([prompt, image_file])
+                response = await client.aio.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=[prompt, image_file]
+                )
                 text = response.text.strip()
                 # Return raw text wrapped in a dict
                 return {"type": "raw_text", "data": [text]} 
@@ -121,7 +124,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                     "Stated_Grand_Total": float
                 }}
                 """
-                response = await model.generate_content_async([prompt, image_file])
+                response = await client.aio.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=[prompt, image_file]
+                )
                 text = response.text.strip()
                 
                 # Robust JSON Extraction
@@ -184,7 +190,10 @@ async def extract_from_zone(model, image_file, zone: Dict[str, Any]) -> Dict[str
                     "Invoice_Date": "string"
                 }}
                 """
-                response = await model.generate_content_async([prompt, image_file])
+                response = await client.aio.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=[prompt, image_file]
+                )
                 text = response.text.strip()
                 
                 # Robust JSON Extraction
@@ -247,8 +256,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
 
     try:
         # Upload the PROCESSED image
-        sample_file = genai.upload_file(path=tmp_image_path, display_name="Worker Extraction")
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        sample_file = client.files.upload(path=tmp_image_path)
         
         # Check Retry State
         retry_count = int(state.get("retry_count", 0))
@@ -287,7 +295,10 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             Output ONLY the table.
             """
             
-            response = await model.generate_content_async([prompt, sample_file])
+            response = await client.aio.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=[prompt, sample_file]
+            )
             text = response.text.strip()
             
             raw_text_rows = [text] 
@@ -321,7 +332,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             # NORMAL MODE: ZONE BASED
             tasks = []
             for zone in plan:
-                tasks.append(extract_from_zone(model, sample_file, zone))
+                tasks.append(extract_from_zone(None, sample_file, zone))
                 
             # Run Concurrent
             results = await asyncio.gather(*tasks)

@@ -2,19 +2,20 @@ import re
 import json
 import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from google import genai
 from typing import Dict, Any, Optional
 from src.utils.logging_config import get_logger
 from src.services.embeddings import API_KEY
 
 logger = get_logger(__name__)
 
-if API_KEY:
-    genai.configure(api_key=API_KEY)
+# Initialize Gemini Client
+from src.services.embeddings import API_KEY
+client = genai.Client(api_key=API_KEY)
 
 class EnrichmentAgent:
     def __init__(self):
-        self.model = genai.GenerativeModel("models/gemini-2.5-flash")
+        # Using gemini-2.0-flash
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Origin': 'https://www.1mg.com',
@@ -121,7 +122,10 @@ class EnrichmentAgent:
         """
         
         try:
-            response = self.model.generate_content(prompt + text)
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt + text
+            )
             raw_json = response.text.strip()
             # Clean potential markdown
             if raw_json.startswith("```json"):
@@ -160,7 +164,10 @@ class EnrichmentAgent:
         Return ONLY JSON: {{"match": true}} or {{"match": false}}
         """
         try:
-            response = self.model.generate_content(prompt)
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt
+            )
             data = json.loads(response.text.strip().replace("```json", "").replace("```", ""))
             return data.get("match", False)
         except Exception as e:
@@ -320,7 +327,10 @@ class EnrichmentAgent:
         """
         
         try:
-            response = self.model.generate_content(prompt + combined_text)
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt + combined_text
+            )
             raw_json = response.text.strip().replace("```json", "").replace("```", "")
             return json.loads(raw_json)
         except Exception as e:

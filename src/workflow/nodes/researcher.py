@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 import os
 import json
 import logging
-import google.generativeai as genai
+from google import genai
 # from langchain_community.tools import DuckDuckGoSearchRun # REMOVED: Broken dependency
 from duckduckgo_search import DDGS
 from src.workflow.state import InvoiceState as InvoiceStateDict
@@ -10,9 +10,9 @@ from src.utils.logging_config import get_logger
 
 logger = get_logger("researcher")
 
-# Initialize Gemini
+# Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
 def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
     """
@@ -29,8 +29,8 @@ def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
     
     # Initialize Search Tool
     # search_tool = DuckDuckGoSearchRun() # REMOVED
+    # ddgs = DDGS() # Removed redundant init if needed
     ddgs = DDGS()
-    model = genai.GenerativeModel("gemini-2.0-flash")
 
     enriched_count = 0
     updated_items = []
@@ -90,7 +90,10 @@ def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
                 }}
                 """
                 
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=prompt
+                )
                 text = response.text.replace("```json", "").replace("```", "").strip()
                 data = json.loads(text)
                 

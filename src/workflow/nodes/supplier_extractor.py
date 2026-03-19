@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import json
 import os
 from typing import Dict, Any
@@ -9,6 +9,10 @@ from src.utils.ai_retry import ai_retry
 import tempfile
 
 logger = get_logger(__name__)
+
+# Initialize Gemini Client
+API_KEY = os.getenv("GOOGLE_API_KEY")
+client = genai.Client(api_key=API_KEY)
 
 @ai_retry
 async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
@@ -28,9 +32,9 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         # Let's use the provided image path directly to save time, 
         # as Gemini handles images well.
         
-        sample_file = genai.upload_file(path=image_path, display_name="Supplier Extraction")
-        # Retry 2.0 Flash with the NEW Prompt (It should work now)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # Upload file using the new SDK
+        sample_file = client.files.upload(path=image_path)
+        # Use the new Client for generation
         
         prompt = """
         TASK: EXTRACT SUPPLIER / SELLER DETAILS FROM A PHARMA DISTRIBUTOR TAX INVOICE.
@@ -92,9 +96,13 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         # Using ai_retry decorator instead of manual loop
         logger.info("SupplierExtractor: Executing extraction task")
         
-        response = await model.generate_content_async(
-            [prompt, sample_file],
-            generation_config={"response_mime_type": "application/json"}
+        # Generate content with the new SDK
+        response = await client.aio.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[prompt, sample_file],
+            config={
+                'response_mime_type': 'application/json'
+            }
         )
         text = response.text.strip()
         

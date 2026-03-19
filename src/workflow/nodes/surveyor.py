@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import os
 import json
 import logging
@@ -10,12 +10,12 @@ from src.utils.ai_retry import ai_retry
 # Setup Logging
 logger = get_logger("surveyor")
 
-# Initialize Gemini
+# Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
 if not API_KEY:
     logger.warning("GOOGLE_API_KEY not found in environment variables.")
 
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
 from langfuse import observe
 
@@ -33,8 +33,6 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         return {"extraction_plan": [], "error_logs": [f"Image not found: {image_path}"]}
 
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash') # Using 2.0 Flash as requested
-        
         # Validate Image
         if os.path.getsize(image_path) == 0:
             logger.error(f"Image is empty: {image_path}")
@@ -45,10 +43,8 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         upload_retries = 3
         for attempt in range(upload_retries):
             try:
-                # Use unique display name to avoid conflicts if that's a factor
-                import uuid
-                unique_name = f"invoice_{uuid.uuid4().hex}"
-                sample_file = genai.upload_file(path=image_path, display_name=unique_name)
+                # In the new SDK, upload is via client.files.upload
+                sample_file = client.files.upload(path=image_path)
                 logger.info(f"File uploaded successfully: {sample_file.name}")
                 break
             except Exception as e:
@@ -97,8 +93,11 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         ]
         """
 
-        # Use ai_retry decorator on the function instead of manual loop
-        response = model.generate_content([prompt, sample_file])
+        # Generate content with the new SDK
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[prompt, sample_file]
+        )
         response_text = response.text
         
         # Clean Code Blocks
