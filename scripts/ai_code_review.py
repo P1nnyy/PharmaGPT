@@ -49,7 +49,11 @@ def main():
         return
 
     # Initialize Gemini Client
-    client = genai.Client(api_key=GOOGLE_API_KEY)
+    client = genai.Client(api_key=GOOGLE_API_KEY) if GOOGLE_API_KEY else None
+    
+    if not client:
+        print("Gemini client not initialized due to missing API key.")
+        return
 
     prompt = f"""
     You are an expert software engineer reviewing a pull request for a project called "PharmaGPT".

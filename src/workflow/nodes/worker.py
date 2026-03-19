@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 # Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 # Limit concurrent API calls to avoid 429 errors from RPM/TPM quotas
 # 5 is a safe default for most tiers

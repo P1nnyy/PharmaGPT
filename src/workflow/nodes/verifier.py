@@ -10,7 +10,7 @@ logger = get_logger("verifier")
 
 # Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 async def verify_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """

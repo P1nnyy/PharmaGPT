@@ -12,7 +12,7 @@ logger = get_logger("researcher")
 
 # Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
     """

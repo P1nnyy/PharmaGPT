@@ -31,6 +31,8 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 print(f"API Key Found: {bool(API_KEY)}")
 if API_KEY:
     client = genai.Client(api_key=API_KEY)
+else:
+    client = None
 
 from src.utils.logging_config import setup_logging
 setup_logging(log_dir="logs", log_file="debug.log") # Separate log for this script

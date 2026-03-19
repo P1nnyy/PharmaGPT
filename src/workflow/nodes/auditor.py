@@ -15,7 +15,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 if not API_KEY:
     logger.warning("GOOGLE_API_KEY not found in environment variables.")
 
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """

@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 # Initialize Gemini Client
 from src.services.embeddings import API_KEY
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 class EnrichmentAgent:
     def __init__(self):

@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 # Initialize Gemini Client
 API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 @ai_retry
 async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
