@@ -3,7 +3,7 @@ import json
 from src.utils.logging_config import get_logger
 from src.domain.schemas import InvoiceExtraction
 from src.services.embeddings import generate_embedding
-from src.domain.persistence.inventory import _create_line_item_tx
+from src.domain.persistence.inventory import _ingest_line_items_batch_tx
 from src.domain.persistence.access import _merge_supplier_tx
 from neo4j.exceptions import ClientError
 
@@ -35,29 +35,13 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
                 supplier_name = invoice_data.Supplier_Name
                 session.execute_write(_merge_supplier_tx, supplier_name, supplier_details, user_email)
             
-            # Clean up existing line items if re-ingesting to prevent duplicates
+            # 3. Clean up existing line items if re-ingesting to prevent duplicates
             session.run("MATCH (i:Invoice {invoice_number: $no})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", no=invoice_data.Invoice_No)
 
-            # Process each item using the atomic transaction
-            for raw_item, item in zip(invoice_data.Line_Items, normalized_items):
-                session.execute_write(_create_line_item_tx, invoice_data.Invoice_No, item, raw_item, user_email)
-                
-            # 4. Save Invoice Example for RAG (Few-Shot)
-            if invoice_data.raw_text:
-                logger.info("Generating Vector Embedding for Invoice Example...")
-                try:
-                    json_payload = invoice_data.model_dump_json() if hasattr(invoice_data, 'model_dump_json') else invoice_data.json()
-                    embedding = generate_embedding(invoice_data.raw_text)
-                    if embedding:
-                        session.execute_write(
-                            _create_invoice_example_tx, 
-                            invoice_data.Supplier_Name, 
-                            invoice_data.raw_text, 
-                            json_payload, 
-                            embedding
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to save Invoice Example: {e}")
+            # 4. Process all items in a single batch transaction (FAST)
+            session.execute_write(_ingest_line_items_batch_tx, invoice_data.Invoice_No, normalized_items, user_email)
+            
+            logger.info(f"Successfully ingested invoice {invoice_data.Invoice_No} and {len(normalized_items)} line items.")
 
     except Exception as e:
         logger.error(f"Detailed Ingestion Error for Invoice {invoice_data.Invoice_No}: {e}")
@@ -141,10 +125,11 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
     state_json = json.dumps(result_state, default=str) if result_state else None
     
     # Extract high-level fields if available for the Node connection/display
-    invoice_no = result_state.get("invoice_data", {}).get("Invoice_No") if result_state else None
-    supplier = result_state.get("invoice_data", {}).get("Supplier_Name") if result_state else None
-    grand_total = result_state.get("invoice_data", {}).get("Stated_Grand_Total") if result_state else None
-    image_path = result_state.get("image_path") if result_state else None
+    # Check top level first, then inside invoice_data for robustness
+    image_path = result_state.get("image_path") or result_state.get("invoice_data", {}).get("image_path") if result_state else None
+    invoice_no = result_state.get("invoice_no") or result_state.get("invoice_data", {}).get("Invoice_No") if result_state else None
+    supplier = result_state.get("supplier_name") or result_state.get("invoice_data", {}).get("Supplier_Name") if result_state else None
+    grand_total = result_state.get("grand_total") or result_state.get("invoice_data", {}).get("Stated_Grand_Total") if result_state else None
     
     # Check for duplicate Invoice Number
     if invoice_no:
@@ -166,7 +151,8 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
             FOREACH (_ IN CASE WHEN $state_json IS NOT NULL THEN [1] ELSE [] END |
                 SET i.raw_state = $state_json,
                     i.supplier_name = coalesce($supplier, i.supplier_name),
-                    i.grand_total = coalesce($grand_total, i.grand_total)
+                    i.grand_total = coalesce($grand_total, i.grand_total),
+                    i.image_path = coalesce($image_path, i.image_path)
             )
             """
             tx.run(query,
@@ -174,7 +160,8 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
                    invoice_no=invoice_no,
                    supplier=supplier,
                    grand_total=grand_total,
-                   state_json=state_json)
+                   state_json=state_json,
+                   image_path=image_path)
             return
 
     query = """
@@ -214,6 +201,8 @@ def _mark_duplicate_tx(tx, invoice_id, result_state):
     supplier = result_state.get("invoice_data", {}).get("Supplier_Name") if result_state else None
     grand_total = result_state.get("invoice_data", {}).get("Stated_Grand_Total") if result_state else None
     
+    image_path = result_state.get("image_path") or result_state.get("invoice_data", {}).get("image_path") if result_state else None
+    
     query = """
     MATCH (i:Invoice {invoice_id: $invoice_id})
     SET i.status = 'DRAFT',
@@ -224,7 +213,8 @@ def _mark_duplicate_tx(tx, invoice_id, result_state):
     FOREACH (_ IN CASE WHEN $state_json IS NOT NULL THEN [1] ELSE [] END |
         SET i.raw_state = $state_json,
             i.supplier_name = coalesce($supplier, i.supplier_name),
-            i.grand_total = coalesce($grand_total, i.grand_total)
+            i.grand_total = coalesce($grand_total, i.grand_total),
+            i.image_path = coalesce($image_path, i.image_path)
     )
     """
     tx.run(query, 
@@ -232,7 +222,8 @@ def _mark_duplicate_tx(tx, invoice_id, result_state):
            invoice_no=invoice_no,
            state_json=state_json, 
            supplier=supplier,
-           grand_total=grand_total)
+           grand_total=grand_total,
+           image_path=image_path)
 
 def _create_invoice_example_tx(tx, supplier, raw_text, json_payload, embedding):
     query = """
@@ -243,3 +234,28 @@ def _create_invoice_example_tx(tx, supplier, raw_text, json_payload, embedding):
         ex.created_at = timestamp()
     """
     tx.run(query, supplier=supplier, raw_text=raw_text, json_payload=json_payload, embedding=embedding)
+
+def index_invoice_for_rag(driver, invoice_data: InvoiceExtraction):
+    """
+    Background Task: Indexed the invoice for RAG (Few-Shot Support).
+    This is slow (network calls for embeddings) so it should run in background.
+    """
+    if not invoice_data.raw_text:
+        return
+        
+    logger.info(f"BACKGROUND_TASK: Generating Vector Embedding for Invoice Indexing: {invoice_data.Invoice_No}")
+    try:
+        json_payload = invoice_data.model_dump_json() if hasattr(invoice_data, 'model_dump_json') else invoice_data.json()
+        embedding = generate_embedding(invoice_data.raw_text)
+        if embedding:
+            with driver.session() as session:
+                session.execute_write(
+                    _create_invoice_example_tx, 
+                    invoice_data.Supplier_Name, 
+                    invoice_data.raw_text, 
+                    json_payload, 
+                    embedding
+                )
+        logger.info(f"BACKGROUND_TASK: Indexed invoice {invoice_data.Invoice_No} successfully.")
+    except Exception as e:
+        logger.error(f"BACKGROUND_TASK: Failed to index Invoice Example: {e}")

@@ -42,77 +42,130 @@ def _generate_sku(tx, product_name: str) -> str:
     # 3. Format SKU
     return f"{prefix}-{count:03d}"
 
-def _create_line_item_tx(tx, invoice_no: str, item: Dict[str, Any], raw_item: Any, user_email: str):
-    # 1. Execute the Merge First (Resolves Product & Alias)
-    result = tx.run(QUERY_MERGE_PRODUCT, 
-                    user_email=user_email, 
-                    invoice_no=invoice_no,
-                    standard_item_name=item.get("Standard_Item_Name"))
+def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, Any]], user_email: str):
+    """
+    Creates multiple line items in a single transaction using UNWIND.
+    Fastest way to ingest batch data into Neo4j.
+    """
+    batch_query = """
+    MATCH (u:User {email: $user_email})
+    MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
     
-    record = result.single()
-    if not record:
-        logger.error(f"Failed to merge product: {item.get('Standard_Item_Name')}")
-        return
+    UNWIND $items as item
+    
+    // 1. Alias Lookup & Product Resolution
+    OPTIONAL MATCH (alias:ProductAlias {raw_name: item.standard_item_name})-[:MAPS_TO]->(master:GlobalProduct)
+    WITH u, i, item, coalesce(master.name, item.standard_item_name) as final_product_name
+    
+    // 2. Merge Global Product
+    MERGE (gp:GlobalProduct {name: final_product_name})
+    MERGE (u)-[:MANAGES]->(gp)
+    ON CREATE SET 
+        gp.is_verified = false,
+        gp.needs_review = true,
+        gp.created_at = timestamp()
         
-    final_name = record["name"]
-    current_code = record["code"]
+    // 3. Create Line Item (Specific Instance)
+    CREATE (l:Line_Item)
+    SET l = item.properties
+    SET l.created_at = timestamp()
     
-    # 2. SKU Generation Logic (Python Side)
-    if not current_code:
-        new_sku = _generate_sku(tx, final_name)
-        logger.info(f"Generated SKU {new_sku} for new product {final_name}")
-        tx.run(QUERY_UPDATE_SKU, name=final_name, sku=new_sku)
-               
-    # 3. Prepare Line Item Data
-    logger.info(f"DEBUG_TX: Ingesting '{item.get('Standard_Item_Name')}' -> '{final_name}'")
+    // 4. Connect Graph
+    MERGE (i)-[:CONTAINS]->(l)
+    MERGE (l)-[:IS_VARIANT_OF]->(gp)
     
-    # Parse Pack Size (Moved import to top)
-    pack_data = parse_pack_size(item.get("Pack_Size_Description"))
-    final_pack = pack_data.get("pack") or "1x1"
-    final_unit = pack_data.get("unit")
+    // 5. Merge HSN
+    WITH gp, l, item
+    WHERE item.hsn_code IS NOT NULL
+    MERGE (h:HSN {code: item.hsn_code})
+    MERGE (l)-[:BELONGS_TO_HSN]->(h)
     
-    # Calculate Total Tax %
-    s = item.get("SGST_Percent") or 0.0
-    c = item.get("CGST_Percent") or 0.0
-    i = item.get("IGST_Percent") or 0.0
-    g = item.get("GST_Percent") or 0.0
+    // 6. Packaging Variant tracking
+    WITH gp, l, item
+    MERGE (pv:PackagingVariant {pack_size: item.pack_size, product_name: gp.name})
+    MERGE (gp)-[:HAS_VARIANT]->(pv)
+    MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
+    ON CREATE SET
+        pv.unit_name = item.unit_2nd,
+        pv.mrp = item.mrp,
+        pv.conversion_factor = item.conversion_factor,
+        pv.created_at = timestamp()
+    ON MATCH SET
+        pv.mrp = item.mrp,
+        pv.updated_at = timestamp()
+        
+    // 7. Update Master Product Info
+    SET gp.sale_price = coalesce(item.mrp, gp.sale_price),
+        gp.tax_rate = coalesce(item.total_tax_rate, gp.tax_rate),
+        gp.hsn_code = coalesce(item.hsn_code, gp.hsn_code),
+        gp.category = coalesce(item.category, gp.category),
+        gp.manufacturer = coalesce(item.manufacturer, gp.manufacturer),
+        gp.salt_composition = coalesce(item.salt, gp.salt_composition)
     
-    total_tax_rate = float(s + c + i)
-    if total_tax_rate == 0 and g > 0:
-        total_tax_rate = float(g)
+    // 8. Rebuild Hierarchy JSON (APOC)
+    WITH gp
+    MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant)
+    WITH gp, collect({unit: all_v.unit_name, pack: all_v.pack_size, mrp: all_v.mrp}) as hierarchy
+    SET gp.packaging_hierarchy = apoc.convert.toJson(hierarchy)
     
-    # 4. Create Line Item & Connect
-    tx.run(QUERY_CREATE_LINE_ITEM,
-           user_email=user_email,
-           invoice_no=invoice_no,
-           final_product_name=final_name,
-           pack_size=final_pack,
-           conversion_factor=pack_data.get("conversion_factor", 1),
-           quantity=item.get("Standard_Quantity"),
-           free_quantity=item.get("Free_Quantity", 0.0),
-           net_amount=item.get("Net_Line_Amount"),
-           batch_no=item.get("Batch_No"),
-           hsn_code=item.get("HSN_Code") or "UNKNOWN", 
-           mrp=item.get("MRP", 0.0),
-           rate=item.get("Rate", 0.0),
-           total_tax_rate=total_tax_rate,
-           expiry_date=item.get("Expiry_Date"),
-           landing_cost=item.get("Final_Unit_Cost", 0.0),
-           logic_note=item.get("Logic_Note", "N/A"),
-           
-           salt=item.get("salt_composition"), # UPDATED KEY
-           category=item.get("category") or item.get("Category"),
-           manufacturer=item.get("manufacturer"), # UPDATED KEY
-           unit_1st=item.get("Unit_1st") or final_unit,
-           unit_2nd=item.get("Unit_2nd") or final_unit,
-           sales_rate_a=item.get("Sales_Rate_A"),
-           sales_rate_b=item.get("Sales_Rate_B"),
-           sales_rate_c=item.get("Sales_Rate_C"),
-           sgst_percent=item.get("SGST_Percent"),
-           cgst_percent=item.get("CGST_Percent"),
-           igst_percent=item.get("IGST_Percent"),
-           calculated_tax_amount=item.get("Calculated_Tax_Amount", 0.0)
-    )
+    RETURN gp.name as name, gp.item_code as code
+    """
+    
+    # Pre-process items for the batch
+    prepared_items = []
+    for item in items_data:
+        pack_data = parse_pack_size(item.get("Pack_Size_Description"))
+        
+        # Tax Calculation
+        total_tax_rate = float((item.get("SGST_Percent") or 0.0) + (item.get("CGST_Percent") or 0.0) + (item.get("IGST_Percent") or 0.0))
+        if total_tax_rate == 0 and (item.get("GST_Percent") or 0.0) > 0:
+            total_tax_rate = float(item.get("GST_Percent"))
+
+        prepared_items.append({
+            "standard_item_name": item.get("Standard_Item_Name"),
+            "hsn_code": item.get("HSN_Code") or "UNKNOWN",
+            "pack_size": pack_data.get("pack") or "1x1",
+            "unit_2nd": item.get("Unit_2nd") or pack_data.get("unit"),
+            "mrp": item.get("MRP", 0.0),
+            "conversion_factor": pack_data.get("conversion_factor", 1),
+            "total_tax_rate": total_tax_rate,
+            "category": item.get("category") or item.get("Category"),
+            "manufacturer": item.get("manufacturer"),
+            "salt": item.get("salt_composition"),
+            "properties": {
+                "pack_size": pack_data.get("pack") or "1x1",
+                "quantity": item.get("Standard_Quantity"),
+                "free_quantity": item.get("Free_Quantity", 0.0),
+                "net_amount": item.get("Net_Line_Amount"),
+                "batch_no": item.get("Batch_No"),
+                "hsn_code": item.get("HSN_Code") or "UNKNOWN",
+                "mrp": item.get("MRP", 0.0),
+                "expiry_date": item.get("Expiry_Date"),
+                "landing_cost": item.get("Final_Unit_Cost", 0.0),
+                "rate": item.get("Rate", 0.0),
+                "total_tax_rate": total_tax_rate,
+                "salt": item.get("salt_composition"),
+                "category": item.get("category") or item.get("Category"),
+                "manufacturer": item.get("manufacturer"),
+                "unit_1st": item.get("Unit_1st") or pack_data.get("unit"),
+                "unit_2nd": item.get("Unit_2nd") or pack_data.get("unit"),
+                "sales_rate_a": item.get("Sales_Rate_A"),
+                "calculated_tax_amount": item.get("Calculated_Tax_Amount", 0.0)
+            }
+        })
+
+    # Execute Batch
+    result = tx.run(batch_query, 
+                    user_email=user_email, 
+                    invoice_no=invoice_no, 
+                    items=prepared_items)
+    
+    # Post-process SKUs for any new products created in this batch
+    records = result.data()
+    for rec in records:
+        if not rec.get("code"):
+            new_sku = _generate_sku(tx, rec["name"])
+            tx.run(QUERY_UPDATE_SKU, name=rec["name"], sku=new_sku)
 
 def link_product_alias(driver, user_email: str, master_product_name: str, raw_alias: str):
     """

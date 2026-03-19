@@ -76,7 +76,8 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
             "invoice_data": extracted_data,
             "normalized_items": normalized_items,
             "validation_flags": validation_flags,
-            "filename": original_filename
+            "filename": original_filename,
+            "image_path": public_url
         }
         
         # Update Neo4j Status -> DRAFT

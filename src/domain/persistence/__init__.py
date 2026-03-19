@@ -1,7 +1,6 @@
 from .inventory import (
     init_db_constraints,
     _generate_sku,
-    _create_line_item_tx,
     link_product_alias,
     rename_product_with_alias
 )
@@ -13,7 +12,8 @@ from .access import (
 from .ingestion import (
     ingest_invoice,
     create_processing_invoice,
-    update_invoice_status
+    update_invoice_status,
+    index_invoice_for_rag
 )
 
 from .drafts import (

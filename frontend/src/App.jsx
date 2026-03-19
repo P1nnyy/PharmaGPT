@@ -232,12 +232,14 @@ function App() {
 
       // Update Queue with Server IDs and Status
       setFileQueue(prev => {
-        // Replace the "temp" items with "server" placeholders
-        // or just override?
-        return placeholders;
-        // Note: This replaces the list. If user selected 3 new ones, we show 3 new ones.
-        // Existing drafts will be fetched by polling merge if we want to show combined history.
-        // But `handleFileChange` creates a NEW queue currently.
+        // Map placeholders to existing ones to preserve local previewUrl
+        return placeholders.map(p => {
+          const localItem = prev.find(item => item.file?.name === p.file?.name);
+          return {
+            ...p,
+            previewUrl: p.previewUrl || localItem?.previewUrl
+          };
+        });
       });
 
     } catch (err) {

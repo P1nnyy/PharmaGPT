@@ -19,7 +19,8 @@ from src.domain.persistence import (
     ingest_invoice,
     delete_redundant_draft,
     get_invoice_draft,
-    log_correction
+    log_correction,
+    index_invoice_for_rag
 )
 from pydantic import BaseModel
 
@@ -167,8 +168,9 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
             logger.warning("No Draft ID provided in request. Skipping draft cleanup.")
         
         
-        # Trigger Automated Enrichment
+        # Trigger Automated Enrichment and RAG Indexing in background
         background_tasks.add_task(enrich_invoice_items_background, request.normalized_items, user_email)
+        background_tasks.add_task(index_invoice_for_rag, driver, invoice_obj)
 
         return {
             "status": "success",
