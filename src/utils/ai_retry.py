@@ -6,7 +6,7 @@ from tenacity import (
     retry_if_exception,
     before_sleep_log
 )
-import google.api_core.exceptions
+from google.genai import errors
 
 logger = logging.getLogger("ai_retry")
 
@@ -14,12 +14,16 @@ def is_retryable_exception(exception):
     """
     Checks if the exception is a 429 (Rate Limit) or 5xx (Server Error).
     """
-    if isinstance(exception, (google.api_core.exceptions.ResourceExhausted, 
-                              google.api_core.exceptions.ServiceUnavailable,
-                              google.api_core.exceptions.InternalServerError)):
-        return True
+    # 1. New google-genai error handling
+    if isinstance(exception, errors.APIError):
+        # 429 = ResourceExhausted
+        if exception.code == 429:
+            return True
+        # 5xx = Server Errors
+        if 500 <= (exception.code or 0) < 600:
+            return True
     
-    # Also check string representation for generic 429/500 errors from SDK
+    # 2. Legacy/Generic Check for robustness
     err_str = str(exception).lower()
     if "429" in err_str or "resource exhausted" in err_str:
         return True
