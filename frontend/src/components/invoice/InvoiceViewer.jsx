@@ -87,7 +87,7 @@ const InvoiceViewer = ({
                                 {/* Info (Desktop or Mobile List Mode) */}
                                 <div className={`${isMobile ? 'block' : 'hidden md:block'} flex-1 min-w-0`}>
                                     <div className={`text-sm font-medium truncate ${item.id === selectedQueueId ? 'text-indigo-300' : 'text-gray-300'}`}>
-                                        {item.file.name}
+                                        {item.file?.name || item.filename || 'Unnamed File'}
                                     </div>
                                     <div className="text-[10px] text-gray-500 flex items-center gap-1">
                                         {item.status === 'processing' && <span className="text-yellow-500">Processing...</span>}

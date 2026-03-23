@@ -1,8 +1,8 @@
 import React from 'react';
 import { IndianRupee, Search } from 'lucide-react';
-import { InputField } from '../InputField';
+import InputField from './InputField';
 
-export const ItemPricing = ({ formData, handleInputChange }) => {
+const ItemPricingTab = ({ formData, handleInputChange }) => {
     // Derived values
     const landing = (formData.purchase_price || 0) * (1 + (formData.tax_rate || 0) / 100);
     const margin = (formData.sale_price || 0) - landing;
@@ -151,3 +151,5 @@ export const ItemPricing = ({ formData, handleInputChange }) => {
         </div>
     );
 };
+
+export default ItemPricingTab;

@@ -424,20 +424,19 @@ const AdminDashboard = () => {
                                     <label className="block text-xs font-medium text-slate-400 mb-2 uppercase">Permissions</label>
                                     <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                                         {AVAILABLE_PERMISSIONS.map(perm => {
-                                            const isChecked = newRolePerms.includes(perm.id);
+                                            const isChecked = newRolePerms.includes(perm);
                                             return (
                                                 <button
-                                                    key={perm.id}
+                                                    key={perm}
                                                     type="button"
-                                                    onClick={() => togglePermission(perm.id)}
+                                                    onClick={() => togglePermission(perm)}
                                                     className={`flex items-center justify-between p-3 rounded-lg border transition-all text-left group ${isChecked
                                                         ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-300'
                                                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                                                         }`}
                                                 >
                                                     <div className="flex flex-col">
-                                                        <span className={`text-xs font-semibold ${isChecked ? 'text-emerald-400' : 'text-slate-300 group-hover:text-white'}`}>{perm.label}</span>
-                                                        <span className="text-[10px] text-slate-500 mt-0.5">{perm.desc}</span>
+                                                        <span className={`text-xs font-semibold ${isChecked ? 'text-emerald-400' : 'text-slate-300 group-hover:text-white'}`}>{perm.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
                                                     </div>
                                                     {isChecked ? <ToggleRight className="w-6 h-6 text-emerald-500" /> : <ToggleLeft className="w-6 h-6 text-slate-600" />}
                                                 </button>

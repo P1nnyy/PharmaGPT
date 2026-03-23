@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const ItemHistory = ({ history, loading }) => {
+const ItemHistoryTab = ({ history, loading }) => {
     return (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="bg-slate-900/50 rounded-xl border border-slate-700 overflow-hidden">
@@ -34,3 +34,5 @@ export const ItemHistory = ({ history, loading }) => {
         </div>
     );
 };
+
+export default ItemHistoryTab;

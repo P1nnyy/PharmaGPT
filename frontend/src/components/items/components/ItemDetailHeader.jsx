@@ -1,7 +1,7 @@
 import React from 'react';
 import { Save, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 
-export const ItemDetailHeader = ({ 
+const ItemDetailHeader = ({ 
     formData, 
     activeTab, 
     setActiveTab, 
@@ -78,3 +78,5 @@ export const ItemDetailHeader = ({
         </>
     );
 };
+
+export default ItemDetailHeader;

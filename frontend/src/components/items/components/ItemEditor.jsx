@@ -1,8 +1,8 @@
 import React from 'react';
 import { Tag, Factory, FlaskConical, Warehouse, Search, Globe } from 'lucide-react';
-import { InputField } from '../InputField';
+import InputField from './InputField';
 
-export const ItemOverview = ({ formData, handleInputChange }) => {
+const ItemEditor = ({ formData, handleInputChange }) => {
 
     // Enrichment Indicator
     const enrichmentBadge = formData.is_enriched ? (
@@ -75,3 +75,5 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
         </div>
     );
 };
+
+export default ItemEditor;

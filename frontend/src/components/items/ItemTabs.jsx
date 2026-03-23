@@ -1,8 +1,8 @@
 import React from 'react';
-import { ItemOverview } from '../tabs/ItemOverview';
-import { ItemPricing } from '../tabs/ItemPricing';
-import { ItemInventory } from '../tabs/ItemInventory';
-import { ItemHistory } from '../tabs/ItemHistory';
+import ItemEditor from './components/ItemEditor';
+import ItemPricingTab from './components/ItemPricingTab';
+import ItemInventoryTab from './components/ItemInventoryTab';
+import ItemHistoryTab from './components/ItemHistoryTab';
 
 const ItemTabs = ({ item, activeTab, onTabChange, onInputChange, onFormDataChange, categories, history, historyLoading }) => {
     const tabs = [
@@ -35,11 +35,11 @@ const ItemTabs = ({ item, activeTab, onTabChange, onInputChange, onFormDataChang
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                 <div className="max-w-4xl mx-auto space-y-8 pb-20">
                     {activeTab === 'overview' && (
-                        <ItemOverview formData={item} handleInputChange={onInputChange} />
+                        <ItemEditor formData={item} handleInputChange={onInputChange} />
                     )}
 
                     {activeTab === 'inventory_packaging' && (
-                        <ItemInventory 
+                        <ItemInventoryTab 
                             formData={item} 
                             setFormData={onFormDataChange} 
                             handleInputChange={onInputChange} 
@@ -48,11 +48,11 @@ const ItemTabs = ({ item, activeTab, onTabChange, onInputChange, onFormDataChang
                     )}
 
                     {activeTab === 'pricing' && (
-                        <ItemPricing formData={item} handleInputChange={onInputChange} />
+                        <ItemPricingTab formData={item} handleInputChange={onInputChange} />
                     )}
 
                     {activeTab === 'history' && (
-                        <ItemHistory history={history} loading={historyLoading} />
+                        <ItemHistoryTab history={history} loading={historyLoading} />
                     )}
                 </div>
             </div>

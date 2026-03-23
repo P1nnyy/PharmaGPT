@@ -19,9 +19,9 @@ export const useItemData = () => {
                 getAllProducts(),
                 getCategories()
             ]);
-            setReviewQueue(queue);
-            setAllItems(items);
-            setCategories(cats);
+            setReviewQueue(Array.isArray(queue) ? queue.filter(Boolean) : []);
+            setAllItems(Array.isArray(items) ? items.filter(Boolean) : []);
+            setCategories(Array.isArray(cats) ? cats.filter(Boolean) : []);
         } catch (err) {
             console.error("Failed to fetch ItemMaster data", err);
         } finally {

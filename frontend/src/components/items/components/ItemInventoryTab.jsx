@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Warehouse, Package, AlertCircle, Tag, Layers, Box, Calculator, Plus, Trash2 } from 'lucide-react';
-import { InputField } from '../InputField';
+import InputField from './InputField';
 
-export const ItemInventory = ({ formData, setFormData, handleInputChange, categories }) => {
+const ItemInventoryTab = ({ formData, setFormData, handleInputChange, categories }) => {
 
     // Defaults
     const baseUnit = formData.base_unit || 'Tablet';
@@ -16,7 +16,7 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
 
     // Safeguard for the select: if baseUnit is not in categories, we should still show it
     const categoryOptions = Array.isArray(categories) ? categories : [];
-    const hasCurrentUnit = categoryOptions.some(cat => cat.name === baseUnit);
+    const hasCurrentUnit = categoryOptions.some(cat => cat?.name === baseUnit);
 
     // Lazy Loading State: Show Secondary Packing only if it exists (>1)
     const [showSecondary, setShowSecondary] = useState(false);
@@ -119,7 +119,7 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
                                         {!hasCurrentUnit && baseUnit && (
                                             <option value={baseUnit}>{baseUnit}</option>
                                         )}
-                                        {categoryOptions.map(cat => (
+                                        {categoryOptions.map(cat => cat && (
                                             <option key={cat.name} value={cat.name}>{cat.name}</option>
                                         ))}
                                     </>
@@ -277,3 +277,5 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
         </div>
     );
 };
+
+export default ItemInventoryTab;

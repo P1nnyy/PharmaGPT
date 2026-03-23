@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ItemDetailHeader } from './ItemDetailHeader';
-import ItemTabs from './components/ItemTabs';
+import ItemDetailHeader from './components/ItemDetailHeader';
+import ItemTabs from './ItemTabs';
 import { getProductHistory } from '../../services/api';
 
 const ItemDetails = ({ 

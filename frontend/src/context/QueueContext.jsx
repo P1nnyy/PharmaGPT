@@ -21,10 +21,13 @@ export const QueueProvider = ({ children }) => {
 
     // Persist fileQueue
     useEffect(() => {
-        const persistQueue = fileQueue.map(({ file, ...rest }) => ({
-            ...rest,
-            filename: rest.filename || file?.name
-        }));
+        const persistQueue = fileQueue.map((item) => {
+            const { file, ...rest } = item;
+            return {
+                ...rest,
+                filename: item.filename || file?.name || 'Unnamed File'
+            };
+        });
         sessionStorage.setItem('invoice_file_queue', JSON.stringify(persistQueue));
     }, [fileQueue]);
 

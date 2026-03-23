@@ -5,7 +5,7 @@ import { getImageUrl } from '../../utils/urlHelper';
 import AnalysisModal from '../invoice/AnalysisModal';
 import { useAuth } from '../../context/AuthContext';
 
-const History = () => {
+const ActivityHistory = () => {
     const { user } = useAuth();
     const [activityLog, setActivityLog] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -385,4 +385,4 @@ const History = () => {
     );
 };
 
-export default History;
+export default ActivityHistory;

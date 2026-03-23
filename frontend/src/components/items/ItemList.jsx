@@ -17,8 +17,10 @@ const ItemList = ({
 }) => {
     const items = sidebarTab === 'review' ? reviewQueue : allItems;
     const filtered = items.filter(item =>
-        (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.item_code && item.item_code.toLowerCase().includes(searchTerm.toLowerCase()))
+        item && (
+            (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.item_code && item.item_code.toLowerCase().includes(searchTerm.toLowerCase()))
+        )
     );
 
     return (
@@ -71,7 +73,7 @@ const ItemList = ({
                     <ItemCard
                         key={idx}
                         item={item}
-                        isSelected={selectedName === item.name}
+                        isSelected={selectedName === item?.name}
                         onClick={() => onSelect(item)}
                     />
                 ))}

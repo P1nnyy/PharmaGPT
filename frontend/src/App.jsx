@@ -17,7 +17,7 @@ import Settings from './components/layout/Settings';
 
 // Lazy Loaded Dashboards
 const InventoryView = lazy(() => import('./components/dashboard/Inventory'));
-const ActivityHistory = lazy(() => import('./components/dashboard/History'));
+const ActivityHistory = lazy(() => import('./components/dashboard/ActivityHistory'));
 const GroupedInvoices = lazy(() => import('./components/dashboard/GroupedInvoices'));
 const ItemMaster = lazy(() => import('./components/items/ItemMaster'));
 const AdminDashboard = lazy(() => import('./components/dashboard/AdminDashboard'));

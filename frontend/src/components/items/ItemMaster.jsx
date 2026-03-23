@@ -5,7 +5,7 @@ import { useItemForm } from './hooks/useItemForm';
 import ItemList from './ItemList';
 import ItemDetails from './ItemDetails';
 import ItemForm from './ItemForm';
-import { inferProductForm } from './utils/itemUtils';
+import { inferProductForm } from './itemUtils';
 
 const ItemMaster = () => {
     // Shared Data Hook
