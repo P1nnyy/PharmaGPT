@@ -9,8 +9,17 @@ def get_draft_invoices(driver, user_email: str):
     Fetches invoices in PROCESSING, DRAFT, or ERROR state for the user.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
-    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    WITH u, s
+    
+    MATCH (i:Invoice)
+    WHERE (i.status IN ['PROCESSING', 'DRAFT', 'ERROR'])
+      AND (
+        (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
+        (s IS NULL AND (u)-[:OWNS]->(i))
+      )
+    
     RETURN i.invoice_id as id,
            i.filename as filename,
            i.status as status,
@@ -50,11 +59,20 @@ def delete_draft_invoices(driver, user_email: str):
     Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
-    WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    WITH u, s
+    
+    MATCH (i:Invoice)
+    WHERE (i.status IN ['PROCESSING', 'DRAFT', 'ERROR'])
+      AND (
+        (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
+        (s IS NULL AND (u)-[:OWNS]->(i))
+      )
+      
     WITH i, count(i) as cnt
     DETACH DELETE i
-    RETURN cnt
+    RETURN sum(cnt) as cnt
     """
     try:
         def _delete_tx(tx):

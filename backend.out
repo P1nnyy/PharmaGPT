@@ -1,0 +1,55 @@
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/api/server.py:113: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/api/server.py:121: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+INFO:     Will watch for changes in these directories: ['/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor']
+INFO:     Uvicorn running on http://0.0.0.0:5005 (Press CTRL+C to quit)
+INFO:     Started reloader process [10658] using WatchFiles
+[2026-03-23 15:02:54,867] [INFO] [watchfiles.main] [Req: SYSTEM] - 1 change detected
+INFO:     Started server process [10932]
+INFO:     Waiting for application startup.
+[2026-03-23 15:02:55,911] [INFO] [watchfiles.main] [Req: SYSTEM] - 5 changes detected
+[2026-03-23 15:02:56,552] [INFO] [database] [Req: SYSTEM] - Connected to Neo4j.
+[2026-03-23 15:02:56,814] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX invoice_examples_index IF NOT EXISTS FOR (e:InvoiceExample) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX invoice_examples_index FOR (e:InvoiceExample) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX invoice_examples_index IF NOT EXISTS\n    FOR (n:InvoiceExample)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-23 15:02:56,952] [INFO] [database] [Req: SYSTEM] - Vector Index 'invoice_examples_index' initialization checked.
+[2026-03-23 15:02:57,220] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX hsn_vector_index IF NOT EXISTS FOR (e:HSN) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX hsn_vector_index FOR (e:HSN) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX hsn_vector_index IF NOT EXISTS\n    FOR (n:HSN)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-23 15:02:57,347] [INFO] [database] [Req: SYSTEM] - Vector Index 'hsn_vector_index' initialization checked.
+[2026-03-23 15:02:57,610] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX product_index IF NOT EXISTS FOR (e:Product) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX product_index FOR (e:Product) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX product_index IF NOT EXISTS\n    FOR (n:Product)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-23 15:02:57,743] [INFO] [database] [Req: SYSTEM] - Vector Index 'product_index' initialization checked.
+[2026-03-23 15:02:58,270] [INFO] [src.domain.persistence.config] [Req: SYSTEM] - Default categories seeded and legacy defaults cleaned up successfully.
+/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/boto3/compat.py:89: PythonDeprecationWarning: Boto3 will no longer support Python 3.9 starting April 29, 2026. To continue receiving service updates, bug fixes, and security updates please upgrade to Python 3.10 or later. More information can be found here: https://aws.amazon.com/blogs/developer/python-support-policy-updates-for-aws-sdks-and-tools/
+  warnings.warn(warning, PythonDeprecationWarning)
+[2026-03-23 15:02:58,735] [INFO] [storage] [Req: SYSTEM] - R2/S3 Client Initialized Successfully
+INFO:     Application startup complete.
+[2026-03-23 15:03:23,017] [INFO] [watchfiles.main] [Req: SYSTEM] - 1 change detected
+WARNING:  WatchFiles detected changes in 'scripts/verify_seed.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+[2026-03-23 15:03:23,189] [INFO] [database] [Req: SYSTEM] - Neo4j driver closed.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [10932]
+[2026-03-23 15:03:23,571] [INFO] [watchfiles.main] [Req: SYSTEM] - 1 change detected
+INFO:     Started server process [11452]
+INFO:     Waiting for application startup.
+[2026-03-23 15:03:28,076] [INFO] [database] [Req: SYSTEM] - Connected to Neo4j.
+[2026-03-23 15:03:28,306] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX invoice_examples_index IF NOT EXISTS FOR (e:InvoiceExample) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX invoice_examples_index FOR (e:InvoiceExample) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX invoice_examples_index IF NOT EXISTS\n    FOR (n:InvoiceExample)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-23 15:03:28,408] [INFO] [database] [Req: SYSTEM] - Vector Index 'invoice_examples_index' initialization checked.
+[2026-03-23 15:03:28,635] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX hsn_vector_index IF NOT EXISTS FOR (e:HSN) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX hsn_vector_index FOR (e:HSN) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX hsn_vector_index IF NOT EXISTS\n    FOR (n:HSN)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-23 15:03:28,740] [INFO] [database] [Req: SYSTEM] - Vector Index 'hsn_vector_index' initialization checked.
+[2026-03-23 15:03:28,952] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX product_index IF NOT EXISTS FOR (e:Product) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX product_index FOR (e:Product) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX product_index IF NOT EXISTS\n    FOR (n:Product)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-23 15:03:29,062] [INFO] [database] [Req: SYSTEM] - Vector Index 'product_index' initialization checked.
+[2026-03-23 15:03:29,542] [INFO] [src.domain.persistence.config] [Req: SYSTEM] - Default categories seeded and legacy defaults cleaned up successfully.
+/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/boto3/compat.py:89: PythonDeprecationWarning: Boto3 will no longer support Python 3.9 starting April 29, 2026. To continue receiving service updates, bug fixes, and security updates please upgrade to Python 3.10 or later. More information can be found here: https://aws.amazon.com/blogs/developer/python-support-policy-updates-for-aws-sdks-and-tools/
+  warnings.warn(warning, PythonDeprecationWarning)
+[2026-03-23 15:03:29,668] [INFO] [storage] [Req: SYSTEM] - R2/S3 Client Initialized Successfully
+INFO:     Application startup complete.

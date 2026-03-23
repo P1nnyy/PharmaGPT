@@ -228,8 +228,17 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
         if invoice_no and not draft_id:
             # Legacy/Fallback: Try to find by number if ID is missing
             find_draft_query = """
-            MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
-            WHERE i.status IN ['DRAFT', 'PROCESSING', 'ERROR'] AND i.invoice_number = $invoice_no
+            MATCH (u:User {email: $user_email})
+            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+            WITH u, s
+            
+            MATCH (i:Invoice)
+            WHERE i.status IN ['DRAFT', 'PROCESSING', 'ERROR'] 
+              AND i.invoice_number = $invoice_no
+              AND (
+                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
+                (s IS NULL AND (u)-[:OWNS]->(i))
+              )
             RETURN i.invoice_id as id, i.raw_state as state LIMIT 1
             """
             with driver.session() as session:
@@ -243,7 +252,18 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
 
         if invoice_id_lookup and not original_draft:
             # Fetch draft data if we only have the ID
-            fetch_query = "MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_id: $id}) RETURN i.raw_state as state"
+            fetch_query = """
+            MATCH (u:User {email: $user_email})
+            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+            WITH u, s
+            
+            MATCH (i:Invoice {invoice_id: $id})
+            WHERE (
+                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
+                (s IS NULL AND (u)-[:OWNS]->(i))
+            )
+            RETURN i.raw_state as state
+            """
             with driver.session() as session:
                 def _fetch_state(tx):
                     res = tx.run(fetch_query, user_email=user_email, id=invoice_id_lookup).single()

@@ -9,7 +9,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0', 
-    port: 5173,
+    port: 5174,
     allowedHosts: ['pharmagpt.co', 'api.pharmagpt.co', 'www.pharmagpt.co', 'local.pharmagpt.co', 'dev.pharmagpt.co', '.trycloudflare.com'],
     hmr: {
       // Use 443 for Cloudflare Tunnel/Proxies, 
@@ -18,18 +18,18 @@ export default defineConfig({
       protocol: process.env.DOCKER_ENV ? 'wss' : 'ws'
     },
     proxy: {
-      '/auth': 'http://backend:5001',
-      '/products': 'http://backend:5001',
-      '/invoices': 'http://backend:5001',
-      '/reporting': 'http://backend:5001',
-      '/inventory': 'http://backend:5001',
-      '/system': 'http://backend:5001',
-      '/config': 'http://backend:5001',
-      '/feedback': 'http://backend:5001',
-      '/activity-log': 'http://backend:5001',
-      '/history': 'http://backend:5001',
-      '/export-excel': 'http://backend:5001',
-      '/invitations': 'http://backend:5001'
+      '/auth': 'http://127.0.0.1:5005',
+      '/products': 'http://127.0.0.1:5005',
+      '/invoices': 'http://127.0.0.1:5005',
+      '/reporting': 'http://127.0.0.1:5005',
+      '/inventory': 'http://127.0.0.1:5005',
+      '/system': 'http://127.0.0.1:5005',
+      '/config': 'http://127.0.0.1:5005',
+      '/feedback': 'http://127.0.0.1:5005',
+      '/activity-log': 'http://127.0.0.1:5005',
+      '/history': 'http://127.0.0.1:5005',
+      '/export-excel': 'http://127.0.0.1:5005',
+      '/invitations': 'http://127.0.0.1:5005'
     }
   }
 })

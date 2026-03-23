@@ -52,8 +52,13 @@ def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, nor
 def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, grand_total: float, user_email: str):
     query = """
     MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
     MATCH (i:Invoice {invoice_id: $invoice_id})
     MERGE (u)-[:OWNS]->(i)
+    
+    FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
+        MERGE (i)-[:BELONGS_TO]->(shop)
+    )
     
     SET i.status = 'CONFIRMED',
         i.invoice_number = $invoice_no,
@@ -83,8 +88,13 @@ def create_processing_invoice(driver, invoice_id: str, filename: str, image_path
 def _create_processing_tx(tx, invoice_id, filename, image_path, user_email):
     query = """
     MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
     MERGE (i:Invoice {invoice_id: $invoice_id})
     MERGE (u)-[:OWNS]->(i)
+    
+    FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
+        MERGE (i)-[:BELONGS_TO]->(shop)
+    )
     
     ON CREATE SET 
         i.status = 'PROCESSING',

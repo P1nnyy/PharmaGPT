@@ -3,15 +3,15 @@ credentials-file: /Users/pranavgupta/.cloudflared/173e5515-cdf3-4140-b8c4-ad87bf
 
 ingress:
   - hostname: pharmagpt.co
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - hostname: dev.pharmagpt.co
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - hostname: local.pharmagpt.co
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - hostname: www.pharmagpt.co
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - hostname: api.pharmagpt.co
-    service: http://127.0.0.1:5001
+    service: http://127.0.0.1:5005
     originRequest:
       connectTimeout: 30s
   - service: http_status:404

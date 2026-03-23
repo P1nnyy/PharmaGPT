@@ -158,25 +158,28 @@ async def get_current_user_profile(user_email: str = Depends(get_current_user_em
     user_data["role"] = result["role"] or "Employee"
     user_data["permissions"] = result["permissions"] or []
 
-    # --- Shop Logic (Large Scale Optimization) ---
-    if user_data["role"] == "Admin":
-        shop_query = """
-        MATCH (u:User {email: $email})
-        MERGE (u)-[:OWNS_SHOP]->(s:Shop)
-        ON CREATE SET s.name = u.name + "'s Shop", s.id = apoc.create.uuid()
-        RETURN s.name as shop_name, s.id as shop_id
-        """
-        # Note: If APOC is not available, we can use a simpler MERGE or python uuid.
-        # For now, let's use a standard MERGE and SET.
-        shop_query = """
-        MATCH (u:User {email: $email})
-        MERGE (u)-[:OWNS_SHOP]->(s:Shop)
-        ON CREATE SET s.name = u.name + "'s Shop", s.created_at = datetime()
-        RETURN s.name as shop_name
-        """
-        with driver.session() as session:
-            shop_res = session.run(shop_query, email=user_email).single()
+    # --- Shop Logic (Production Scaling) ---
+    shop_query = """
+    MATCH (u:User {email: $email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    RETURN s.name as shop_name, s.id as shop_id
+    """
+    with driver.session() as session:
+        shop_res = session.run(shop_query, email=user_email).single()
+        if shop_res and shop_res["shop_name"]:
+            user_data["shop_name"] = shop_res["shop_name"]
+            user_data["shop_id"] = shop_res["shop_id"]
+        elif user_data["role"] == "Admin":
+            # Auto-create shop for Admin if missing (Legacy Support)
+            create_shop_query = """
+            MATCH (u:User {email: $email})
+            MERGE (u)-[:OWNS_SHOP]->(s:Shop)
+            ON CREATE SET s.name = u.name + "'s Shop", s.id = randomUUID()
+            RETURN s.name as shop_name, s.id as shop_id
+            """
+            shop_res = session.run(create_shop_query, email=user_email).single()
             if shop_res:
                 user_data["shop_name"] = shop_res["shop_name"]
+                user_data["shop_id"] = shop_res["shop_id"]
 
     return user_data

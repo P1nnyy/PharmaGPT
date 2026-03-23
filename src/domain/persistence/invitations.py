@@ -44,7 +44,7 @@ def get_pending_invitations(user_email: str) -> list:
     WHERE rel.status = 'PENDING'
     RETURN { 
         id: rel.invitation_id, 
-        inviter_name: inviter.name, 
+        inviter_name: coalesce(inviter.name, inviter.email), 
         inviter_email: inviter.email, 
         role: rel.role, 
         created_at: rel.created_at 
@@ -63,12 +63,18 @@ def accept_invitation(user_email: str, invitation_id: str) -> bool:
     query = """
     MATCH (inviter:User)-[rel:INVITED_USER {invitation_id: $id}]->(u:User {email: $email})
     MATCH (r:Role {name: rel.role})
+    OPTIONAL MATCH (inviter)-[:OWNS_SHOP]->(s:Shop)
     
-    // 1. Mark invitation as ACCEPTED (or just delete it)
+    // 1. Mark invitation as ACCEPTED
     SET rel.status = 'ACCEPTED', rel.accepted_at = datetime()
     
     // 2. Grant the role
     MERGE (u)-[:HAS_ROLE]->(r)
+    
+    // 3. Link to Shop (if inviter has one)
+    FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
+        MERGE (u)-[:WORKS_AT]->(shop)
+    )
     
     RETURN u, r
     """

@@ -7,7 +7,6 @@ import { getUserProfile, setAuthToken, getInvitations, acceptInvitation } from '
 // Static Layout Components
 import Sidebar from './components/layout/Sidebar';
 import MobileHeader from './components/layout/MobileHeader';
-import MobileNavBar from './components/layout/MobileNavBar';
 import InvoiceViewer from './components/invoice/InvoiceViewer';
 import DataEditor from './components/invoice/DataEditor';
 import Login from './components/Login';
@@ -194,14 +193,6 @@ function AppContent() {
         onClose={() => {}}
       />
 
-      {isMobile && (
-        <MobileNavBar 
-          activeTab={activeTab} 
-          onTabChange={setActiveTab} 
-          onCameraClick={() => setActiveTab('scan')}
-          user={user}
-        />
-      )}
 
       {/* Invitations Overlay */}
       {invitations && invitations.length > 0 && invitations[0] && invitations[0].id && (

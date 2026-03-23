@@ -9,21 +9,30 @@ def get_activity_log(driver, user_email: str):
     Fetches the last 20 processed invoices for the dashboard history, scoped to User.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
-    WHERE i.status = 'CONFIRMED'
-    OPTIONAL MATCH (u)-[:OWNS]->(s:Supplier {name: i.supplier_name})
-    RETURN i.invoice_number as invoice_number, 
-           i.supplier_name as supplier_name, 
-           i.created_at as created_at, 
-           i.updated_at as saved_at,
-           i.grand_total as total,
-           i.image_path as image_path,
-           s.gstin as supplier_gst,
-           s.phone as supplier_phone,
-           s.dl_no as supplier_dl,
-           s.address as supplier_address,
+    MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    WITH u, s
+    
+    MATCH (inv:Invoice)
+    WHERE inv.status = 'CONFIRMED'
+      AND (
+        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s)) OR
+        (s IS NULL AND (u)-[:OWNS]->(inv))
+      )
+    
+    OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
+    RETURN inv.invoice_number as invoice_number, 
+           inv.supplier_name as supplier_name, 
+           inv.created_at as created_at, 
+           inv.updated_at as saved_at,
+           inv.grand_total as total,
+           inv.image_path as image_path,
+           supp.gstin as supplier_gst,
+           supp.phone as supplier_phone,
+           supp.dl_no as supplier_dl,
+           supp.address as supplier_address,
            u.name as saved_by
-    ORDER BY i.updated_at DESC LIMIT 20
+    ORDER BY inv.updated_at DESC LIMIT 20
     """
     with driver.session() as session:
         return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
@@ -33,7 +42,17 @@ def get_inventory(driver, user_email: str):
     Fetches aggregated inventory data for the dashboard, scoped to User.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)-[:CONTAINS]->(l:Line_Item)
+    MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    WITH u, s
+    
+    MATCH (inv:Invoice)-[:CONTAINS]->(l:Line_Item)
+    WHERE inv.status = 'CONFIRMED'
+      AND (
+        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s)) OR
+        (s IS NULL AND (u)-[:OWNS]->(inv))
+      )
+      
     MATCH (l)-[:IS_VARIANT_OF]->(gp:GlobalProduct)
     RETURN gp.name as product_name, 
            sum(l.quantity) as total_quantity, 
@@ -48,11 +67,20 @@ def get_invoice_details(driver, invoice_no, user_email: str):
     Fetches full invoice details and line items, checking User ownership.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
-    OPTIONAL MATCH (u)-[:OWNS]->(s:Supplier {name: i.supplier_name})
-    OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
+    MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    WITH u, s
+    
+    MATCH (inv:Invoice {invoice_number: $invoice_no})
+    WHERE (
+        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s)) OR
+        (s IS NULL AND (u)-[:OWNS]->(inv))
+    )
+    
+    OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
+    OPTIONAL MATCH (inv)-[:CONTAINS]->(l:Line_Item)
     OPTIONAL MATCH (l)-[:IS_VARIANT_OF]->(p:GlobalProduct)
-    RETURN i, s, collect({
+    RETURN inv, supp, collect({
         line: l, 
         product: p 
     }) as items
@@ -95,16 +123,23 @@ def get_grouped_invoice_history(driver, user_email: str):
     Fetches invoices grouped by Supplier for the History View.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice)
-    WHERE i.status = 'CONFIRMED'
+    MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s_node:Shop)
+    WITH u, s_node
+    
+    MATCH (inv:Invoice)
+    WHERE inv.status = 'CONFIRMED'
+      AND (
+        (s_node IS NOT NULL AND (inv)-[:BELONGS_TO]->(s_node)) OR
+        (s_node IS NULL AND (u)-[:OWNS]->(inv))
+      )
     
     // Group by Supplier Name
-    WITH i.supplier_name as supplier_name, collect(i) as invoices, u.name as user_name
+    WITH inv.supplier_name as supplier_name, collect(inv) as invoices, u.name as user_name
     
     // Calculate total spend per supplier
-    // (Ensure grand_total is treated as float)
     WITH supplier_name, invoices, user_name,
-         reduce(msg = 0.0, inv in invoices | msg + coalesce(inv.grand_total, 0.0)) as total_spend
+         reduce(msg = 0.0, inver in invoices | msg + coalesce(inver.grand_total, 0.0)) as total_spend
          
     RETURN supplier_name, total_spend, invoices, user_name
     ORDER BY total_spend DESC
