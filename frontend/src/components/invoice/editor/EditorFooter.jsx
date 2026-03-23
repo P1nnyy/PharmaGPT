@@ -12,7 +12,7 @@ const EditorFooter = ({ lineItems, isSaving, onExport, onConfirm, readOnly }) =>
                 <div className="w-full md:w-auto flex justify-between md:justify-start items-center gap-4 bg-gray-800/50 px-4 py-2 rounded-lg border border-gray-700 mb-2 md:mb-0">
                     <span className="text-gray-400 text-sm font-medium">Grand Total</span>
                     <span className="font-mono text-xl md:text-2xl font-bold text-indigo-400">
-                        ₹{lineItems.reduce((acc, item) => acc + (parseFloat(item.Net_Line_Amount) || 0), 0).toFixed(2)}
+                        ₹{lineItems.reduce((acc, item) => acc + (parseFloat(item?.Net_Line_Amount) || 0), 0).toFixed(2)}
                     </span>
                 </div>
 

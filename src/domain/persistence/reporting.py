@@ -22,20 +22,26 @@ def get_activity_log(driver, user_email: str):
     
     OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
     RETURN inv.invoice_number as invoice_number, 
-           inv.supplier_name as supplier_name, 
+           coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, 
            inv.created_at as created_at, 
            inv.updated_at as saved_at,
-           inv.grand_total as total,
+           coalesce(inv.grand_total, 0.0) as total,
            inv.image_path as image_path,
            supp.gstin as supplier_gst,
            supp.phone as supplier_phone,
            supp.dl_no as supplier_dl,
            supp.address as supplier_address,
-           u.name as saved_by
+           coalesce(u.name, 'User') as saved_by
     ORDER BY inv.updated_at DESC LIMIT 20
     """
     with driver.session() as session:
-        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
+        return session.execute_read(lambda tx: [
+            {**dict(record), 
+             "supplier_name": record["supplier_name"] or "Unknown Supplier",
+             "total": record["total"] or 0.0,
+             "saved_by": record["saved_by"] or "User"} 
+            for record in tx.run(query, user_email=user_email)
+        ])
 
 def get_inventory(driver, user_email: str):
     """
@@ -134,8 +140,10 @@ def get_grouped_invoice_history(driver, user_email: str):
         (s_node IS NULL AND (u)-[:OWNS]->(inv))
       )
     
-    // Group by Supplier Name
-    WITH inv.supplier_name as supplier_name, collect(inv) as invoices, u.name as user_name
+    // Group by Supplier Name (ensure non-null)
+    WITH coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, 
+         collect(inv) as invoices, 
+         coalesce(u.name, 'User') as user_name
     
     // Calculate total spend per supplier
     WITH supplier_name, invoices, user_name,
@@ -150,10 +158,10 @@ def get_grouped_invoice_history(driver, user_email: str):
             result = tx.run(query, user_email=user_email)
             data = []
             for record in result:
-                supplier_name = record["supplier_name"]
-                total_spend = record["total_spend"]
-                invoice_nodes = record["invoices"]
-                user_name = record["user_name"]
+                supplier_name = record["supplier_name"] or "Unknown Supplier"
+                total_spend = record["total_spend"] or 0.0
+                invoice_nodes = record["invoices"] or []
+                user_name = record["user_name"] or "User"
                 
                 formatted_invoices = []
                 for node in invoice_nodes:

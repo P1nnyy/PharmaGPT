@@ -2,16 +2,15 @@ tunnel: 173e5515-cdf3-4140-b8c4-ad87bf3737df
 credentials-file: /Users/pranavgupta/.cloudflared/173e5515-cdf3-4140-b8c4-ad87bf3737df.json 
 
 ingress:
-  - hostname: pharmagpt.co
-    service: http://127.0.0.1:5174
   - hostname: dev.pharmagpt.co
-    service: http://127.0.0.1:5174
-  - hostname: local.pharmagpt.co
-    service: http://127.0.0.1:5174
-  - hostname: www.pharmagpt.co
-    service: http://127.0.0.1:5174
+    path: ^/(auth|invoices|products|reporting|inventory|system|config|feedback|activity-log|history|export-excel|invitations)
+    service: http://localhost:5005
+  - hostname: dev.pharmagpt.co
+    service: http://localhost:3000
+  - hostname: pharmagpt.co
+    service: http://localhost:3000
   - hostname: api.pharmagpt.co
-    service: http://127.0.0.1:5005
+    service: http://localhost:5005
     originRequest:
       connectTimeout: 30s
   - service: http_status:404

@@ -75,6 +75,7 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
     raw_gst = parse_float(raw_item.get("Raw_GST_Percentage") or raw_item.get("GST_Percent"))
     
     net_line_amount = parse_float(raw_item.get("Amount"))
+    base_amount = net_line_amount # Default to net if no tax
     calc_tax_amt = 0.0
     
     if raw_gst > 0 and net_line_amount > 0:

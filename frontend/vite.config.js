@@ -10,12 +10,10 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', 
     port: 5174,
-    allowedHosts: ['pharmagpt.co', 'api.pharmagpt.co', 'www.pharmagpt.co', 'local.pharmagpt.co', 'dev.pharmagpt.co', '.trycloudflare.com'],
+    allowedHosts: true,
     hmr: {
-      // Use 443 for Cloudflare Tunnel/Proxies, 
-      // but only if we are in a DOCKER_ENV or accessing via a public domain.
-      clientPort: process.env.VITE_CLIENT_PORT ? parseInt(process.env.VITE_CLIENT_PORT) : (process.env.DOCKER_ENV ? 443 : 5173),
-      protocol: process.env.DOCKER_ENV ? 'wss' : 'ws'
+      clientPort: 443,
+      protocol: 'wss'
     },
     proxy: {
       '/auth': 'http://127.0.0.1:5005',

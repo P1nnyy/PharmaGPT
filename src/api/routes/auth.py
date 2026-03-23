@@ -154,7 +154,7 @@ async def get_current_user_profile(user_email: str = Depends(get_current_user_em
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
         
-    user_data = dict(result["u"])
+    user_data = dict(result["u"]) if result["u"] else {}
     user_data["role"] = result["role"] or "Employee"
     user_data["permissions"] = result["permissions"] or []
 
@@ -174,12 +174,16 @@ async def get_current_user_profile(user_email: str = Depends(get_current_user_em
             create_shop_query = """
             MATCH (u:User {email: $email})
             MERGE (u)-[:OWNS_SHOP]->(s:Shop)
-            ON CREATE SET s.name = u.name + "'s Shop", s.id = randomUUID()
+            ON CREATE SET s.name = coalesce(u.name, 'Admin') + "'s Shop", s.id = randomUUID()
             RETURN s.name as shop_name, s.id as shop_id
             """
             shop_res = session.run(create_shop_query, email=user_email).single()
             if shop_res:
                 user_data["shop_name"] = shop_res["shop_name"]
                 user_data["shop_id"] = shop_res["shop_id"]
+        else:
+            # Defensive fallback for Employees/Invited users without a shop
+            user_data["shop_name"] = "Personal Workspace"
+            user_data["shop_id"] = "personal"
 
     return user_data

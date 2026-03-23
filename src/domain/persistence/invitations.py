@@ -43,10 +43,10 @@ def get_pending_invitations(user_email: str) -> list:
     MATCH (inviter:User)-[rel:INVITED_USER]->(u:User {email: $email})
     WHERE rel.status = 'PENDING'
     RETURN { 
-        id: rel.invitation_id, 
-        inviter_name: coalesce(inviter.name, inviter.email), 
-        inviter_email: inviter.email, 
-        role: rel.role, 
+        id: coalesce(rel.invitation_id, 'missing-id'), 
+        inviter_name: coalesce(inviter.name, inviter.email, 'System'), 
+        inviter_email: coalesce(inviter.email, 'unknown@system'), 
+        role: coalesce(rel.role, 'Member'), 
         created_at: rel.created_at 
     } as invitation
     """

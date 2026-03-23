@@ -90,18 +90,18 @@ def _create_processing_tx(tx, invoice_id, filename, image_path, user_email):
     MATCH (u:User {email: $user_email})
     OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
     MERGE (i:Invoice {invoice_id: $invoice_id})
-    MERGE (u)-[:OWNS]->(i)
-    
-    FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
-        MERGE (i)-[:BELONGS_TO]->(shop)
-    )
-    
     ON CREATE SET 
         i.status = 'PROCESSING',
         i.filename = $filename,
         i.image_path = $image_path,
         i.created_at = timestamp(),
         i.updated_at = timestamp()
+        
+    MERGE (u)-[:OWNS]->(i)
+    
+    FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
+        MERGE (i)-[:BELONGS_TO]->(shop)
+    )
     """
     tx.run(query, 
            user_email=user_email,

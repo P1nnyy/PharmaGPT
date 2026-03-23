@@ -1,11 +1,11 @@
 
 > frontend@0.0.0 dev
-> vite --host
+> vite --host --host
 
 VITE_CONFIG: DOCKER_ENV = undefined
 VITE_CONFIG: VITE_CLIENT_PORT = undefined
 
-  VITE v7.2.7  ready in 143 ms
+  VITE v7.2.7  ready in 158 ms
 
   ➜  Local:   http://localhost:5174/
   ➜  Network: http://192.0.0.2:5174/

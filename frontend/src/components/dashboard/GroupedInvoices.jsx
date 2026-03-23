@@ -78,11 +78,11 @@ const GroupedInvoices = () => {
             )}
 
             <div className="space-y-4">
-                {suppliers.length === 0 ? (
+                {suppliers && suppliers.length === 0 ? (
                     <div className="text-center text-slate-500 py-12">No invoices found.</div>
                 ) : (
-                    suppliers.map((supplier) => (
-                        <div key={supplier.name} className="bg-slate-900/50 rounded-lg border border-slate-800 overflow-hidden shadow-sm hover:border-slate-700 transition-colors">
+                    suppliers && suppliers.map((supplier) => supplier && (
+                        <div key={supplier.name || Math.random()} className="bg-slate-900/50 rounded-lg border border-slate-800 overflow-hidden shadow-sm hover:border-slate-700 transition-colors">
                             {/* Parent Row (Supplier) */}
                             <div
                                 onClick={() => toggleSupplier(supplier.name)}
@@ -95,7 +95,7 @@ const GroupedInvoices = () => {
                                     <div>
                                         <h3 className="font-semibold text-slate-200 text-lg">{supplier.name}</h3>
                                         <p className="text-sm text-slate-500 flex items-center gap-1">
-                                            <FileText className="w-3 h-3" /> {supplier.invoices.length} Invoices
+                                            <FileText className="w-3 h-3" /> {supplier.invoices?.length || 0} Invoices
                                         </p>
                                     </div>
                                 </div>
@@ -111,7 +111,7 @@ const GroupedInvoices = () => {
                                 <div className="bg-slate-950/50 border-t border-slate-800 animate-in slide-in-from-top-2 duration-200">
                                     {/* Mobile View (Card Layout) */}
                                     <div className="md:hidden">
-                                        {supplier.invoices.map((inv, index) => (
+                                        {supplier.invoices && supplier.invoices.map((inv, index) => inv && inv.id && (
                                             <div key={inv.invoice_number} className="p-4 border-b border-slate-800 last:border-0 hover:bg-slate-900/50 transition-colors">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div className="flex flex-col">
@@ -134,7 +134,7 @@ const GroupedInvoices = () => {
                                                         <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
                                                             PG
                                                         </div>
-                                                        <span className="text-xs text-slate-400">{supplier.saved_by || 'Unknown'}</span>
+                                                        <span className="text-xs text-slate-400">{supplier?.saved_by || 'Unknown'}</span>
                                                     </div>
 
                                                     {inv.image_path && (
@@ -160,10 +160,10 @@ const GroupedInvoices = () => {
                                     </div>
 
                                     <div className="hidden md:block">
-                                        {supplier.invoices.map((inv, index) => (
+                                        {supplier.invoices && supplier.invoices.map((inv, index) => inv && inv.id && (
                                             <div key={inv.invoice_number} className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-800 last:border-0 hover:bg-slate-900/50 transition-colors items-center group">
                                                 <div className="col-span-1 text-slate-600 text-sm font-mono">
-                                                    {supplier.invoices.length > 1 ? String(index + 1).padStart(2, '0') : ''}
+                                                    {supplier.invoices?.length > 1 ? String(index + 1).padStart(2, '0') : ''}
                                                 </div>
 
                                                 <div className="col-span-3">
@@ -181,7 +181,7 @@ const GroupedInvoices = () => {
                                                         <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
                                                             PG
                                                         </div>
-                                                        <span className="text-sm text-slate-400">{supplier.saved_by || 'Unknown'}</span>
+                                                        <span className="text-sm text-slate-400">{supplier?.saved_by || 'Unknown'}</span>
                                                     </div>
                                                 </div>
 
