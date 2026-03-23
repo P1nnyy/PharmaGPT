@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 from src.domain.normalization import parse_float
+from src.domain.constants import BLACKLIST_KEYWORDS, AUDITOR_CONFIG, SCHEME_PATTERNS
 
 logger = get_logger("auditor")
 
@@ -40,12 +41,12 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             # Allow items if they have a valid Batch Number, even if value is 0
             has_batch = item.get("Batch") and item.get("Batch") not in ["", "None", "N/A", None]
             
-            if abs(n_val) < 0.1 and abs(q_val) < 0.1 and not has_batch:
+            if abs(n_val) < AUDITOR_CONFIG['NOISE_THRESHOLD'] and abs(q_val) < AUDITOR_CONFIG['NOISE_THRESHOLD'] and not has_batch:
                 continue # Skip noise
                 
             # 2. Keyword Blacklist (Safety Net)
             desc_lower = str(item.get("Product", "")).lower()
-            blacklist = ["total", "subtotal", "grand total", "amount", "output", "input", "gst", "freight", "discount", "round off", "net amount", "taxable value", "output cgst", "output sgst"]
+            blacklist = BLACKLIST_KEYWORDS
             logger.info(f"Auditor Check: '{desc_lower}'") 
             if any(bad_word in desc_lower for bad_word in blacklist):
                 logger.info(f"Auditor: Dropping Blacklisted Item '{desc_lower}'")
@@ -90,11 +91,8 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             # "One man's trash is another man's treasure."
             # If this is a Scheme/Offer row (e.g. "Buy 1 Get 1"), it might contain the Batch No for the Previous Item.
             is_scheme_row = (
-                ("buy " in desc_norm and " get " in desc_norm) or
-                ("offer" in desc_norm and "free" in desc_norm) or
-                (n_val == 0 and "free" in desc_norm) or
-                ("buy" in desc_norm and "off" in desc_norm) or
-                ("initiative name" in desc_norm)
+                any(pattern in desc_norm for pattern in SCHEME_PATTERNS) or
+                (n_val == 0 and "free" in desc_norm)
             )
 
             if is_scheme_row:
@@ -203,7 +201,7 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                          merged = False 
                          logger.info(f"Auditor: Same Batch but Different Qty ({q_curr} vs {q_ex}) -> KEEPING BOTH")
                 
-                elif ratio > 0.94 and batch_match: 
+                elif ratio > AUDITOR_CONFIG['DEDUP_THRESHOLD'] and batch_match: 
                     # Fuzzy match + Batch match (N/A)
                     if is_single_source:
                         # SINGLE SOURCE -> Don't trust fuzzy dedupe if the OCR gave us two lines.
@@ -250,8 +248,7 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 
                 check_mrp = parse_float(item.get("MRP", 0))
                 check_rate = parse_float(item.get("Rate", 0))
-                
-                if q_val > 50:
+                if q_val > AUDITOR_CONFIG['MAX_QUANTITY']:
                      # Check for Swap with MRP/Rate
                      if (check_mrp > 0 and abs(q_val - check_mrp) < 1.0) or (check_rate > 0 and abs(q_val - check_rate) < 1.0):
                          logger.warning(f"Auditor: Qty {q_val} matches Price/MRP. Suspected column swap. Correcting Qty to 1.")

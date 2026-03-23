@@ -3,10 +3,10 @@ import { FileText, Clock, ChevronDown, Image, Trash2, AlertTriangle, Loader2, X 
 import { getActivityLog, getInvoiceDetails, discardInvoice } from '../../services/api';
 import { getImageUrl } from '../../utils/urlHelper';
 import AnalysisModal from '../invoice/AnalysisModal';
-import { useInvoice } from '../../context/InvoiceContext';
+import { useAuth } from '../../context/AuthContext';
 
 const History = () => {
-    const { user } = useInvoice();
+    const { user } = useAuth();
     const [activityLog, setActivityLog] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);

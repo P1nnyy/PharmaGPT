@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Settings as SettingsIcon, LogOut, Store, Shield, User, Info, AlertTriangle, Loader2 } from 'lucide-react';
-import { useInvoice } from '../../context/InvoiceContext';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import axios from 'axios';
 
 const Settings = () => {
-    const { user, setUser, showToast } = useInvoice();
+    const { user, setUser } = useAuth();
+    const { showToast } = useToast();
     const [isLeaving, setIsLeaving] = useState(false);
 
     const handleLeaveShop = async () => {

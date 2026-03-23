@@ -2,19 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Upload, Loader2, RefreshCw, MoreVertical, Trash2 } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { useInvoice } from '../../context/InvoiceContext';
+import { useQueue } from '../../context/QueueContext';
 
 const InvoiceViewer = ({
     isMobile,
     previewUrl: directPreviewUrl // Accept optional direct URL
 }) => {
     const { 
-        fileQueue, 
-        selectedQueueId, 
-        setSelectedQueueId, 
         handleFileChange, 
         handleReset, 
         handleDiscard 
     } = useInvoice();
+
+    const {
+        fileQueue,
+        selectedQueueId,
+        setSelectedQueueId
+    } = useQueue();
 
     const onQueueSelect = setSelectedQueueId;
     const onFileChange = handleFileChange;

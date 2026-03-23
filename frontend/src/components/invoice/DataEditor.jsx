@@ -4,13 +4,13 @@ import EditorHeader from './editor/EditorHeader';
 import EditorTable from './editor/EditorTable';
 import EditorFooter from './editor/EditorFooter';
 import { useInvoice } from '../../context/InvoiceContext';
+import { useQueue } from '../../context/QueueContext';
 
 const DataEditor = ({
     readOnly = false
 }) => {
     const {
         activeQueueItem,
-        isSaving,
         isAnalyzing,
         handleHeaderChange,
         handleLineItemChange,
@@ -18,6 +18,8 @@ const DataEditor = ({
         handleExport,
         handleSaveInvoice,
     } = useInvoice();
+
+    const { isSaving } = useQueue();
 
     const invoiceData = activeQueueItem?.result?.invoice_data || null;
     const lineItems = activeQueueItem?.result?.normalized_items || [];

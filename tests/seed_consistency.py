@@ -1,10 +1,8 @@
 from src.services.mistake_memory import MEMORY
 
-rules = [
-    "CRITICAL: Perform a Sanity Check: Does 'Qty * Rate' approx equal 'Amount'? If not, check for missing decimal points in Rate or Amount."
-]
+from src.domain.constants import EXTRACTION_RULES
 
-for r in rules:
+for r in EXTRACTION_RULES:
     MEMORY.add_rule(r)
 
 print("Memory Updated with Consistency Rule.")

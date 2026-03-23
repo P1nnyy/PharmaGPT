@@ -2,6 +2,9 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { Loader2, Mail, Check, X } from 'lucide-react';
 import Toast from './components/ui/Toast';
 import { InvoiceProvider, useInvoice } from './context/InvoiceContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { QueueProvider, useQueue } from './context/QueueContext';
+import { ToastProvider, useToast } from './context/ToastContext';
 import { getUserProfile, setAuthToken, getInvitations, acceptInvitation } from './services/api';
 
 // Static Layout Components
@@ -25,16 +28,10 @@ function AppContent() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [invitations, setInvitations] = useState([]);
 
-  const {
-    activeQueueItem,
-    user,
-    setUser,
-    isLoadingAuth,
-    setIsLoadingAuth,
-    toast,
-    setFileQueue,
-    recentlySavedIds
-  } = useInvoice();
+  const { activeQueueItem, recentlySavedIds } = useInvoice();
+  const { user, setUser, isLoadingAuth, setIsLoadingAuth } = useAuth();
+  const { fileQueue, setFileQueue } = useQueue();
+  const { toast } = useToast();
 
   const invoiceData = activeQueueItem?.result?.invoice_data || null;
 
@@ -224,9 +221,15 @@ function AppContent() {
 
 function App() {
   return (
-    <InvoiceProvider>
-      <AppContent />
-    </InvoiceProvider>
+    <AuthProvider>
+      <QueueProvider>
+        <ToastProvider>
+          <InvoiceProvider>
+            <AppContent />
+          </InvoiceProvider>
+        </ToastProvider>
+      </QueueProvider>
+    </AuthProvider>
   );
 }
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Shield, Tags, Plus, Trash2, Loader2, RefreshCw, ToggleLeft, ToggleRight, Lock, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
 import { getCategories, createCategory, deleteCategory, updateCategoryConfig, getRoles, createRole, createInvitation } from '../../services/api';
 import Toast from '../ui/Toast';
+import { COMMON_UNITS, AVAILABLE_PERMISSIONS } from '../../constants/adminConfig';
 
 const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState('categories'); // 'categories' | 'roles'
@@ -9,20 +10,6 @@ const AdminDashboard = () => {
     const [roles, setRoles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedCategory, setExpandedCategory] = useState(null);
-
-    const COMMON_UNITS = ['pieces', 'ml', 'L', 'strip', 'box', 'tube', 'vial', 'ampoule', 'g', 'mg', 'kg'];
-
-    const AVAILABLE_PERMISSIONS = [
-        { id: 'all', label: 'Super Admin (All Access)', desc: 'Full system privileges' },
-        { id: 'tab:scan', label: 'Scan Access', desc: 'Can upload and process invoices' },
-        { id: 'tab:invoices', label: 'View Invoices', desc: 'Can see processed invoice list' },
-        { id: 'tab:items', label: 'View Items', desc: 'Can browse product master' },
-        { id: 'tab:inventory', label: 'View Inventory', desc: 'Can check stock levels' },
-        { id: 'tab:history', label: 'View History', desc: 'Can see audit logs' },
-        { id: 'tab:admin', label: 'System Admin', desc: 'Can manage settings and users' },
-        { id: 'action:edit_items', label: 'Edit Items', desc: 'Can modify product details' },
-        { id: 'action:edit_inventory', label: 'Edit Inventory', desc: 'Can perform stock updates' }
-    ];
 
     const toggleExpand = (name) => {
         setExpandedCategory(prev => prev === name ? null : name);

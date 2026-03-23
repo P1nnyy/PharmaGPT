@@ -1,360 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { Package } from 'lucide-react';
-import { saveProduct, getReviewQueue, getAllProducts, getProductHistory, enrichProduct } from '../../services/api';
-
-// Sub-components
-import { ItemSidebar } from './ItemSidebar';
-import { ItemDetailHeader } from './ItemDetailHeader';
-import { ItemOverview } from './tabs/ItemOverview';
-import { ItemPricing } from './tabs/ItemPricing';
-import { ItemInventory } from './tabs/ItemInventory';
-import { ItemHistory } from './tabs/ItemHistory';
+import { useItemData } from './hooks/useItemData';
+import { useItemForm } from './hooks/useItemForm';
+import ItemList from './ItemList';
+import ItemDetails from './ItemDetails';
+import ItemForm from './ItemForm';
+import { inferProductForm } from './utils/itemUtils';
 
 const ItemMaster = () => {
-    // State
-    const [formData, setFormData] = useState({
-        original_name: '',
-        name: '',
-        item_code: '',
-        hsn_code: '',
-        sale_price: 0,
-        purchase_price: 0,
-        tax_rate: 0,
-        opening_stock: 0,
-        opening_boxes: 0,
-        opening_strips: 0,
-        min_stock: 0,
-        rack_location: '',
-        manufacturer: '',
-        salt_composition: '',
-        category: '',
-        supplier_name: '',
-        last_purchase_date: '',
-        saved_by: '',
-        base_unit: 'Tablet',
-        is_verified: false,
-        is_enriched: false,
-        // Flat Packaging Fields
-        pack_size_primary: 10,  // e.g. 10 tablets per strip
-        pack_size_secondary: 1, // e.g. 1 strip per box (default)
-        mrp_primary: 0,         // MRP per strip
-
-        // Enrichment Fields
-        hsn_description: '',
-        is_tax_inferred: false
-    });
-
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'pricing' | 'inventory' | 'packaging' | 'history'
-    const [saving, setSaving] = useState(false);
-
-    // Sidebar Lists
-    const [sidebarTab, setSidebarTab] = useState('review'); // 'review' | 'all'
-    const [reviewQueue, setReviewQueue] = useState([]);
-    const [allItems, setAllItems] = useState([]);
-    // const [reviewLoading, setReviewLoading] = useState(true); // Unused in render, but kept logic
-    // const [allLoading, setAllLoading] = useState(false); // Unused
-
-    // History
-    const [history, setHistory] = useState([]);
-    const [historyLoading, setHistoryLoading] = useState(false);
-    const [categories, setCategories] = useState([]);
-
+    // Shared Data Hook
+    const { reviewQueue, allItems, categories, loading, refreshData } = useItemData();
+    
     // UI State
+    const [sidebarTab, setSidebarTab] = useState('review'); // 'review' | 'all'
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeTab, setActiveTab] = useState('overview');
     const [showMobileDetail, setShowMobileDetail] = useState(false);
+    
+    // Item Selection & Editing
+    const { formData, setFormData, handleChange, handleSave, saving, resetForm } = useItemForm();
+    const [isEditingInModal, setIsEditingInModal] = useState(false);
 
-    // Data Fetching
-    const fetchQueue = async () => {
-        try {
-            const data = await getReviewQueue();
-            setReviewQueue(data);
-        } catch (err) {
-            console.error("Failed to fetch review queue", err);
-        }
-    };
-
-    const fetchAllItems = async () => {
-        try {
-            const data = await getAllProducts();
-            setAllItems(data);
-        } catch (err) {
-            console.error("Failed to fetch all items", err);
-        }
-    };
-
-    const fetchCategories = async () => {
-        const { getCategories } = await import('../../services/api');
-        try {
-            const data = await getCategories();
-            setCategories(data);
-        } catch (err) {
-            console.error("Failed to fetch categories", err);
-        }
-    };
-
+    // Initial Selection (Auto-select first item in review queue if available)
     useEffect(() => {
-        fetchQueue();
-        fetchCategories();
-    }, []);
-
-    useEffect(() => {
-        if (sidebarTab === 'all') {
-            fetchAllItems();
+        if (reviewQueue.length > 0 && !formData.name && !formData.original_name) {
+            handleSelect(reviewQueue[0]);
         }
-    }, [sidebarTab]);
+    }, [reviewQueue]);
 
-    // Handlers
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        const isNumeric = ['sale_price', 'purchase_price', 'tax_rate', 'opening_stock', 'min_stock', 'pack_size_primary', 'pack_size_secondary', 'mrp_primary'].includes(name);
-        setFormData(prev => ({
-            ...prev,
-            [name]: isNumeric ? (parseFloat(value) || 0) : value
-        }));
-    };
-
-    const handleQueueItemClick = (product) => {
-        populateForm(product);
+    const handleSelect = (product) => {
+        const inferred = inferProductForm(product);
+        setFormData(inferred);
         setShowMobileDetail(true);
-    };
-
-    const populateForm = (product) => {
-        // 1. Category Detection & Base Unit
-        let suggestedUnit = 'Unit'; // Default
-        const cat = (product.category || '').toLowerCase();
-
-        if (cat.includes('tab') || cat.includes('tablet')) suggestedUnit = 'Tablet';
-        else if (cat.includes('cap') || cat.includes('capsule')) suggestedUnit = 'Capsule';
-        else if (cat.includes('syp') || cat.includes('syrup') || cat.includes('liq') || cat.includes('susp')) suggestedUnit = 'Bottle';
-        else if (cat.includes('inj') || cat.includes('vial') || cat.includes('amp')) suggestedUnit = 'Vial';
-        else if (cat.includes('cream') || cat.includes('gel') || cat.includes('oint') || cat.includes('tube')) suggestedUnit = 'Tube';
-
-        // 2. Smart Packing Extraction
-        let primaryPack = 1;
-        let secondaryPack = 1;
-        let primaryMrp = 0;
-
-        // Defaults if no variants
-        if (!['Tablet', 'Capsule'].includes(suggestedUnit)) {
-            primaryMrp = product.sale_price ? parseFloat(parseFloat(product.sale_price).toFixed(2)) : 0;
-        }
-
-        const variants = Array.isArray(product.packaging_variants) ? product.packaging_variants : [];
-
-        // Strategy: First pass to find Primary Unit (Strip/Pack)
-        if (['Tablet', 'Capsule'].includes(suggestedUnit)) {
-            // Scenario A: Look for conversion > 1 (e.g. 10s, 15s) which usually means Strip
-            // We avoid massive numbers (like 100) which might be Box, unless that's the only one.
-            // Heuristic: 2 <= x <= 30 is likely a strip.
-            const stripVar = variants.find(v => {
-                const cf = parseFloat(v.conversion_factor);
-                return cf > 1 && cf <= 50;
-            });
-
-            if (stripVar) {
-                primaryPack = parseFloat(stripVar.conversion_factor);
-                primaryMrp = parseFloat(stripVar.mrp || 0);
-            } else {
-                // FALLBACK: Smart Regex Extraction from Product Name
-                // Patterns: "120 tabs", "30's", "Pack of 60", "30 tablets"
-                const name = product.name || '';
-                const qtyMatch = name.match(/(\d+)\s*(?:tabs|tablets|caps|capsules|'s|s|pcs|units|nos|ml|gm)\b/i) || 
-                                 name.match(/(?:pack|bottle|box)\s*(?:of|size)?\s*(\d+)/i);
-                
-                if (qtyMatch) {
-                    const extractedQty = parseInt(qtyMatch[1] || qtyMatch[2]);
-                    if (extractedQty > 0) {
-                        primaryPack = extractedQty;
-                        // If it's a large count (e.g. 120), it's likely a Bottle/Unit, not a Strip
-                        if (extractedQty >= 30 && !name.toLowerCase().includes('strip')) {
-                            suggestedUnit = 'Bottle';
-                        }
-                    } else {
-                        primaryPack = 10;
-                    }
-                } else {
-                    primaryPack = 10; // Safe default for Tabs
-                }
-            }
-        } else {
-            // Scenario B: Syrups/Creams -> Primary is 1 Unit
-            primaryPack = 1;
-            // mrp_primary is already set to sale_price as default, but check if variant 'Unit' exists with specific MRP
-            const unitVar = variants.find(v => parseFloat(v.conversion_factor) === 1);
-            if (unitVar && unitVar.mrp) {
-                primaryMrp = parseFloat(unitVar.mrp);
-            }
-        }
-
-        // Strategy: Second pass to find Secondary Unit (Box/Outer)
-        // Scenario C: Look for 'Box' or high conversion
-        const boxVar = variants.find(v => {
-            const name = (v.unit_name || '').toLowerCase();
-            const cf = parseFloat(v.conversion_factor);
-            return name.includes('box') || name.includes('outer') || (cf > primaryPack && cf > 1);
-        });
-
-        if (boxVar) {
-            const totalUnits = parseFloat(boxVar.conversion_factor);
-            // secondary = Total / Primary
-            // e.g. Box=100 tabs, Strip=10 tabs -> 100/10 = 10 strips/box
-            const calculatedSec = totalUnits / primaryPack;
-            if (calculatedSec >= 1) {
-                secondaryPack = Math.floor(calculatedSec);
-            }
-        }
-
-        setFormData(prev => ({
-            ...prev,
-            original_name: product.name || '',
-            name: product.name || '',
-            hsn_code: product.hsn_code || (product.HSN || ''),
-            // Logic: Backend now handles Base Rate calculation if tax was inferred.
-            purchase_price: product.purchase_price ? parseFloat(parseFloat(product.purchase_price).toFixed(2)) : 0,
-
-            sale_price: product.sale_price ? parseFloat(parseFloat(product.sale_price).toFixed(2)) : 0,
-
-            tax_rate: product.Raw_GST_Percentage ?? (product.tax_rate ?? (product.gst_percent ?? 0)),
-            opening_stock: product.opening_stock ?? (!product.is_verified ? (product.quantity ?? 0) : 0),
-            opening_boxes: 0,   // Reset calculators
-            opening_strips: 0,
-            min_stock: product.min_stock ?? 0,
-            item_code: product.item_code || '',
-            rack_location: product.rack_location || product.location || '',
-            is_verified: product.is_verified,
-            is_enriched: product.is_enriched || false,
-            manufacturer: product.manufacturer || '',
-            salt_composition: product.salt_composition || '',
-            category: product.category || '',
-            supplier_name: product.supplier_name || '',
-            last_purchase_date: product.last_purchase_date || '',
-            saved_by: product.saved_by || '',
-            base_unit: product.base_unit || suggestedUnit,
-
-            // New Flat Fields
-            pack_size_primary: primaryPack,
-            pack_size_secondary: secondaryPack,
-            mrp_primary: primaryMrp,
-
-            needs_review: product.needs_review,
-
-            // New Enrichment Data
-            hsn_description: product.hsn_description || '',
-            is_tax_inferred: product.is_tax_inferred || false
-        }));
-
-        // Fetch History
-        if (product.name) {
-            setHistoryLoading(true);
-            getProductHistory(product.name).then(data => {
-                setHistory(data);
-                setHistoryLoading(false);
-            }).catch(err => {
-                console.error("Failed to fetch history", err);
-                setHistoryLoading(false);
-            });
-        }
     };
 
     const handleNewItem = () => {
-        setFormData({
-            original_name: '', name: '', item_code: '', hsn_code: '', sale_price: 0, purchase_price: 0,
-            tax_rate: 0, opening_stock: 0, min_stock: 0, rack_location: '',
-            manufacturer: '', salt_composition: '', category: '',
-            is_verified: false, base_unit: 'Tablet',
-            pack_size_primary: 10, pack_size_secondary: 1, mrp_primary: 0
-        });
-        setHistory([]);
-        setShowMobileDetail(true);
+        resetForm();
+        setIsEditingInModal(true);
     };
 
-    const handleSave = async () => {
-        try {
-            setSaving(true);
-            const newName = (formData.name || '').trim();
-            const oldName = formData.original_name;
-
-            // If the name changed and it's not a new product, call rename API first
-            if (oldName && newName && oldName !== newName) {
-                const { renameProduct } = await import('../../services/api');
-                await renameProduct(oldName, newName);
-            }
-
-            // Build packaging variants from flat fields
-            const variants = [];
-            const isTabletCapsule = ['Tablet', 'Capsule'].includes(formData.base_unit);
-
-            if (isTabletCapsule) {
-                // Primary is Strip
-                variants.push({
-                    unit_name: 'Strip',
-                    pack_size: `${formData.pack_size_primary}'s`,
-                    mrp: parseFloat(formData.mrp_primary) || 0,
-                    conversion_factor: parseInt(formData.pack_size_primary) || 1
-                });
-
-                // Secondary is Box
-                if (formData.pack_size_secondary > 1) {
-                    const totalUnits = (parseInt(formData.pack_size_primary) || 1) * (parseInt(formData.pack_size_secondary) || 1);
-                    variants.push({
-                        unit_name: 'Box',
-                        pack_size: `${formData.pack_size_secondary}x${formData.pack_size_primary}'s`,
-                        mrp: 0, // usually MRP is per strip, box mrp is calculated or left 0
-                        conversion_factor: totalUnits
-                    });
-                }
-            } else {
-                // Primary is Unit (Bottle/Tube/Vial)
-                variants.push({
-                    unit_name: 'Unit',
-                    pack_size: '1',
-                    mrp: parseFloat(formData.mrp_primary) || parseFloat(formData.sale_price) || 0,
-                    conversion_factor: 1
-                });
-
-                // Secondary is Box (e.g. Box of 10 vials)
-                if (formData.pack_size_secondary > 1) {
-                    variants.push({
-                        unit_name: 'Box',
-                        pack_size: `${formData.pack_size_secondary}x1`,
-                        mrp: 0,
-                        conversion_factor: parseInt(formData.pack_size_secondary) || 1
-                    });
-                }
-            }
-
-            const payload = {
-                ...formData,
-                name: newName,
-                packaging_variants: variants
-            };
-            await saveProduct(payload);
-
-            // Update the local state immediately for instant feedback
-            setFormData(prev => ({ 
-                ...prev, 
-                original_name: newName,
-                is_verified: true,
-                needs_review: false 
-            }));
-            
-            // Refresh both lists to ensure consistency
-            fetchQueue();
-            fetchAllItems();
-        } catch (error) {
-            console.error("Save failed", error);
-            alert('Failed to save product.');
-        } finally {
-            setSaving(false);
-        }
+    const onSaveComplete = async () => {
+        await refreshData();
+        // Product state in formData is already updated by handleSave in the hook
     };
-
-
 
     return (
         <div className="bg-slate-900 h-full text-slate-200">
             <div className="w-full h-full bg-slate-800 rounded-xl shadow-2xl overflow-hidden border border-slate-700 flex flex-col">
-
+                
                 {/* Header */}
                 <div className="p-4 border-b border-slate-700 flex items-center justify-between bg-slate-800 shrink-0">
                     <div className="flex items-center gap-3">
@@ -368,69 +61,55 @@ const ItemMaster = () => {
                     </div>
                 </div>
 
-                {/* Main Content Split */}
                 <div className="flex flex-1 overflow-hidden relative">
+                    <ItemList
+                        reviewQueue={reviewQueue}
+                        allItems={allItems}
+                        sidebarTab={sidebarTab}
+                        setSidebarTab={setSidebarTab}
+                        searchTerm={searchTerm}
+                        onSearchChange={setSearchTerm}
+                        onSelect={handleSelect}
+                        onNewItem={handleNewItem}
+                        loading={loading}
+                        selectedName={formData.name || formData.original_name}
+                        showMobileDetail={showMobileDetail}
+                    />
 
-                    {/* LEFT SIDEBAR: List */}
-                    <div className={`w-full md:w-1/4 h-full min-w-[300px] border-r border-slate-700 flex flex-col bg-slate-900/30 absolute md:relative inset-0 z-10 transition-transform duration-300 transform md:transform-none ${showMobileDetail ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
-                        <ItemSidebar
-                            sidebarTab={sidebarTab}
-                            setSidebarTab={setSidebarTab}
-                            reviewQueue={reviewQueue}
-                            allItems={allItems}
-                            searchTerm={searchTerm}
-                            setSearchTerm={setSearchTerm}
-                            handleQueueItemClick={handleQueueItemClick}
-                            handleNewItem={handleNewItem}
+                    {formData.name || formData.original_name ? (
+                        <ItemDetails
                             formData={formData}
-                        />
-                    </div>
-
-                    {/* RIGHT PANEL: Details Area */}
-                    <div className={`flex-1 h-full flex flex-col bg-slate-800 absolute md:relative inset-0 z-20 transition-transform duration-300 ${showMobileDetail ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
-                        
-                        <ItemDetailHeader 
-                            formData={formData}
+                            setFormData={setFormData}
                             activeTab={activeTab}
                             setActiveTab={setActiveTab}
-                            handleSave={handleSave}
+                            onSave={async () => {
+                                const res = await handleSave();
+                                if (res.success) await onSaveComplete();
+                            }}
                             saving={saving}
                             setShowMobileDetail={setShowMobileDetail}
+                            onInputChange={(e) => handleChange(e.target.name, e.target.value)}
+                            categories={categories}
+                            showMobileDetail={showMobileDetail}
                         />
-
-                        {/* Scrollable Content */}
-                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                            <div className="max-w-4xl mx-auto space-y-8 pb-20">
-
-                                {/* OVERVIEW TAB */}
-                                {activeTab === 'overview' && (
-                                    <ItemOverview formData={formData} handleInputChange={handleInputChange} />
-                                )}
-
-                                {/* INVENTORY & PACKAGING */}
-                                {activeTab === 'inventory_packaging' && (
-                                    <ItemInventory 
-                                        formData={formData} 
-                                        setFormData={setFormData} 
-                                        handleInputChange={handleInputChange} 
-                                        categories={categories}
-                                    />
-                                )}
-
-                                {/* PRICING TAB */}
-                                {activeTab === 'pricing' && (
-                                    <ItemPricing formData={formData} handleInputChange={handleInputChange} />
-                                )}
-
-                                {/* HISTORY TAB */}
-                                {activeTab === 'history' && (
-                                    <ItemHistory history={history} loading={historyLoading} />
-                                )}
-
-                            </div>
+                    ) : (
+                        <div className="flex-1 h-full flex flex-col items-center justify-center text-slate-500 bg-slate-800">
+                             <Package className="w-16 h-16 mb-4 opacity-20" />
+                             <p className="text-lg font-medium">No Item Selected</p>
+                             <p className="text-sm opacity-60">Pick an item from the sidebar to manage it.</p>
                         </div>
+                    )}
 
-                    </div>
+                    {isEditingInModal && (
+                        <ItemForm
+                            item={formData}
+                            onClose={() => setIsEditingInModal(false)}
+                            onSave={async () => {
+                                await onSaveComplete();
+                                setIsEditingInModal(false);
+                            }}
+                        />
+                    )}
                 </div>
             </div>
         </div>

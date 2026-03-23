@@ -251,36 +251,3 @@ export {
     acceptInvitation
 };
 
-export default {
-    analyzeInvoice,
-    uploadBatchInvoicesFormData,
-    getDrafts,
-    clearDrafts,
-    discardInvoice,
-    ingestInvoice,
-    exportInvoice,
-    getUserProfile,
-    setAuthToken,
-    AUTH_LOGIN_URL,
-    getActivityLog,
-    getInvoiceHistory,
-    getInvoiceDetails,
-    getInventory,
-    searchProducts,
-    saveProduct,
-    getAllProducts,
-    getProductHistory,
-    getReviewQueue,
-    submitFeedback,
-    enrichProduct,
-    getCategories,
-    updateCategoryConfig,
-    createCategory,
-    deleteCategory,
-    getRoles,
-    createRole,
-    assignRole,
-    getInvitations,
-    createInvitation,
-    acceptInvitation
-};

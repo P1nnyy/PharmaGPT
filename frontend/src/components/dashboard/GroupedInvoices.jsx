@@ -3,10 +3,10 @@ import { ChevronDown, ChevronRight, Folder, FileText, Image, X, Trash2, AlertTri
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { getInvoiceHistory, discardInvoice } from '../../services/api';
 import { getImageUrl } from '../../utils/urlHelper';
-import { useInvoice } from '../../context/InvoiceContext';
+import { useAuth } from '../../context/AuthContext';
 
 const GroupedInvoices = () => {
-    const { user } = useInvoice();
+    const { user } = useAuth();
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedSupplier, setExpandedSupplier] = useState(null);
