@@ -1,20 +1,20 @@
 import React from 'react';
 import { Download, Save, Loader2 } from 'lucide-react';
 
-const EditorFooter = ({ invoiceData, lineItems, isSaving, onExport, onConfirm, readOnly }) => {
-    if (lineItems.length === 0) return null;
+const EditorFooter = ({ lineItems, invoiceData, isSaving, onExport, onConfirm, readOnly }) => {
+    // --- Safe Fallbacks (Defensive Coding) ---
+    const subTotal = Number(invoiceData?.sub_total) || 0;
+    const globalDiscount = Number(invoiceData?.global_discount) || 0;
+    const sgst = Number(invoiceData?.total_sgst) || 0;
+    const cgst = Number(invoiceData?.total_cgst) || 0;
+    const roundOff = Number(invoiceData?.round_off) || 0;
+    const grandTotal = Number(invoiceData?.Stated_Grand_Total) || Number(invoiceData?.grand_total) || 0;
 
-    // Financial breakdown values
-    const subTotal = parseFloat(invoiceData?.sub_total || 0).toFixed(2);
-    const globalDiscount = parseFloat(invoiceData?.global_discount || 0).toFixed(2);
-    const sgst = parseFloat(invoiceData?.total_sgst || 0).toFixed(2);
-    const cgst = parseFloat(invoiceData?.total_cgst || 0).toFixed(2);
-    const roundOff = parseFloat(invoiceData?.round_off || 0).toFixed(2);
-    const grandTotal = parseFloat(invoiceData?.Stated_Grand_Total || 0).toFixed(2);
+    if (!lineItems || lineItems.length === 0) return null;
 
     return (
         <div className="p-4 bg-gray-950 border-t border-gray-800 shadow-[0_-15px_30px_rgba(0,0,0,0.6)] z-30 pb-20 md:pb-6">
-            <div className="flex flex-col md:flex-row justify-between items-end gap-6">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-6 max-w-7xl mx-auto">
                 
                 {/* Left side actions */}
                 <div className="flex w-full md:w-auto gap-3 order-2 md:order-1">
@@ -38,40 +38,44 @@ const EditorFooter = ({ invoiceData, lineItems, isSaving, onExport, onConfirm, r
                     )}
                 </div>
 
-                {/* Right side: Strict Ledger Breakdown */}
-                <div className="w-full md:w-72 flex flex-col gap-1.5 text-right order-1 md:order-2 px-2">
-                    <div className="flex justify-between items-center text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                {/* Right side: Ledger Summary */}
+                <div className="w-full md:w-80 flex flex-col gap-2 text-right order-1 md:order-2 bg-gray-900/40 p-5 rounded-2xl border border-gray-800/50 backdrop-blur-sm">
+                    <div className="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
                         <span>Sub Total</span>
-                        <span className="font-mono text-gray-300">₹{subTotal}</span>
+                        <span className="font-mono text-slate-200">₹{subTotal.toFixed(2)}</span>
                     </div>
-                    {parseFloat(globalDiscount) > 0 && (
-                        <div className="flex justify-between items-center text-rose-500/80 text-xs font-medium">
-                            <span>Less Discount</span>
-                            <span className="font-mono">-₹{globalDiscount}</span>
-                        </div>
-                    )}
-                    <div className="flex justify-between items-center text-gray-500 text-[11px]">
-                        <span>Add SGST</span>
-                        <span className="font-mono">+₹{sgst}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-gray-500 text-[11px]">
-                        <span>Add CGST</span>
-                        <span className="font-mono">+₹{cgst}</span>
-                    </div>
-                    {Math.abs(parseFloat(roundOff)) > 0.01 && (
-                        <div className="flex justify-between items-center text-gray-500 text-[11px]">
-                            <span>Round Off</span>
-                            <span className="font-mono">₹{roundOff}</span>
-                        </div>
-                    )}
-                    
-                    <div className="h-px bg-gray-800 my-2 w-full ml-auto"></div>
-                    
-                    <div className="flex justify-between items-center">
-                        <span className="text-gray-400 text-sm font-bold uppercase">Grand Total</span>
-                        <span className="font-mono text-3xl font-black text-indigo-400 drop-shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-                            ₹{grandTotal}
+
+                    <div className={`flex justify-between items-center text-xs font-medium ${globalDiscount > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                        <span>Discount</span>
+                        <span className="font-mono">
+                            {globalDiscount > 0 ? `-₹${globalDiscount.toFixed(2)}` : `₹0.00`}
                         </span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-slate-500 text-xs">
+                        <span>SGST</span>
+                        <span className="font-mono">+₹{sgst.toFixed(2)}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-slate-500 text-xs">
+                        <span>CGST</span>
+                        <span className="font-mono">+₹{cgst.toFixed(2)}</span>
+                    </div>
+
+                    {Math.abs(roundOff) > 0.001 && (
+                        <div className="flex justify-between items-center text-slate-500 text-xs">
+                            <span>Round Off</span>
+                            <span className="font-mono">{roundOff > 0 ? '+' : '-'}₹{Math.abs(roundOff).toFixed(2)}</span>
+                        </div>
+                    )}
+                    
+                    <div className="border-t border-slate-700 my-1 pt-2">
+                        <div className="flex justify-between items-baseline">
+                            <span className="text-slate-400 text-sm font-bold uppercase tracking-tight">Grand Total</span>
+                            <span className="font-mono text-3xl font-black text-white tracking-tighter drop-shadow-[0_0_20px_rgba(255,255,255,0.15)]">
+                                ₹{grandTotal.toFixed(2)}
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
