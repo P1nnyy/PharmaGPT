@@ -15,6 +15,7 @@ __pycache__/
 venv/
 env/
 .env
+.env.local
 .pytest_cache/
 .coverage
 htmlcov/
@@ -41,6 +42,8 @@ data/temp/
 temp/
 outputs/
 *.sqlite
+*.pid
+*.out
 *.db
 *.sqlite3
 data/*
