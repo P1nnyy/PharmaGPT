@@ -26,8 +26,7 @@ def get_activity_log(driver, user_email: str):
     ORDER BY i.updated_at DESC LIMIT 20
     """
     with driver.session() as session:
-        result = session.run(query, user_email=user_email)
-        return [dict(record) for record in result]
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
 
 def get_inventory(driver, user_email: str):
     """
@@ -42,8 +41,7 @@ def get_inventory(driver, user_email: str):
     ORDER BY total_quantity DESC
     """
     with driver.session() as session:
-        result = session.run(query, user_email=user_email)
-        return [dict(record) for record in result]
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
 
 def get_invoice_details(driver, invoice_no, user_email: str):
     """
@@ -60,7 +58,7 @@ def get_invoice_details(driver, invoice_no, user_email: str):
     }) as items
     """
     with driver.session() as session:
-        result = session.run(query, invoice_no=invoice_no, user_email=user_email).single()
+        result = session.execute_read(lambda tx: tx.run(query, invoice_no=invoice_no, user_email=user_email).single())
         
     if not result:
         return None
@@ -112,39 +110,36 @@ def get_grouped_invoice_history(driver, user_email: str):
     ORDER BY total_spend DESC
     """
     
-    data = []
     with driver.session() as session:
-        result = session.run(query, user_email=user_email)
-        
-        for record in result:
-            supplier_name = record["supplier_name"]
-            total_spend = record["total_spend"]
-            invoice_nodes = record["invoices"]
-            user_name = record["user_name"]
-            
-            # Format invoices list
-            formatted_invoices = []
-            for node in invoice_nodes:
-                inv = dict(node)
-                formatted_invoices.append({
-                    "invoice_number": inv.get("invoice_number"),
-                    "date": inv.get("invoice_date"),
-                    "uploaded_at": inv.get("created_at"),
-                    "saved_at": inv.get("updated_at"),
-                    "total": inv.get("grand_total"),
-                    "image_path": inv.get("image_path") # Ensure we capture image path if stored on Invoice node
-                })
+        def _read_history(tx):
+            result = tx.run(query, user_email=user_email)
+            data = []
+            for record in result:
+                supplier_name = record["supplier_name"]
+                total_spend = record["total_spend"]
+                invoice_nodes = record["invoices"]
+                user_name = record["user_name"]
                 
-            # Sort invoices by date (newest first)
-            # Assuming date format is sortable or just rely on DB order if we added ORDER BY in collect (complex in one query)
-            # Let's sort in python
-            formatted_invoices.sort(key=lambda x: x.get("date") or "", reverse=True)
-            
-            data.append({
-                "name": supplier_name,
-                "total_spend": total_spend,
-                "invoices": formatted_invoices,
-                "saved_by": user_name
-            })
-            
-    return data
+                formatted_invoices = []
+                for node in invoice_nodes:
+                    inv = dict(node)
+                    formatted_invoices.append({
+                        "invoice_number": inv.get("invoice_number"),
+                        "date": inv.get("invoice_date"),
+                        "uploaded_at": inv.get("created_at"),
+                        "saved_at": inv.get("updated_at"),
+                        "total": inv.get("grand_total"),
+                        "image_path": inv.get("image_path")
+                    })
+                    
+                formatted_invoices.sort(key=lambda x: x.get("date") or "", reverse=True)
+                
+                data.append({
+                    "name": supplier_name,
+                    "total_spend": total_spend,
+                    "invoices": formatted_invoices,
+                    "saved_by": user_name
+                })
+            return data
+
+        return session.execute_read(_read_history)

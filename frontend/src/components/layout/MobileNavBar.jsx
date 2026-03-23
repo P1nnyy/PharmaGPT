@@ -12,7 +12,7 @@ const NavButton = ({ icon: Icon, label, active, onClick }) => (
     </button>
 );
 
-const MobileNavBar = ({ activeTab, onTabChange, onCameraClick }) => {
+const MobileNavBar = ({ activeTab, onTabChange, onCameraClick, user }) => {
     return (
         <div className="h-[60px] bg-slate-900 border-t border-slate-800 flex justify-around items-center px-2 z-[999] fixed bottom-0 left-0 right-0 shadow-2xl">
 
@@ -46,20 +46,14 @@ const MobileNavBar = ({ activeTab, onTabChange, onCameraClick }) => {
                 onClick={() => onTabChange('history')}
             />
 
-            <NavButton
-                icon={Package}
-                label="Inventory"
-                active={activeTab === 'inventory'}
-                onClick={() => onTabChange('inventory')}
-            />
-
-            {/* Optional: Put Settings in a 'More' menu or keep if space allows. 
-                With 5 items + Camera, space is tight. 
-                Let's replace Inventory with Settings or keep Inventory?
-                Prompt said "match these 4 new tabs". 
-                Scan, History, Invoices, Inventory. 
-                Slightly crowded but feasible on modern phones.
-            */}
+            {user?.role === 'Admin' && (
+                <NavButton
+                    icon={Package}
+                    label="Inventory"
+                    active={activeTab === 'inventory'}
+                    onClick={() => onTabChange('inventory')}
+                />
+            )}
         </div>
     );
 };

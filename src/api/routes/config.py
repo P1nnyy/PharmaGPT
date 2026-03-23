@@ -12,6 +12,17 @@ from src.domain.persistence.config import (
     assign_user_role
 )
 from src.api.routes.auth import get_current_user_email
+from src.services.database import get_db_driver
+
+async def admin_required(user_email: str = Depends(get_current_user_email)):
+    """Dependency to enforce Admin role."""
+    driver = get_db_driver()
+    query = "MATCH (u:User {email: $email})-[:HAS_ROLE]->(r:Role) RETURN r.name as role"
+    with driver.session() as session:
+        result = session.execute_read(lambda tx: tx.run(query, email=user_email).single())
+        if not result or result["role"] != "Admin":
+            raise HTTPException(status_code=403, detail="Not authorized. Admin role required.")
+    return user_email
 
 router = APIRouter(prefix="/config", tags=["Configuration & Admin Backoffice"])
 
@@ -37,11 +48,11 @@ class ItemCategoryResponse(BaseModel):
     base_unit: str = "Unit"
     units: List[str] = []
 
-class SystemRoleCreate(BaseModel):
+class RoleCreate(BaseModel):
     name: str
     permissions: List[str] = []
 
-class SystemRoleResponse(BaseModel):
+class RoleResponse(BaseModel):
     name: str
     permissions: List[str]
 
@@ -52,8 +63,8 @@ class UserRoleAssign(BaseModel):
 # --- Endpoints: ITEM CATEGORIES ---
 
 @router.post("/categories", response_model=ItemCategoryResponse)
-async def api_create_category(category: ItemCategoryCreate, user_email: str = Depends(get_current_user_email)):
-    """Create a new item category for the frontend configuration, assigned to the user."""
+async def api_create_category(category: ItemCategoryCreate, user_email: str = Depends(admin_required)):
+    """Create a new item category for the frontend configuration, assigned to the user. (Admin Only)"""
     try:
         created = create_item_category(
             category.name, 
@@ -87,8 +98,8 @@ async def api_get_categories(user_email: str = Depends(get_current_user_email)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/categories/{category_name}/config")
-async def api_configure_category(category_name: str, config: ItemCategoryConfigUpdate, user_email: str = Depends(get_current_user_email)):
-    """Upsert user-specific parameters for a category."""
+async def api_configure_category(category_name: str, config: ItemCategoryConfigUpdate, user_email: str = Depends(admin_required)):
+    """Upsert user-specific parameters for a category. (Admin Only)"""
     config_dict = config.model_dump(exclude_unset=True) if hasattr(config, 'model_dump') else config.dict(exclude_unset=True)
     result = configure_category(user_email, category_name, config_dict)
     if not result:
@@ -96,9 +107,8 @@ async def api_configure_category(category_name: str, config: ItemCategoryConfigU
     return result
 
 @router.delete("/categories/{category_name}")
-async def api_delete_category(category_name: str, user_email: str = Depends(get_current_user_email)):
-    """Removes a specific category."""
-    # (Optional) Add a check to ensure user owns the category before deleting it.
+async def api_delete_category(category_name: str, user_email: str = Depends(admin_required)):
+    """Removes a specific category. (Admin Only)"""
     success = delete_item_category(category_name)
     if not success:
         raise HTTPException(status_code=404, detail="Category not found or could not be deleted.")
@@ -106,17 +116,17 @@ async def api_delete_category(category_name: str, user_email: str = Depends(get_
 
 # --- Endpoints: ROLES ---
 
-@router.post("/roles", response_model=SystemRoleResponse)
-async def api_create_role(role: SystemRoleCreate):
-    """Create a new system role."""
+@router.post("/roles", response_model=RoleResponse)
+async def api_create_role(role: RoleCreate, admin_email: str = Depends(admin_required)):
+    """Create a new system role. (Admin Only)"""
     try:
         created = create_system_role(role.name, role.permissions)
         return created
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/roles", response_model=List[SystemRoleResponse])
-async def api_get_roles():
+@router.get("/roles", response_model=List[RoleResponse])
+async def api_get_roles(user_email: str = Depends(get_current_user_email)):
     """Retrieve all system roles."""
     try:
         return get_all_system_roles()
@@ -124,8 +134,8 @@ async def api_get_roles():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/users/assign-role")
-async def api_assign_role(assignment: UserRoleAssign):
-    """Assigns a system role to a user."""
+async def api_assign_role(assignment: UserRoleAssign, admin_email: str = Depends(admin_required)):
+    """Assigns a system role to a user. (Admin Only)"""
     try:
         success = assign_user_role(assignment.email, assignment.role_name)
         if not success:

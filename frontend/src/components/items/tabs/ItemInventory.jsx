@@ -23,10 +23,9 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
 
     // Initialize showSecondary based on incoming data
     useEffect(() => {
-        if (formData.pack_size_secondary > 1) {
-            setShowSecondary(true);
-        }
-    }, [formData.pack_size_secondary]);
+        // Only force show if > 1 OR reset if it's a new item selection
+        setShowSecondary(formData.pack_size_secondary > 1);
+    }, [formData.pack_size_secondary, formData.name]);
 
     // Unity Rule: Force pack_size_primary to 1 if not tablet/capsule
     useEffect(() => {
@@ -70,9 +69,21 @@ export const ItemInventory = ({ formData, setFormData, handleInputChange, catego
 
     const handleRemoveBoxLayer = () => {
         setShowSecondary(false);
-        handleStockCalculation({
-            pack_size_secondary: 1,
-            opening_boxes: 0
+        // Explicitly reset secondary packing to 1 and opening boxes to 0
+        setFormData(prev => {
+            const newData = { 
+                ...prev, 
+                pack_size_secondary: 1, 
+                opening_boxes: 0 
+            };
+            const cf = parseFloat(newData.pack_size_primary) || 10;
+            const strips = parseFloat(newData.opening_strips) || 0;
+            const totalStock = strips * cf;
+
+            return {
+                ...newData,
+                opening_stock: totalStock
+            };
         });
     };
 

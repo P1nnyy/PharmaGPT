@@ -1,12 +1,13 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail, Check, X } from 'lucide-react';
 import Toast from './components/ui/Toast';
 import { InvoiceProvider, useInvoice } from './context/InvoiceContext';
-import { getUserProfile, setAuthToken } from './services/api';
+import { getUserProfile, setAuthToken, getInvitations, acceptInvitation } from './services/api';
 
 // Static Layout Components
 import Sidebar from './components/layout/Sidebar';
 import MobileHeader from './components/layout/MobileHeader';
+import MobileNavBar from './components/layout/MobileNavBar';
 import InvoiceViewer from './components/invoice/InvoiceViewer';
 import DataEditor from './components/invoice/DataEditor';
 import Login from './components/Login';
@@ -22,6 +23,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('scan');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [invitations, setInvitations] = useState([]);
 
   const {
     activeQueueItem,
@@ -42,6 +44,15 @@ function AppContent() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // --- UI Bouncer: Role Protection ---
+  useEffect(() => {
+    const adminTabs = ['admin', 'items', 'inventory'];
+    if (user && user.role !== 'Admin' && adminTabs.includes(activeTab)) {
+      console.warn(`Unauthorized access attempt to ${activeTab}. Redirecting...`);
+      setActiveTab('scan');
+    }
+  }, [activeTab, user]);
+
   // --- Auth Initialization ---
   useEffect(() => {
     const initAuth = async () => {
@@ -59,6 +70,10 @@ function AppContent() {
           setAuthToken(savedToken);
           const profile = await getUserProfile();
           setUser(profile);
+          
+          // Fetch invitations if user exists
+          const pending = await getInvitations();
+          setInvitations(pending);
         }
       } catch (err) {
         setAuthToken(null);
@@ -70,49 +85,19 @@ function AppContent() {
     initAuth();
   }, [setUser, setIsLoadingAuth]);
 
-  // --- SSE Integration (Replaces Polling) ---
-  useEffect(() => {
-    if (isLoadingAuth || !user) return;
+  const handleAcceptInvite = async (inviteId) => {
+    try {
+      await acceptInvitation(inviteId);
+      setInvitations(prev => prev.filter(inv => inv.id !== inviteId));
+      // Refresh profile to get new role
+      const profile = await getUserProfile();
+      setUser(profile);
+    } catch (err) {
+      console.error("Failed to accept invitation", err);
+    }
+  };
 
-    let eventSource;
-    const connectSSE = () => {
-      const token = localStorage.getItem('auth_token');
-      eventSource = new EventSource(`${import.meta.env.VITE_API_BASE_URL || ''}/invoices/stream-status?token=${token}`);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'update') {
-          setFileQueue(prevQueue => {
-            const serverItems = data.drafts
-              .filter(d => !recentlySavedIds.has(d.id))
-              .map(d => ({
-                id: d.id,
-                file: d.file,
-                status: d.status === 'draft' ? (d.is_duplicate ? 'duplicate' : 'completed') : d.status,
-                previewUrl: d.previewUrl,
-                result: d.result,
-                error: d.error,
-                warning: d.duplicate_warning
-              }));
-
-            return prevQueue.filter(item => item.id.toString().startsWith('temp-')).concat(serverItems)
-              .sort((a, b) => {
-                const score = (s) => (s === 'completed' || s === 'duplicate' ? 3 : s === 'processing' ? 2 : 1);
-                return score(b.status) - score(a.status);
-              });
-          });
-        }
-      };
-
-      eventSource.onerror = () => {
-        eventSource.close();
-        setTimeout(connectSSE, 5000);
-      };
-    };
-
-    connectSSE();
-    return () => eventSource?.close();
-  }, [isLoadingAuth, user, setFileQueue, recentlySavedIds]);
+  // --- SSE Integration is now handled in InvoiceContext ---
 
   if (isLoadingAuth) {
     return (
@@ -208,6 +193,47 @@ function AppContent() {
         type={toast.type}
         onClose={() => {}}
       />
+
+      {isMobile && (
+        <MobileNavBar 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab} 
+          onCameraClick={() => setActiveTab('scan')}
+          user={user}
+        />
+      )}
+
+      {/* Invitations Overlay */}
+      {invitations && invitations.length > 0 && invitations[0] && invitations[0].id && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-300">
+            <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mb-4">
+              <Mail className="w-6 h-6 text-blue-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Join Organization</h2>
+            <p className="text-slate-400 text-sm mb-6">
+              You have been invited to join <strong>PharmaGPT</strong> with the role of <strong>{invitations[0].role || 'Member'}</strong>.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => handleAcceptInvite(invitations[0].id)}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <Check className="w-5 h-5" /> Accept Invitation
+              </button>
+              <button
+                onClick={() => setInvitations([])}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <X className="w-5 h-5" /> Later
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-4 text-center">
+              Invited by: {invitations[0].inviter_name || invitations[0].inviter_email || 'System'}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

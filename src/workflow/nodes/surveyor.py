@@ -1,4 +1,4 @@
-from google import genai
+from src.services.ai_client import manager
 import os
 import json
 import logging
@@ -10,18 +10,11 @@ from src.utils.ai_retry import ai_retry
 # Setup Logging
 logger = get_logger("surveyor")
 
-# Initialize Gemini Client
-API_KEY = os.getenv("GOOGLE_API_KEY")
-if not API_KEY:
-    logger.warning("GOOGLE_API_KEY not found in environment variables.")
-
-client = genai.Client(api_key=API_KEY) if API_KEY else None
-
 from langfuse import observe
 
 @ai_retry
 @observe(name="surveyor_layout_analysis")
-def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
+async def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Layout Discovery Node.
     Analyzes the document image to identify distinct zones (tables, footers).
@@ -44,13 +37,14 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         for attempt in range(upload_retries):
             try:
                 # In the new SDK, upload is via client.files.upload
-                sample_file = client.files.upload(file=image_path)
+                # Now using throttled manager.upload_file_async
+                sample_file = await manager.upload_file_async(file_path=image_path)
                 logger.info(f"File uploaded successfully: {sample_file.name}")
                 break
             except Exception as e:
                 logger.warning(f"Upload Attempt {attempt+1} failed: {e}")
-                import time
-                time.sleep(2) # Wait before retry
+                import asyncio
+                await asyncio.sleep(2) # Wait before retry
                 if attempt == upload_retries - 1:
                      return {"extraction_plan": [], "error_logs": [f"Surveyor Upload Failed: {str(e)}"]}
         
@@ -65,11 +59,11 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
            - Label this zone_type: "primary_table".
            - **DISTINCTION**: If a table has "HSN" and "Tax" columns but **LACKS** a "Description/Item Name" column, it is a TAX SUMMARY. Ignore it.
            - Use zone_id: "table_1".
-
+ 
         2. Secondary Tables (IGNORE THESE AS PRIMARY):
            - **Tax Summary / HSN Summary**: Often at the bottom, contains 'Taxable Amt', 'CGST', 'SGST', 'Total Tax'. **DO NOT** claim this as the primary table.
            - **Schemes / Free Goods**: Small detached tables.
-
+ 
         3. Header: Top section with Supplier Name, Invoice Date, Invoice No.
         4. Footer: Bottom section with Grand Total, Net Payable, Bank Details.
         
@@ -93,8 +87,8 @@ def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         ]
         """
 
-        # Generate content with the new SDK
-        response = client.models.generate_content(
+        # Generate content with the new SDK via manager (throttled)
+        response = await manager.generate_content_async(
             model='gemini-2.0-flash',
             contents=[prompt, sample_file]
         )

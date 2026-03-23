@@ -13,7 +13,7 @@ def init_db_constraints(driver):
     query = "CREATE CONSTRAINT item_code_unique IF NOT EXISTS FOR (p:GlobalProduct) REQUIRE p.item_code IS UNIQUE"
     try:
         with driver.session() as session:
-            session.run(query)
+            session.execute_write(lambda tx: tx.run(query))
             logger.info("Checked/Created Unique Constraint for GlobalProduct.item_code")
     except Exception as e:
         logger.error(f"Failed to create constraint: {e}")
@@ -42,23 +42,26 @@ def _generate_sku(tx, product_name: str) -> str:
     # 3. Format SKU
     return f"{prefix}-{count:03d}"
 
-def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, Any]], user_email: str):
+def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, Any]], user_email: str, invoice_id: str = None):
     """
     Creates multiple line items in a single transaction using UNWIND.
     Fastest way to ingest batch data into Neo4j.
     """
-    batch_query = """
-    MATCH (u:User {email: $user_email})
-    MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
+    # Use invoice_id for precise matching if available, otherwise fallback to number (legacy)
+    match_clause = "MATCH (u)-[:OWNS]->(i:Invoice {invoice_id: $invoice_id})" if invoice_id else "MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})"
+    
+    batch_query = f"""
+    MATCH (u:User {{email: $user_email}})
+    {match_clause}
     
     UNWIND $items as item
     
     // 1. Alias Lookup & Product Resolution
-    OPTIONAL MATCH (alias:ProductAlias {raw_name: item.standard_item_name})-[:MAPS_TO]->(master:GlobalProduct)
+    OPTIONAL MATCH (alias:ProductAlias {{raw_name: item.standard_item_name}})-[:MAPS_TO]->(master:GlobalProduct)
     WITH u, i, item, coalesce(master.name, item.standard_item_name) as final_product_name
     
     // 2. Merge Global Product
-    MERGE (gp:GlobalProduct {name: final_product_name})
+    MERGE (gp:GlobalProduct {{name: final_product_name}})
     MERGE (u)-[:MANAGES]->(gp)
     ON CREATE SET 
         gp.is_verified = false,
@@ -77,12 +80,12 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     // 5. Merge HSN
     WITH gp, l, item
     WHERE item.hsn_code IS NOT NULL
-    MERGE (h:HSN {code: item.hsn_code})
+    MERGE (h:HSN {{code: item.hsn_code}})
     MERGE (l)-[:BELONGS_TO_HSN]->(h)
     
     // 6. Packaging Variant tracking
     WITH gp, l, item
-    MERGE (pv:PackagingVariant {pack_size: item.pack_size, product_name: gp.name})
+    MERGE (pv:PackagingVariant {{pack_size: item.pack_size, product_name: gp.name}})
     MERGE (gp)-[:HAS_VARIANT]->(pv)
     MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
     ON CREATE SET
@@ -96,6 +99,7 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
         
     // 7. Update Master Product Info
     SET gp.sale_price = coalesce(item.mrp, gp.sale_price),
+        gp.purchase_price = coalesce(item.unit_base_rate, gp.purchase_price),
         gp.tax_rate = coalesce(item.total_tax_rate, gp.tax_rate),
         gp.hsn_code = coalesce(item.hsn_code, gp.hsn_code),
         gp.category = coalesce(item.category, gp.category),
@@ -105,7 +109,7 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     // 8. Rebuild Hierarchy JSON (APOC)
     WITH gp
     MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant)
-    WITH gp, collect({unit: all_v.unit_name, pack: all_v.pack_size, mrp: all_v.mrp}) as hierarchy
+    WITH gp, collect({{unit: all_v.unit_name, pack: all_v.pack_size, mrp: all_v.mrp}}) as hierarchy
     SET gp.packaging_hierarchy = apoc.convert.toJson(hierarchy)
     
     RETURN gp.name as name, gp.item_code as code
@@ -129,6 +133,7 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
             "mrp": item.get("MRP", 0.0),
             "conversion_factor": pack_data.get("conversion_factor", 1),
             "total_tax_rate": total_tax_rate,
+            "unit_base_rate": item.get("Unit_Base_Rate", 0.0),
             "category": item.get("category") or item.get("Category"),
             "manufacturer": item.get("manufacturer"),
             "salt": item.get("salt_composition"),
@@ -158,6 +163,7 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     result = tx.run(batch_query, 
                     user_email=user_email, 
                     invoice_no=invoice_no, 
+                    invoice_id=invoice_id,
                     items=prepared_items)
     
     # Post-process SKUs for any new products created in this batch

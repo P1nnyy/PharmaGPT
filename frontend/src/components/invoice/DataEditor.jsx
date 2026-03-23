@@ -14,6 +14,8 @@ const DataEditor = ({
         isAnalyzing,
         handleHeaderChange,
         handleLineItemChange,
+        handleAddRow,
+        handleExport,
         handleSaveInvoice,
     } = useInvoice();
 
@@ -23,6 +25,8 @@ const DataEditor = ({
 
     const onHeaderChange = handleHeaderChange;
     const onInputChange = handleLineItemChange;
+    const onAddRow = handleAddRow;
+    const onExport = handleExport;
     const onConfirm = handleSaveInvoice;
 
     if (!invoiceData && !isAnalyzing) {
@@ -43,8 +47,6 @@ const DataEditor = ({
                 invoiceData={invoiceData}
                 lineItems={lineItems}
                 warnings={warnings}
-                successMsg={successMsg}
-                errorMsg={errorMsg}
                 onHeaderChange={onHeaderChange}
                 readOnly={readOnly}
             />

@@ -16,11 +16,11 @@ def upsert_user(driver, user_data: Dict[str, Any]):
     RETURN u
     """
     with driver.session() as session:
-        session.run(query, 
+        session.execute_write(lambda tx: tx.run(query, 
                     email=user_data.get("email"),
                     google_id=user_data.get("google_id"),
                     name=user_data.get("name"),
-                    picture=user_data.get("picture"))
+                    picture=user_data.get("picture")))
 
 def _merge_supplier_tx(tx, name, details, user_email):
     query = """

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Tags, Plus, Trash2, Loader2, RefreshCw, ToggleLeft, ToggleRight, Lock, ChevronDown, ChevronRight } from 'lucide-react';
-import { getCategories, createCategory, deleteCategory, updateCategoryConfig, getRoles, createRole, assignRole } from '../../services/api';
+import { Settings, Shield, Tags, Plus, Trash2, Loader2, RefreshCw, ToggleLeft, ToggleRight, Lock, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
+import { getCategories, createCategory, deleteCategory, updateCategoryConfig, getRoles, createRole, createInvitation } from '../../services/api';
 import Toast from '../ui/Toast';
 
 const AdminDashboard = () => {
@@ -12,6 +12,18 @@ const AdminDashboard = () => {
 
     const COMMON_UNITS = ['pieces', 'ml', 'L', 'strip', 'box', 'tube', 'vial', 'ampoule', 'g', 'mg', 'kg'];
 
+    const AVAILABLE_PERMISSIONS = [
+        { id: 'all', label: 'Super Admin (All Access)', desc: 'Full system privileges' },
+        { id: 'tab:scan', label: 'Scan Access', desc: 'Can upload and process invoices' },
+        { id: 'tab:invoices', label: 'View Invoices', desc: 'Can see processed invoice list' },
+        { id: 'tab:items', label: 'View Items', desc: 'Can browse product master' },
+        { id: 'tab:inventory', label: 'View Inventory', desc: 'Can check stock levels' },
+        { id: 'tab:history', label: 'View History', desc: 'Can see audit logs' },
+        { id: 'tab:admin', label: 'System Admin', desc: 'Can manage settings and users' },
+        { id: 'action:edit_items', label: 'Edit Items', desc: 'Can modify product details' },
+        { id: 'action:edit_inventory', label: 'Edit Inventory', desc: 'Can perform stock updates' }
+    ];
+
     const toggleExpand = (name) => {
         setExpandedCategory(prev => prev === name ? null : name);
     };
@@ -22,7 +34,7 @@ const AdminDashboard = () => {
     const [newCatIsAtomic, setNewCatIsAtomic] = useState(false);
 
     const [newRoleName, setNewRoleName] = useState('');
-    const [newRolePerms, setNewRolePerms] = useState('');
+    const [newRolePerms, setNewRolePerms] = useState([]); // Array of permission IDs
 
     const [assignEmail, setAssignEmail] = useState('');
     const [assignRoleName, setAssignRoleName] = useState('');
@@ -115,31 +127,38 @@ const AdminDashboard = () => {
         }
     };
 
+    const togglePermission = (permId) => {
+        setNewRolePerms(prev =>
+            prev.includes(permId)
+                ? prev.filter(p => p !== permId)
+                : [...prev, permId]
+        );
+    };
+
     const handleCreateRole = async (e) => {
         e.preventDefault();
         if (!newRoleName.trim()) return;
         try {
-            const permsArray = newRolePerms.split(',').map(p => p.trim()).filter(p => p);
-            await createRole(newRoleName, permsArray);
+            await createRole(newRoleName, newRolePerms);
             showToast(`Role '${newRoleName}' created!`, "success");
             setNewRoleName('');
-            setNewRolePerms('');
+            setNewRolePerms([]);
             fetchData();
         } catch (error) {
             showToast("Failed to create role", "error");
         }
     };
 
-    const handleAssignRole = async (e) => {
+    const handleInviteUser = async (e) => {
         e.preventDefault();
         if (!assignEmail.trim() || !assignRoleName) return;
         try {
-            await assignRole(assignEmail, assignRoleName);
-            showToast(`Role assigned to ${assignEmail}!`, "success");
+            await createInvitation(assignEmail, assignRoleName);
+            showToast(`Invitation sent to ${assignEmail}!`, "success");
             setAssignEmail('');
             setAssignRoleName('');
         } catch (error) {
-            showToast("Failed to assign role", "error");
+            showToast("Failed to send invitation", "error");
         }
     };
 
@@ -402,7 +421,7 @@ const AdminDashboard = () => {
                             <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-4 flex items-center gap-2">
                                 <Plus className="w-4 h-4 text-emerald-400" /> Create New Role
                             </h2>
-                            <form onSubmit={handleCreateRole} className="space-y-4">
+                            <form onSubmit={handleCreateRole} className="space-y-6">
                                 <div>
                                     <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">Role Name</label>
                                     <input
@@ -415,18 +434,34 @@ const AdminDashboard = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">Permissions (Comma separated)</label>
-                                    <textarea
-                                        value={newRolePerms}
-                                        onChange={(e) => setNewRolePerms(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono min-h-[100px]"
-                                        placeholder="e.g. read:invoices, edit:inventory, delete:users"
-                                    />
-                                    <p className="text-[10px] text-slate-500 mt-1.5">* Roles map to API endpoints for access control.</p>
+                                    <label className="block text-xs font-medium text-slate-400 mb-2 uppercase">Permissions</label>
+                                    <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                                        {AVAILABLE_PERMISSIONS.map(perm => {
+                                            const isChecked = newRolePerms.includes(perm.id);
+                                            return (
+                                                <button
+                                                    key={perm.id}
+                                                    type="button"
+                                                    onClick={() => togglePermission(perm.id)}
+                                                    className={`flex items-center justify-between p-3 rounded-lg border transition-all text-left group ${isChecked
+                                                        ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-300'
+                                                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                                        }`}
+                                                >
+                                                    <div className="flex flex-col">
+                                                        <span className={`text-xs font-semibold ${isChecked ? 'text-emerald-400' : 'text-slate-300 group-hover:text-white'}`}>{perm.label}</span>
+                                                        <span className="text-[10px] text-slate-500 mt-0.5">{perm.desc}</span>
+                                                    </div>
+                                                    {isChecked ? <ToggleRight className="w-6 h-6 text-emerald-500" /> : <ToggleLeft className="w-6 h-6 text-slate-600" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 mt-2.5">* Selected permissions will be granted to this role.</p>
                                 </div>
                                 <button
                                     type="submit"
-                                    disabled={!newRoleName.trim()}
+                                    disabled={!newRoleName.trim() || newRolePerms.length === 0}
                                     className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg py-2.5 transition-colors shadow-lg shadow-emerald-500/20"
                                 >
                                     Create Role
@@ -437,9 +472,9 @@ const AdminDashboard = () => {
                         {/* Assign Role Form */}
                         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 h-fit shadow-sm mt-6">
                             <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <Shield className="w-4 h-4 text-emerald-400" /> Assign Role
+                                <UserPlus className="w-4 h-4 text-blue-400" /> Invite New Member
                             </h2>
-                            <form onSubmit={handleAssignRole} className="space-y-4">
+                            <form onSubmit={handleInviteUser} className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase">User Email</label>
                                     <input
@@ -447,8 +482,8 @@ const AdminDashboard = () => {
                                         required
                                         value={assignEmail}
                                         onChange={(e) => setAssignEmail(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                                        placeholder="user@example.com"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                        placeholder="user@gmail.com"
                                     />
                                 </div>
                                 <div>
@@ -457,21 +492,22 @@ const AdminDashboard = () => {
                                         required
                                         value={assignRoleName}
                                         onChange={(e) => setAssignRoleName(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 appearance-none"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none"
                                     >
-                                        <option value="">-- Choose Role --</option>
-                                        {roles.map((role, idx) => (
-                                            <option key={idx} value={role.name}>{role.name}</option>
+                                        <option value="">Choose a role...</option>
+                                        {roles.map(r => (
+                                            <option key={r.name} value={r.name}>{r.name}</option>
                                         ))}
                                     </select>
                                 </div>
                                 <button
                                     type="submit"
                                     disabled={!assignEmail.trim() || !assignRoleName}
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg py-2.5 transition-colors shadow-lg shadow-emerald-500/20"
+                                    className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg py-2.5 transition-colors shadow-lg shadow-blue-500/20"
                                 >
-                                    Assign
+                                    Send Invitation
                                 </button>
+                                <p className="text-[10px] text-slate-500 mt-2">* User will need to accept the invitation on their portal.</p>
                             </form>
                         </div>
                     </div>

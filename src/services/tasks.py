@@ -1,4 +1,5 @@
 import os
+import asyncio
 from src.utils.logging_config import get_logger
 from src.services.database import get_db_driver
 from src.workflow.graph import run_extraction_pipeline
@@ -12,6 +13,11 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
     """
     Background Task: Runs extraction and updates DB status.
     """
+    from src.services.task_manager import manager as task_manager
+    # Register current task for cancellation tracking
+    current_task = asyncio.current_task()
+    task_manager.register(user_email, invoice_id, current_task)
+    
     driver = get_db_driver()
     
     try:
@@ -19,7 +25,6 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         
         # 1. R2 Upload (Move from API to background to avoid timeout)
         if not public_url:
-            import asyncio
             from src.services.storage import upload_to_r2
             
             logger.info(f"Uploading {invoice_id} to R2 in background...")
@@ -84,6 +89,11 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         update_invoice_status(driver, invoice_id, "DRAFT", result_state)
         print(f"Background Processing Complete for {invoice_id} -> DRAFT")
         
+    except asyncio.CancelledError:
+        logger.info(f"Background task for {invoice_id} was explicitly cancelled.")
+        # No need to update DB as the route usually deletes the node anyway, 
+        # but if it doesn't, we can set it to a terminal state.
+        raise # Re-raise to ensure the task actually stops
     except Exception as e:
         logger.error(f"Background Task Failed for {invoice_id}: {e}")
         import traceback
@@ -124,7 +134,7 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
             
             needs_enrichment = True
             with driver.session() as session:
-                rec = session.run(check_query, user_email=user_email, name=product_name).single()
+                rec = session.execute_read(lambda tx: tx.run(check_query, user_email=user_email, name=product_name).single())
                 if rec and rec["m"] and rec["m"] != "Unknown" and rec["s"]:
                      needs_enrichment = False
             
@@ -134,7 +144,7 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
 
             logger.info(f"Enriching Invoice Item: {product_name}")
             local_pack_size = item.get("Pack_Size_Description")
-            result = agent.enrich_product(product_name, local_pack_size=local_pack_size)
+            result = await agent.enrich_product(product_name, local_pack_size=local_pack_size)
             
             if result.get("error"):
                 logger.warning(f"Enrichment Error for {product_name}: {result['error']}")
@@ -156,12 +166,12 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
             """
             
             with driver.session() as session:
-                session.run(update_query, 
+                session.execute_write(lambda tx: tx.run(update_query, 
                             user_email=user_email,
                             name=product_name,
                             manufacturer=result.get("manufacturer"),
                             salt=result.get("salt_composition"),
-                            category=result.get("category"))
+                            category=result.get("category")))
                             
             logger.info(f"Enriched {product_name}: {result.get('manufacturer')}")
 
@@ -183,10 +193,10 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                     gp.unit_name = $base_unit
                 """
                 with driver.session() as session:
-                    session.run(unit_update_query, 
+                    session.execute_write(lambda tx: tx.run(unit_update_query, 
                                 user_email=user_email, 
                                 name=product_name, 
-                                base_unit=new_base_unit)
+                                base_unit=new_base_unit))
 
         except Exception as e:
             logger.error(f"Failed to enrich item {product_name}: {e}")

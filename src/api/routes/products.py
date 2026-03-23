@@ -29,8 +29,7 @@ async def search_products(q: str = Query(..., min_length=2)):
     """
     
     with driver.session() as session:
-        result = session.run(query, q=q)
-        return [dict(record) for record in result]
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, q=q)])
 
 @router.get("/enrich", response_model=EnrichedProductResponse)
 async def enrich_product(
@@ -104,8 +103,7 @@ async def get_review_queue(user_email: str = Depends(get_current_user_email)):
 
     
     with driver.session() as session:
-        result = session.run(query, user_email=user_email)
-        return [dict(record) for record in result]
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
 
 @router.get("/all", response_model=List[Dict[str, Any]])
 async def get_all_products(user_email: str = Depends(get_current_user_email)):
@@ -146,8 +144,7 @@ async def get_all_products(user_email: str = Depends(get_current_user_email)):
     """
     
     with driver.session() as session:
-        result = session.run(query, user_email=user_email)
-        return [dict(record) for record in result]
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
 
 @router.post("/", response_model=Dict[str, str])
 async def save_product(product: ProductRequest, user_email: str = Depends(get_current_user_email)):
@@ -208,7 +205,7 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
     variants_data = [v.dict() for v in product.packaging_variants]
     
     with driver.session() as session:
-        session.run(query, 
+        session.execute_write(lambda tx: tx.run(query, 
             user_email=user_email,
             name=product.name,
             hsn_code=product.hsn_code,
@@ -224,7 +221,7 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
             salt_composition=product.salt_composition,
             category=product.category,
             schedule=product.schedule
-        )
+        ))
         
     return {"status": "success", "message": f"Product '{product.name}' saved successfully."}
 
@@ -274,7 +271,7 @@ async def add_alias(payload: Dict[str, str], name: str = Query(..., description=
         # For now, let frontend call save to clear flag or we do it here.
         # Let's do it here for convenience.
         with driver.session() as session:
-            session.run("MATCH (gp:GlobalProduct {name: $name}) SET gp.needs_review = false", name=name)
+            session.execute_write(lambda tx: tx.run("MATCH (gp:GlobalProduct {name: $name}) SET gp.needs_review = false", name=name))
             
         return {"status": "success", "message": f"Linked alias '{raw_alias}' to '{name}'"}
     except Exception as e:
@@ -308,5 +305,4 @@ async def get_product_history(name: str = Query(..., description="Product name")
     """
     
     with driver.session() as session:
-        result = session.run(query, user_email=user_email, name=name)
-        return [dict(record) for record in result]
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email, name=name)])

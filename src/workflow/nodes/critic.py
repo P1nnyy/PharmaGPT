@@ -5,7 +5,7 @@ from src.utils.logging_config import get_logger
 
 logger = get_logger("critic")
 
-def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
+async def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Critic Node.
     Compares Line Item Sum vs. Grand Total Anchor.

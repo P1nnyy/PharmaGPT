@@ -1,20 +1,17 @@
-from google import genai
+from src.services.ai_client import manager
 import json
 import os
+import asyncio
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 
 logger = get_logger("detective")
 
-# Initialize Gemini Client
-API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY) if API_KEY else None
-
 from langfuse import observe
 
 @observe(name="detective_investigation")
-def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
+async def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Detective Node.
     Runs AFTER Auditor.
@@ -34,12 +31,10 @@ def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
     
     # Load Image once
     try:
-        sample_file = client.files.upload(file=image_path)
+        sample_file = await manager.upload_file_async(image_path)
     except Exception as e:
         logger.error(f"Detective: Failed to upload image: {e}")
         return {}
-
-            # Use the new Client for generation
 
     for item in line_items:
         # Check if Batch No is missing
@@ -69,7 +64,7 @@ def detective_work(state: InvoiceStateDict) -> Dict[str, Any]:
             """
             
             try:
-                response = client.models.generate_content(
+                response = await manager.generate_content_async(
                     model="gemini-2.0-flash",
                     contents=[sample_file, prompt]
                 )

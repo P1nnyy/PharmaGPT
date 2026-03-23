@@ -5,7 +5,7 @@ from src.utils.logging_config import get_logger
 
 logger = get_logger("solver")
 
-def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
+async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Solver Node.
     1. Applies the Critic's correction factor to calculate strict Landed Cost.

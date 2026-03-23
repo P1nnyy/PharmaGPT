@@ -9,9 +9,9 @@ from neo4j.exceptions import ClientError
 
 logger = get_logger(__name__)
 
-def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]], user_email: str, supplier_details: Dict[str, Any] = None):
+def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]], user_email: str, supplier_details: Dict[str, Any] = None):
     """
-    Ingests invoice and line item data into Neo4j, scoped to a specific User.
+    Ingests invoice and line item data into Neo4j, scoped to a specific User and Invoice ID.
     Also merges detailed Supplier information if available.
     """
     
@@ -24,43 +24,40 @@ def ingest_invoice(driver, invoice_data: InvoiceExtraction, normalized_items: Li
             val = 0.0
         grand_total += val
     
+    def _full_ingestion_tx(tx):
+        # 1. Update/Merge Invoice (Scoped to User and ID)
+        _create_invoice_tx(tx, invoice_id, invoice_data, grand_total, user_email)
+        
+        # 2. Merge Separate Supplier Node
+        if supplier_details:
+            supplier_name = invoice_data.Supplier_Name
+            _merge_supplier_tx(tx, supplier_name, supplier_details, user_email)
+        
+        # 3. Clean up existing line items for this specific invoice
+        tx.run("MATCH (i:Invoice {invoice_id: $invoice_id})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", 
+               invoice_id=invoice_id)
+
+        # 4. Process all items in a single batch transaction
+        _ingest_line_items_batch_tx(tx, invoice_data.Invoice_No, normalized_items, user_email, invoice_id=invoice_id)
+
     try:
         with driver.session() as session:
-            # 1. Merge Invoice (Scoped to User)
-            session.execute_write(_create_invoice_tx, invoice_data, grand_total, user_email)
-            
-            # 2. Merge Separate Supplier Node (Rich Data, Scoped to User)
-            if supplier_details:
-                # Ensure name matches the Invoice's supplier name for consistency
-                supplier_name = invoice_data.Supplier_Name
-                session.execute_write(_merge_supplier_tx, supplier_name, supplier_details, user_email)
-            
-            # 3. Clean up existing line items if re-ingesting to prevent duplicates
-            session.run("MATCH (i:Invoice {invoice_number: $no})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", no=invoice_data.Invoice_No)
-
-            # 4. Process all items in a single batch transaction (FAST)
-            session.execute_write(_ingest_line_items_batch_tx, invoice_data.Invoice_No, normalized_items, user_email)
-            
+            session.execute_write(_full_ingestion_tx)
             logger.info(f"Successfully ingested invoice {invoice_data.Invoice_No} and {len(normalized_items)} line items.")
 
     except Exception as e:
         logger.error(f"Detailed Ingestion Error for Invoice {invoice_data.Invoice_No}: {e}")
         raise e
 
-def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float, user_email: str):
+def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, grand_total: float, user_email: str):
     query = """
     MATCH (u:User {email: $user_email})
-    MERGE (i:Invoice {invoice_number: $invoice_no, supplier_name: $supplier_name})
+    MATCH (i:Invoice {invoice_id: $invoice_id})
     MERGE (u)-[:OWNS]->(i)
     
-    ON CREATE SET 
-        i.status = 'CONFIRMED',
-        i.invoice_date = $invoice_date,
-        i.grand_total = $grand_total,
-        i.image_path = $image_path,
-        i.created_at = timestamp()
-    ON MATCH SET
-        i.status = 'CONFIRMED',
+    SET i.status = 'CONFIRMED',
+        i.invoice_number = $invoice_no,
+        i.supplier_name = $supplier_name,
         i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
         i.image_path = $image_path,
@@ -68,6 +65,7 @@ def _create_invoice_tx(tx, invoice_data: InvoiceExtraction, grand_total: float, 
     """
     tx.run(query, 
            user_email=user_email,
+           invoice_id=invoice_id,
            invoice_no=invoice_data.Invoice_No, 
            supplier_name=invoice_data.Supplier_Name,
            invoice_date=invoice_data.Invoice_Date,

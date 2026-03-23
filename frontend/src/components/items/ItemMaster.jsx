@@ -97,7 +97,7 @@ const ItemMaster = () => {
     }, []);
 
     useEffect(() => {
-        if (sidebarTab === 'all' && allItems.length === 0) {
+        if (sidebarTab === 'all') {
             fetchAllItems();
         }
     }, [sidebarTab]);
@@ -154,9 +154,26 @@ const ItemMaster = () => {
                 primaryPack = parseFloat(stripVar.conversion_factor);
                 primaryMrp = parseFloat(stripVar.mrp || 0);
             } else {
-                // Fallback: if no variants, maybe generic default? stick to 10?
-                // Or if variants exist but are huge (only Boxes defined)?
-                primaryPack = 10; // Safe default for Tabs
+                // FALLBACK: Smart Regex Extraction from Product Name
+                // Patterns: "120 tabs", "30's", "Pack of 60", "30 tablets"
+                const name = product.name || '';
+                const qtyMatch = name.match(/(\d+)\s*(?:tabs|tablets|caps|capsules|'s|s|pcs|units|nos|ml|gm)\b/i) || 
+                                 name.match(/(?:pack|bottle|box)\s*(?:of|size)?\s*(\d+)/i);
+                
+                if (qtyMatch) {
+                    const extractedQty = parseInt(qtyMatch[1] || qtyMatch[2]);
+                    if (extractedQty > 0) {
+                        primaryPack = extractedQty;
+                        // If it's a large count (e.g. 120), it's likely a Bottle/Unit, not a Strip
+                        if (extractedQty >= 30 && !name.toLowerCase().includes('strip')) {
+                            suggestedUnit = 'Bottle';
+                        }
+                    } else {
+                        primaryPack = 10;
+                    }
+                } else {
+                    primaryPack = 10; // Safe default for Tabs
+                }
             }
         } else {
             // Scenario B: Syrups/Creams -> Primary is 1 Unit
@@ -312,11 +329,17 @@ const ItemMaster = () => {
             };
             await saveProduct(payload);
 
-            // Update the original_name so subsequent saves don't rename again
-            setFormData(prev => ({ ...prev, original_name: newName }));
-
-            if (sidebarTab === 'review') fetchQueue();
-            else fetchAllItems();
+            // Update the local state immediately for instant feedback
+            setFormData(prev => ({ 
+                ...prev, 
+                original_name: newName,
+                is_verified: true,
+                needs_review: false 
+            }));
+            
+            // Refresh both lists to ensure consistency
+            fetchQueue();
+            fetchAllItems();
         } catch (error) {
             console.error("Save failed", error);
             alert('Failed to save product.');
@@ -348,7 +371,7 @@ const ItemMaster = () => {
                 <div className="flex flex-1 overflow-hidden relative">
 
                     {/* LEFT SIDEBAR: List */}
-                    <div className={`w-full md:w-1/4 min-w-[300px] border-r border-slate-700 flex flex-col bg-slate-900/30 absolute md:relative inset-0 z-10 transition-transform duration-300 transform md:transform-none ${showMobileDetail ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
+                    <div className={`w-full md:w-1/4 h-full min-w-[300px] border-r border-slate-700 flex flex-col bg-slate-900/30 absolute md:relative inset-0 z-10 transition-transform duration-300 transform md:transform-none ${showMobileDetail ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
                         <ItemSidebar
                             sidebarTab={sidebarTab}
                             setSidebarTab={setSidebarTab}
@@ -363,7 +386,7 @@ const ItemMaster = () => {
                     </div>
 
                     {/* RIGHT PANEL: Details Form */}
-                    <div className={`flex-1 flex flex-col bg-slate-800 absolute md:relative inset-0 z-20 transition-transform duration-300 ${showMobileDetail ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+                    <div className={`flex-1 h-full flex flex-col bg-slate-800 absolute md:relative inset-0 z-20 transition-transform duration-300 ${showMobileDetail ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
 
                         {/* Mobile Header */}
                         <div className="md:hidden flex items-center gap-2 p-4 border-b border-slate-700 text-slate-400 hover:text-white cursor-pointer" onClick={() => setShowMobileDetail(false)}>

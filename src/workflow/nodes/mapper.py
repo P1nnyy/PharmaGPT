@@ -1,14 +1,15 @@
-from google import genai
+from src.services.ai_client import manager
 import json
 import os
+import asyncio
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 from src.services.embeddings import generate_embedding
 from src.utils.config_loader import load_vendor_rules
-from neo4j import GraphDatabase
 from src.domain.smart_mapper import validate_and_fix_hsn, enrich_hsn_details
 from src.utils.ai_retry import ai_retry
+from src.services.database import get_db_driver
 
 logger = get_logger("mapper")
 
@@ -17,15 +18,11 @@ NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
-# Initialize Gemini Client
-API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY) if API_KEY else None
-
 from langfuse import observe
 
 @ai_retry
 @observe(name="mapper_execution")
-def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
+async def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Mapper Node.
     Stage 2 of Extraction.
@@ -44,7 +41,6 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     vendor_rules = load_vendor_rules()
     
     # Identify Supplier from previous steps (Surveyor/Worker)
-    # We check global modifiers for a hint, or just pass 'Unknown'
     current_supplier = state.get("global_modifiers", {}).get("Supplier_Name", "").lower()
     
     supplier_instruction = ""
@@ -76,7 +72,8 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
         embedding = generate_embedding(context_text)
         found_example = None
         
-        with GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)) as driver:
+        driver = get_db_driver()
+        if driver:
             with driver.session() as session:
                 # 1. Try Vector Search (> 0.88)
                 if embedding:
@@ -86,7 +83,7 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                     WHERE score > 0.88
                     RETURN node.raw_text as raw, node.json_payload as json, score
                     """
-                    result = session.run(query, embedding=embedding).single()
+                    result = session.execute_read(lambda tx: tx.run(query, embedding=embedding).single())
                     
                     if result:
                         found_example = {
@@ -98,14 +95,13 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                 # 2. Fallback: Supplier specific example
                 if not found_example and current_supplier:
                     logger.info(f"Mapper: No vector match. Checking generic example for supplier '{current_supplier}'")
-                    # Note: We rely on the Supplier Name being accurate from Surveyor/Global Modifiers
                     query_fallback = """
                     MATCH (s:Supplier)-[:HAS_EXAMPLE]->(e)
                     WHERE toLower(s.name) CONTAINS $supplier_lower 
                     RETURN e.raw_text as raw, e.json_payload as json
                     LIMIT 1
                     """
-                    res_fallback = session.run(query_fallback, supplier_lower=current_supplier).single()
+                    res_fallback = session.execute_read(lambda tx: tx.run(query_fallback, supplier_lower=current_supplier).single())
                     if res_fallback:
                          found_example = {
                             "raw": res_fallback["raw"],
@@ -125,36 +121,6 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     except Exception as e:
         logger.warning(f"Mapper RAG Lookup Failed: {e}")
-    
-    
-    # --- E. SMART MAPPER LOGIC (Alias & Vector Pre-Check) ---
-    # Goal: Try to resolve Product Names via DB before asking LLM.
-    # We iterate over raw_rows to find potential matches.
-    
-    # 1. Prepare Pre-Filled Context
-    # We can't easily "inject" per-row logic into a single bulk-prompt without complex rewriting.
-    # Strategy: We will ask the LLM to map as usual, BUT we provide a "Known Mappings" hint list.
-    # OR better: We post-process the LLM output? 
-    # USER REQUEST says: "Prioritize Alias Lookups... force the Standard_Item_Name".
-    # Since the Mapper output is the source of truth for the next step, we can:
-    # A. Parse raw rows locally (hard with unstructured text).
-    # B. Use LLM to get preliminary JSON, THEN post-process with Alias Lookup against the 'Product' field the LLM extracted.
-    # C. Pass "Known Aliases" to LLM?
-    
-    # DECISION: Post-Process the LLM Output.
-    # Why? We need the LLM to extract the "Raw Name" first (e.g. from "Acitrom 2mg 10s" -> "Acitrom 2mg").
-    # Once we have the "Product" field from JSON, we check if THAT is an alias.
-    
-    # Wait, the prompt says: "Before running the LLM... MATCH (a:ProductAlias {raw_name: $raw_ocr_text})"
-    # This implies $raw_ocr_text is the full row or a specific column? 
-    # If raw_rows are full generic text lines, matching "raw_name" is tricky unless exact match.
-    # Let's assume we do POST-PROCESSING for robustness, OR we try to match substrings.
-    # Let's stick to the prompt's spirit: "Teach the Mapper node to look for these aliases".
-    
-    # Let's Prompt, Get JSON, THEN Re-Map Names based on DB.
-    # This is safer than trying to regex matches in raw text.
-    
-    # However, to support "Force Standard_Item_Name", we can do it after `data = json.loads(text)`.
     
     prompt = f"""
     You are a DATA STRUCTURE EXPERT.
@@ -235,9 +201,9 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     
     try:
-        response = client.models.generate_content(
+        response = await manager.generate_content_async(
             model="gemini-2.0-flash",
-            contents=prompt
+            contents=[prompt]
         )
         text = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(text)
@@ -245,24 +211,19 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
         mapped_items = data.get("line_items", [])
         
         # --- SMART MAPPING POST-PROCESS ---
-        # Now that we have the "Product" (which is essentially the extracted raw name),
-        # We query Neo4j to see if this name is an Alias or needs Auto-Correction via Vector.
-        
-        with GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)) as driver:
+        driver = get_db_driver()
+        if driver:
             with driver.session() as session:
                 for item in mapped_items:
                     raw_product_name = item.get("Product")
                     
-                    # --- HSN & TAX ENRICHMENT (FIX I) ---
-                    # 1. Clean HSN
+                    # --- HSN & TAX ENRICHMENT ---
                     raw_hsn = item.get("HSN", "")
                     clean_hsn = validate_and_fix_hsn(raw_hsn)
                     item["HSN"] = clean_hsn
                     
-                    # 2. Tax Inference
                     rate_extracted = item.get("Raw_GST_Percentage") or 0.0
                     
-                    # If Tax is missing/zero but we have an HSN, try to infer it
                     if rate_extracted == 0 and clean_hsn != "0000":
                         enriched = enrich_hsn_details(clean_hsn)
                         if enriched.get("tax", 0) > 0:
@@ -270,25 +231,19 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                             item["is_tax_inferred"] = True
                             item["hsn_description"] = enriched.get("desc", "")
                             
-                            # REVERSE CALCULATION:
-                            # If we inferred tax, we must check if 'Rate' is Base or Landed.
-                            # Hypothesis: Rate is Landed (Net Unit Price) if Tax was 0.
                             current_rate = item.get("Rate", 0.0)
-                            
                             if current_rate > 0:
                                 tax_rate = enriched["tax"]
                                 qty = float(item.get("Qty", 1) or 1)
                                 amount = float(item.get("Amount", 0) or 0)
                                 
-                                # Check: Is Rate * Qty * (1+Tax) ~= Amount? (Rate is Base)
                                 is_already_base = False
                                 if amount > 0:
                                     expected_if_base = current_rate * qty * (1 + tax_rate/100)
-                                    if abs(expected_if_base - amount) < (amount * 0.05 + 1.0): # 5% + 1.0 tolerance
+                                    if abs(expected_if_base - amount) < (amount * 0.05 + 1.0):
                                         is_already_base = True
                                 
                                 if not is_already_base:
-                                    # It was Landed. Strip tax.
                                     base_rate = round(current_rate / (1 + (tax_rate / 100)), 2)
                                     item["Rate"] = base_rate
                                     item["Logic_Note"] = f"Tax Inferred ({tax_rate}%) & Base Rate Calc ({current_rate}->{base_rate})"
@@ -300,24 +255,21 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                     if not raw_product_name:
                         continue
                         
-                    # 1. Alias Lookup (Exact Match)
-                    # "Match (a:ProductAlias {raw_name: raw_product_name})..."
+                    # 1. Alias Lookup
                     alias_query = """
                     MATCH (a:ProductAlias {raw_name: $name})-[:MAPS_TO]->(gp:GlobalProduct)
                     RETURN gp.name as master_name
                     """
-                    alias_res = session.run(alias_query, name=raw_product_name).single()
+                    alias_res = session.execute_read(lambda tx: tx.run(alias_query, name=raw_product_name).single())
                     
                     if alias_res:
                          master_name = alias_res["master_name"]
                          logger.info(f"SmartMapper: Found Alias '{raw_product_name}' -> '{master_name}'")
-                         # FORCE OVERWRITE
                          item["Standard_Item_Name"] = master_name
                          item["Logic_Note"] = "Alias Match"
-                         continue # Skip Vector Search
+                         continue
                          
-                    # 2. Vector Search (High Confidence Fallback)
-                    # If no alias, check if we have a very strong vector match for this product name
+                    # 2. Vector Search
                     emb = generate_embedding(raw_product_name)
                     if emb:
                         vector_query = """
@@ -326,18 +278,12 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                         WHERE score > 0.92
                         RETURN node.name as master_name, score
                         """
-                        # Assuming we have a 'product_index' on GlobalProduct(name_embedding) or similar.
-                        # If not, this step might fail or return nothing. 
-                        # We use 'invoice_examples_index' usually, but here we want PRODUCT names.
-                        # Let's assume GlobalProduct has an index. If not, we skip safety.
                         try:
-                            vec_res = session.run(vector_query, embedding=emb).single()
+                            vec_res = session.execute_read(lambda tx: tx.run(vector_query, embedding=emb).single())
                             if vec_res:
                                 master_name = vec_res["master_name"]
                                 score = vec_res["score"]
                                 logger.info(f"SmartMapper: High-Conf Vector Match '{raw_product_name}' -> '{master_name}' ({score:.2f})")
-                                
-                                # Use Master Name but Flag for Review
                                 item["Standard_Item_Name"] = master_name
                                 item["Logic_Note"] = f"Vector Match ({score:.2f})"
                                 item["needs_review"] = True
@@ -345,7 +291,6 @@ def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                             logger.warning(f"SmartMapper Vector Check Error: {e}")
                             
         logger.info(f"Mapper: Successfully mapped {len(mapped_items)} items.")
-        
         return {"line_item_fragments": mapped_items}
         
     except Exception as e:

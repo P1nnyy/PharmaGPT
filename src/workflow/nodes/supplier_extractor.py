@@ -1,18 +1,12 @@
-from google import genai
+from src.services.ai_client import manager
 import json
 import os
 from typing import Dict, Any
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
-from src.utils.image_processing import preprocess_image_for_ocr
 from src.utils.ai_retry import ai_retry
-import tempfile
 
 logger = get_logger(__name__)
-
-# Initialize Gemini Client
-API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 @ai_retry
 async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
@@ -27,14 +21,8 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
     logger.info("SupplierExtractor: Starting specialized extraction...")
     
     try:
-        # We can reuse the same preprocessing or use raw image. 
-        # Supplier details are usually clear enough on the header.
-        # Let's use the provided image path directly to save time, 
-        # as Gemini handles images well.
-        
-        # Upload file using the new SDK
-        sample_file = client.files.upload(file=image_path)
-        # Use the new Client for generation
+        # Upload file using the new SDK via manager
+        sample_file = await manager.upload_file_async(image_path)
         
         prompt = """
         TASK: EXTRACT SUPPLIER / SELLER DETAILS FROM A PHARMA DISTRIBUTOR TAX INVOICE.
@@ -93,11 +81,10 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         - Output PURE JSON only.
         """
         
-        # Using ai_retry decorator instead of manual loop
         logger.info("SupplierExtractor: Executing extraction task")
         
-        # Generate content with the new SDK
-        response = await client.aio.models.generate_content(
+        # Generate content via manager (enforces global semaphore)
+        response = await manager.generate_content_async(
             model='gemini-2.0-flash',
             contents=[prompt, sample_file],
             config={
@@ -110,6 +97,7 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         import re
         clean_text = text.replace("```json", "").replace("```", "").strip()
         
+        data = {}
         try:
             data = json.loads(clean_text)
         except:
@@ -131,9 +119,6 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         raw_gst = data.get("GSTIN")
         if raw_gst:
             data["GSTIN"] = str(raw_gst).replace(" ", "").replace("-", "").upper()
-            
-        if not data:
-            return {"error_logs": ["SupplierExtractor: Failed to extract valid data after retries."]}
              
         logger.info(f"SupplierExtractor: Extracted {data.get('Supplier_Name')} with GSTIN {data.get('GSTIN')}")
         

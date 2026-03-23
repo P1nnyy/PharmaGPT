@@ -111,6 +111,8 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
         
         # Tax Fields
         "Raw_GST_Percentage": raw_gst,
+        # Unit Base Rate (Pre-Tax)
+        "Unit_Base_Rate": (base_amount / (std_qty or 1.0)) if std_qty > 0 else 0.0,
         # For compatibility, we map this to standard fields if useful
         "SGST_Percent": raw_gst / 2 if raw_gst > 0 else 0, # Rough heuristic if not specified
         "CGST_Percent": raw_gst / 2 if raw_gst > 0 else 0,

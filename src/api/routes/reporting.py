@@ -40,8 +40,8 @@ async def get_report(request: Request, invoice_no: str, user_email: str = Depend
     """
     
     with driver.session() as session:
-        result = session.run(query, invoice_no=invoice_no, user_email=user_email).single()
-    
+        result = session.execute_read(lambda tx: tx.run(query, invoice_no=invoice_no, user_email=user_email).single())
+        
     if not result:
         return templates.TemplateResponse("error.html", {"request": request, "message": f"Invoice {invoice_no} not found"})
 

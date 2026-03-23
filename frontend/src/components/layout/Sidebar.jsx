@@ -16,11 +16,11 @@ const Sidebar = ({ activeTab, onTabChange, isMobile, isOpen, onClose, user, onLo
     const menuItems = [
         { id: 'scan', label: 'Scan Invoice', icon: ScanLine },
         { id: 'invoices', label: 'Invoices', icon: Files },
-        { id: 'items', label: 'Items', icon: Database },
-        { id: 'inventory', label: 'Inventory', icon: Package },
+        { id: 'items', label: 'Items', icon: Database, adminOnly: true },
+        { id: 'inventory', label: 'Inventory', icon: Package, adminOnly: true },
         { id: 'history', label: 'History', icon: Clock },
-        { id: 'admin', label: 'System Admin', icon: Shield }
-    ];
+        { id: 'admin', label: 'System Admin', icon: Shield, adminOnly: true }
+    ].filter(item => !item.adminOnly || user?.role === 'Admin');
 
     return (
         <>

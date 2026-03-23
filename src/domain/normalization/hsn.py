@@ -32,7 +32,7 @@ def search_hsn_neo4j(description: str, threshold: float = 0.85) -> str:
         """
         
         with driver.session() as session:
-            result = session.run(query, embedding=embedding, threshold=threshold).single()
+            result = session.execute_read(lambda tx: tx.run(query, embedding=embedding, threshold=threshold).single())
             if result:
                 return result["hsn_code"]
     except Exception as e:

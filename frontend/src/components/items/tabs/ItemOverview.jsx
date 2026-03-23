@@ -43,16 +43,7 @@ export const ItemOverview = ({ formData, handleInputChange }) => {
             />
 
             {/* Source Information (Read Only) */}
-            <div className="col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-slate-900/50 rounded-xl border border-dashed border-slate-700">
-                <InputField
-                    label="Supplier Name"
-                    name="supplier_name"
-                    value={formData.supplier_name}
-                    onChange={handleInputChange}
-                    icon={<Warehouse className="w-3 h-3 text-slate-500" />}
-                    placeholder="Read Only"
-                    readOnly={true}
-                />
+            <div className="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-slate-900/50 rounded-xl border border-dashed border-slate-700">
                 <InputField
                     label="Purchase Date"
                     name="last_purchase_date"

@@ -48,8 +48,7 @@ def create_item_category(category_name: str, base_unit: str = "Unit", supports_a
             params["email"] = user_email
             
         with db.session() as session:
-            result = session.run(query, **params)
-            record = result.single()
+            record = session.execute_write(lambda tx: tx.run(query, **params).single())
             return record["category"] if record else None
     except Exception as e:
         logger.error(f"Error creating ItemCategory: {e}")
@@ -66,8 +65,7 @@ def get_all_item_categories() -> list:
     db = get_db_driver()
     try:
         with db.session() as session:
-            result = session.run(query)
-            return [record["category"] for record in result]
+            return session.execute_read(lambda tx: [record["category"] for record in tx.run(query)])
     except Exception as e:
         logger.error(f"Error fetching ItemCategories: {e}")
         return []
@@ -99,8 +97,7 @@ def get_user_categories(user_email: str) -> list:
     db = get_db_driver()
     try:
         with db.session() as session:
-            result = session.run(query, email=user_email)
-            return [record["category"] for record in result]
+            return session.execute_read(lambda tx: [record["category"] for record in tx.run(query, email=user_email)])
     except Exception as e:
         logger.error(f"Error fetching user categories: {e}")
         return []
@@ -131,8 +128,7 @@ def configure_category(user_email: str, category_name: str, config_updates: dict
             updates["units"] = config_updates["units"]
             
         with db.session() as session:
-            result = session.run(query, email=user_email, category_name=category_name, updates=updates)
-            record = result.single()
+            record = session.execute_write(lambda tx: tx.run(query, email=user_email, category_name=category_name, updates=updates).single())
             return record["config"] if record else None
     except Exception as e:
         logger.error(f"Error configuring category: {e}")
@@ -169,9 +165,12 @@ def seed_default_categories():
     db = get_db_driver()
     try:
         if db:
+            def _seed_tx(tx):
+                tx.run(query_merge, categories=defaults)
+                tx.run(query_cleanup, valid_names=valid_names)
+
             with db.session() as session:
-                session.run(query_merge, categories=defaults)
-                session.run(query_cleanup, valid_names=valid_names)
+                session.execute_write(_seed_tx)
                 logger.info("Default categories seeded and legacy defaults cleaned up successfully.")
     except Exception as e:
         logger.error(f"Error seeding default categories: {e}")
@@ -187,8 +186,7 @@ def delete_item_category(category_name: str) -> bool:
     db = get_db_driver()
     try:
         with db.session() as session:
-            result = session.run(query, name=category_name)
-            record = result.single()
+            record = session.execute_write(lambda tx: tx.run(query, name=category_name).single())
             return record["deleted_count"] > 0 if record else False
     except Exception as e:
         logger.error(f"Error deleting ItemCategory: {e}")
@@ -200,17 +198,16 @@ def delete_item_category(category_name: str) -> bool:
 # we need complex role-based graph permissions, they drop in here.
 
 def create_system_role(role_name: str, permissions: list) -> dict:
-    """Creates a conceptual SystemRole node (if needed by frontend)."""
+    """Creates a conceptual Role node (if needed by frontend)."""
     query = """
-    MERGE (r:SystemRole {name: $name})
+    MERGE (r:Role {name: $name})
     SET r.permissions = $permissions
     RETURN r { .name, .permissions } as role
     """
     db = get_db_driver()
     try:
         with db.session() as session:
-            result = session.run(query, name=role_name, permissions=permissions)
-            record = result.single()
+            record = session.execute_write(lambda tx: tx.run(query, name=role_name, permissions=permissions).single())
             return record["role"] if record else None
     except Exception as e:
         logger.error(f"Error creating SystemRole: {e}")
@@ -219,31 +216,29 @@ def create_system_role(role_name: str, permissions: list) -> dict:
 def get_all_system_roles() -> list:
     """Fetches all custom system roles."""
     query = """
-    MATCH (r:SystemRole)
+    MATCH (r:Role)
     RETURN r { .name, .permissions } as role
     """
     db = get_db_driver()
     try:
         with db.session() as session:
-            result = session.run(query)
-            return [record["role"] for record in result]
+            return session.execute_read(lambda tx: [record["role"] for record in tx.run(query)])
     except Exception as e:
         logger.error(f"Error fetching SystemRoles: {e}")
         return []
 
 def assign_user_role(user_email: str, role_name: str) -> bool:
-    """Assigns a SystemRole to a User"""
+    """Assigns a Role to a User"""
     query = """
     MATCH (u:User {email: $email})
-    MATCH (r:SystemRole {name: $role_name})
+    MATCH (r:Role {name: $role_name})
     MERGE (u)-[:HAS_ROLE]->(r)
     RETURN u, r
     """
     db = get_db_driver()
     try:
         with db.session() as session:
-            result = session.run(query, email=user_email, role_name=role_name)
-            record = result.single()
+            record = session.execute_write(lambda tx: tx.run(query, email=user_email, role_name=role_name).single())
             return True if record else False
     except Exception as e:
         logger.error(f"Error assigning role: {e}")

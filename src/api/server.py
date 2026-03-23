@@ -25,6 +25,7 @@ from src.api.routes.reporting import router as reporting_router
 from src.api.routes.inventory import router as inventory_router
 from src.api.routes.system import router as system_router
 from src.api.routes.config import router as config_router
+from src.api.routes.invitations import router as invitations_router
 
 # --- Logging Configuration ---
 setup_logging(log_dir="logs", log_file="app.log")
@@ -95,6 +96,7 @@ app.include_router(reporting_router)
 app.include_router(inventory_router)
 app.include_router(system_router)
 app.include_router(config_router)
+app.include_router(invitations_router)
 
 # --- Observability ---
 Instrumentator().instrument(app).expose(app)

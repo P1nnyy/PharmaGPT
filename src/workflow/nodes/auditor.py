@@ -1,4 +1,3 @@
-from google import genai
 import math
 import json
 import os
@@ -10,14 +9,7 @@ from src.domain.normalization import parse_float
 
 logger = get_logger("auditor")
 
-# Initialize Gemini Client
-API_KEY = os.getenv("GOOGLE_API_KEY")
-if not API_KEY:
-    logger.warning("GOOGLE_API_KEY not found in environment variables.")
-
-client = genai.Client(api_key=API_KEY) if API_KEY else None
-
-def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
+async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Auditor Node.
     performs a textual/math verification pass to catch logical errors

@@ -3,7 +3,7 @@ import { Search, Plus } from 'lucide-react';
 
 export const ItemSidebar = ({ sidebarTab, setSidebarTab, reviewQueue, allItems, searchTerm, setSearchTerm, handleQueueItemClick, handleNewItem, formData }) => {
     return (
-        <div className="w-full md:w-1/4 min-w-[300px] border-r border-slate-700 flex flex-col bg-slate-900/30 absolute md:relative inset-0 z-10">
+        <div className="w-full h-full flex flex-col">
             {/* Sidebar Tabs */}
             <div className="p-3 pb-0">
                 <div className="flex rounded-lg bg-slate-900 p-1 mb-3 border border-slate-700">

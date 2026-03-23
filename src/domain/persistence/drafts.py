@@ -22,11 +22,10 @@ def get_draft_invoices(driver, user_email: str):
            i.created_at as created_at
     ORDER BY i.created_at DESC
     """
-    with driver.session() as session:
-        result = session.run(query, user_email=user_email)
+    def _read_drafts(tx):
+        result = tx.run(query, user_email=user_email)
         invoices = []
         for record in result:
-             # Deserialize result JSON if present
              res_json = record["result"]
              res_data = json.loads(res_json) if res_json else None
              
@@ -43,6 +42,9 @@ def get_draft_invoices(driver, user_email: str):
              })
         return invoices
 
+    with driver.session() as session:
+        return session.execute_read(_read_drafts)
+
 def delete_draft_invoices(driver, user_email: str):
     """
     Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
@@ -55,9 +57,12 @@ def delete_draft_invoices(driver, user_email: str):
     RETURN cnt
     """
     try:
+        def _delete_tx(tx):
+            result = tx.run(query, user_email=user_email).single()
+            return result["cnt"] if result else 0
+
         with driver.session() as session:
-            result = session.run(query, user_email=user_email).single()
-            count = result["cnt"] if result else 0
+            count = session.execute_write(_delete_tx)
             logger.info(f"Deleted {count} draft invoices for {user_email}.")
     except Exception as e:
         logger.error(f"Failed to delete drafts for {user_email}: {e}")
@@ -71,11 +76,14 @@ def get_invoice_draft(driver, invoice_id: str):
     MATCH (i:Invoice {invoice_id: $invoice_id})
     RETURN i.raw_state as result
     """
-    with driver.session() as session:
-        record = session.run(query, invoice_id=invoice_id).single()
+    def _read_tx(tx):
+        record = tx.run(query, invoice_id=invoice_id).single()
         if record and record["result"]:
             return json.loads(record["result"])
         return None
+
+    with driver.session() as session:
+        return session.execute_read(_read_tx)
 
 def log_correction(driver, invoice_id: str, original: Dict[str, Any], final: Dict[str, Any], user_email: str):
     """
@@ -162,7 +170,7 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str):
     DETACH DELETE i
     """
     with driver.session() as session:
-        session.run(query, user_email=user_email, invoice_id=invoice_id)
+        session.execute_write(lambda tx: tx.run(query, user_email=user_email, invoice_id=invoice_id))
 
 def delete_redundant_draft(driver, invoice_id: str, user_email: str):
     """
@@ -177,9 +185,12 @@ def delete_redundant_draft(driver, invoice_id: str, user_email: str):
     RETURN count(i) as deleted_count
     """
     try:
+        def _delete_tx(tx):
+            result = tx.run(query, user_email=user_email, invoice_id=invoice_id).single()
+            return result["deleted_count"] if result else 0
+
         with driver.session() as session:
-            result = session.run(query, user_email=user_email, invoice_id=invoice_id).single()
-            count = result["deleted_count"] if result else 0
+            count = session.execute_write(_delete_tx)
             if count > 0:
                 logger.info(f"SUCCESS: Deleted redundant draft {invoice_id} for {user_email}.")
             else:

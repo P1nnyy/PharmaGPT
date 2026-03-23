@@ -13,11 +13,14 @@ def connect_db():
     """
     global driver
     try:
-        # Added keep_alive and max_connection_lifetime to prevent 'defunct connection' errors after idle time
+        # Added keep_alive and optimized timeouts for cloud environments (Aura)
         driver = GraphDatabase.driver(
             NEO4J_URI, 
             auth=(NEO4J_USER, NEO4J_PASSWORD),
-            max_connection_lifetime=200, # Refresh connections every 3.5 mins approx
+            max_connection_lifetime=180, # 3 mins (stay below Aura's 5 min idle timeout)
+            max_connection_pool_size=50,
+            connection_timeout=30.0,
+            liveness_check_timeout=30.0, # Verify connection if idle for > 30s
             keep_alive=True
         )
         driver.verify_connectivity()
@@ -93,12 +96,26 @@ def init_vector_index(driver):
     }}
     """
     
+    # 3. Product Master Index
+    q3 = """
+    CREATE VECTOR INDEX product_index IF NOT EXISTS
+    FOR (n:Product)
+    ON (n.embedding)
+    OPTIONS {indexConfig: {
+      `vector.dimensions`: 768,
+      `vector.similarity_function`: 'cosine'
+    }}
+    """
+    
     try:
         with driver.session() as session:
-            session.run(q1)
+            session.execute_write(lambda tx: tx.run(q1))
             logger.info("Vector Index 'invoice_examples_index' initialization checked.")
             
-            session.run(q2)
+            session.execute_write(lambda tx: tx.run(q2))
             logger.info("Vector Index 'hsn_vector_index' initialization checked.")
+
+            session.execute_write(lambda tx: tx.run(q3))
+            logger.info("Vector Index 'product_index' initialization checked.")
     except Exception as e:
         logger.error(f"Failed to create Vector Indexes: {e}")

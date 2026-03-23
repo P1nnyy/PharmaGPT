@@ -1,20 +1,35 @@
+from src.services.ai_client import manager
 from typing import Dict, Any, List
 import os
 import json
-import logging
-from google import genai
-# from langchain_community.tools import DuckDuckGoSearchRun # REMOVED: Broken dependency
+import asyncio
 from duckduckgo_search import DDGS
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 
 logger = get_logger("researcher")
 
-# Initialize Gemini Client
-API_KEY = os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=API_KEY) if API_KEY else None
+async def expand_abbreviations(product_name: str) -> List[str]:
+    """
+    Uses LLM to guess full names from abbreviations (e.g., CS -> Colgate Sensitive).
+    """
+    prompt = f"""
+    Given the product name from a pharmacy/FMCG invoice: "{product_name}"
+    
+    If it looks like an abbreviation or a shortened name, provide 1-2 possible full product names (e.g. "Colgate Sensitive" for "CS").
+    If it's already a full name, just return the name as is.
+    
+    Return strictly JSON: {{"expansions": ["name1", "name2"]}}
+    """
+    try:
+        response = await manager.generate_content_async(model="gemini-2.0-flash", contents=[prompt])
+        data = json.loads(response.text.replace("```json", "").replace("```", "").strip())
+        return data.get("expansions", [product_name])
+    except Exception as e:
+        logger.warning(f"Researcher abbreviation expansion failed: {e}")
+        return [product_name]
 
-def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
+async def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Researcher Node.
     Uses DuckDuckGo + LLM to enrich missing pharma details (Manufacturer, Salt Mapping).
@@ -27,11 +42,7 @@ def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
 
     logger.info(f"Researcher: checking {len(normalized_items)} items for enrichment needs...")
     
-    # Initialize Search Tool
-    # search_tool = DuckDuckGoSearchRun() # REMOVED
-    # ddgs = DDGS() # Removed redundant init if needed
     ddgs = DDGS()
-
     enriched_count = 0
     updated_items = []
 
@@ -52,34 +63,55 @@ def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
                 updated_items.append(item)
                 continue
                 
-            query = f"{product_name} medicine manufacturer salt composition India"
-            logger.info(f"Researcher: Searching web for '{product_name}'...")
-            
             try:
-                # 1. Search
-                # search_results = search_tool.run(query)
-                results = ddgs.text(query, max_results=3)
-                if not results:
-                     search_results = "No results found."
-                else:
-                     search_results = "\n".join([f"- {r.get('title', '')}: {r.get('body', '')}" for r in results])
+                # 1. Broaden Search Strategy
+                search_results = "No results found."
+                search_queries = []
                 
-                # 2. LLM Analysis
+                # Step A: Expand name (e.g. CS -> Colgate Sensitive)
+                expanded_names = await expand_abbreviations(product_name)
+                for name in expanded_names:
+                    search_queries.append(f"{name} manufacturer composition India")
+                    search_queries.append(f"{name} brand owner active ingredients")
+                
+                # Remove duplicates and limit
+                search_queries = list(dict.fromkeys(search_queries))[:3]
+                
+                all_snippets = []
+                for query in search_queries:
+                    logger.info(f"Researcher: Searching for '{query}'...")
+                    try:
+                        # ddgs.text is synchronous, running in an async node is okay as long as it's not too slow.
+                        res = ddgs.text(query, max_results=2)
+                        if res:
+                            all_snippets.extend([f"- {r.get('title', '')}: {r.get('body', '')}" for r in res])
+                    except Exception as e:
+                        logger.warning(f"Search Query failed: {e}")
+                
+                if all_snippets:
+                    search_results = "\n".join(all_snippets)
+                
+                # 2. LLM Analysis (Updated prompt for FMCG/OMC items)
                 prompt = f"""
-                Analyze these search results for the medicine "{product_name}".
+                Analyze these search results for the item "{product_name}".
                 
                 SEARCH SNIPPETS:
                 {search_results}
                 
                 TASK:
-                Extract the following details:
-                1. Manufacturer (Company Name)
-                2. Salt Composition (Generic Name / Active Ingredients)
-                3. Packaging Size (e.g. 10 Tablets, 1 Strip, 100ml Bottle)
+                Extract official details for this product. 
+                If it's a medicine, find active salts. 
+                If it's an OMC/Personal Care item (like toothpaste, shampoo), find the main ingredients.
+                
+                EXPANSION HINTS: {", ".join(expanded_names)}
+                
+                OUTPUT FIELDS:
+                1. manufacturer: Company Name (e.g. Colgate Palmolive, Sun Pharma)
+                2. salt_composition: Leading active ingredients or salts.
+                3. packaging_size: Best guess for pack size (e.g. 70g, 10 tablets).
                 
                 RULES:
-                - If conflicting, use the most credible source or return null.
-                - Do NOT hallucinate. If not found, return null.
+                - Use the most credible source.
                 - Return strictly valid JSON.
                 
                 OUTPUT FORMAT:
@@ -90,9 +122,9 @@ def enrich_line_items(state: InvoiceStateDict) -> Dict[str, Any]:
                 }}
                 """
                 
-                response = client.models.generate_content(
+                response = await manager.generate_content_async(
                     model="gemini-2.0-flash",
-                    contents=prompt
+                    contents=[prompt]
                 )
                 text = response.text.replace("```json", "").replace("```", "").strip()
                 data = json.loads(text)

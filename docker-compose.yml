@@ -17,6 +17,7 @@ services:
     environment:
       - VITE_API_BASE_URL=
       - VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+      - DOCKER_ENV=true
     env_file:
       - .env
 

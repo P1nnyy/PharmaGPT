@@ -71,7 +71,7 @@ const InvoiceViewer = ({
                             <div
                                 key={item.id}
                                 onClick={() => handleQueueItemClick(item.id)}
-                                className={`w-full text-left p-2 rounded-lg flex items-center gap-3 transition-all relative overflow-hidden group cursor-pointer
+                                className={`w-full text-left p-2 rounded-lg flex items-center gap-3 transition-all relative group cursor-pointer
                                     ${item.id === selectedQueueId ? 'bg-indigo-500/20 ring-1 ring-indigo-500/50' : 'hover:bg-gray-800'}
                                 `}
                             >
@@ -93,16 +93,16 @@ const InvoiceViewer = ({
                                     </div>
                                 </div>
 
-                                {/* STATUS ICON */}
-                                <div className="absolute right-2 top-2 md:static md:right-auto md:top-auto flex flex-col items-end gap-2 md:block">
+                                {/* STATUS & ACTIONS */}
+                                <div className="flex flex-col items-end gap-1.5 ml-auto shrink-0 pl-1">
                                     {item.status === 'processing' && (
                                         <div className="bg-black/60 p-1.5 rounded-full backdrop-blur-sm shadow-md">
                                             <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
                                         </div>
                                     )}
                                     {item.status === 'completed' && (
-                                        <div className="bg-green-500/20 md:bg-transparent p-1 rounded-full drop-shadow-md">
-                                            <div className="bg-green-500 p-1 rounded-full shadow-lg">
+                                        <div className="bg-green-500/20 p-1.5 rounded-full drop-shadow-md">
+                                            <div className="bg-green-500 p-0.5 rounded-full shadow-lg">
                                                 <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                                 </svg>
@@ -110,15 +110,15 @@ const InvoiceViewer = ({
                                         </div>
                                     )}
                                     {item.status === 'duplicate' && (
-                                        <div className="bg-black/70 p-1.5 rounded-full group mx-1 relative backdrop-blur-md shadow-lg border border-amber-500/50">
+                                        <div className="bg-black/70 p-1.5 rounded-full group relative backdrop-blur-md shadow-lg border border-amber-500/50">
                                             <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                             </svg>
                                         </div>
                                     )}
                                     {item.status === 'error' && (
-                                        <div className="bg-red-500/20 p-1 rounded-full backdrop-blur-sm">
-                                            <div className="bg-red-500 p-1 rounded-full shadow-lg">
+                                        <div className="bg-red-500/20 p-1.5 rounded-full backdrop-blur-sm">
+                                            <div className="bg-red-500 p-0.5 rounded-full shadow-lg">
                                                 <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                                 </svg>
@@ -127,7 +127,7 @@ const InvoiceViewer = ({
                                     )}
 
                                     {/* 3-DOTS MENU */}
-                                    <div className="relative mt-1" ref={menuOpenId === item.id ? menuRef : null}>
+                                    <div className="relative" ref={menuOpenId === item.id ? menuRef : null}>
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();

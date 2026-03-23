@@ -137,17 +137,46 @@ async def auth_callback(request: Request):
 @router.get("/me")
 async def get_current_user_profile(user_email: str = Depends(get_current_user_email)):
     """
-    Returns the full profile of the currently logged-in user.
+    Returns the profile, role, and permissions of the currently logged-in user.
     """
     driver = get_db_driver()
     if not driver:
         raise HTTPException(status_code=503, detail="Database unavailable")
         
-    query = "MATCH (u:User {email: $email}) RETURN u"
+    query = """
+    MATCH (u:User {email: $email})
+    OPTIONAL MATCH (u)-[:HAS_ROLE]->(r:Role)
+    RETURN u, r.name AS role, r.permissions AS permissions
+    """
     with driver.session() as session:
-        result = session.run(query, email=user_email).single()
+        result = session.execute_read(lambda tx: tx.run(query, email=user_email).single())
         
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
         
-    return dict(result["u"])
+    user_data = dict(result["u"])
+    user_data["role"] = result["role"] or "Employee"
+    user_data["permissions"] = result["permissions"] or []
+
+    # --- Shop Logic (Large Scale Optimization) ---
+    if user_data["role"] == "Admin":
+        shop_query = """
+        MATCH (u:User {email: $email})
+        MERGE (u)-[:OWNS_SHOP]->(s:Shop)
+        ON CREATE SET s.name = u.name + "'s Shop", s.id = apoc.create.uuid()
+        RETURN s.name as shop_name, s.id as shop_id
+        """
+        # Note: If APOC is not available, we can use a simpler MERGE or python uuid.
+        # For now, let's use a standard MERGE and SET.
+        shop_query = """
+        MATCH (u:User {email: $email})
+        MERGE (u)-[:OWNS_SHOP]->(s:Shop)
+        ON CREATE SET s.name = u.name + "'s Shop", s.created_at = datetime()
+        RETURN s.name as shop_name
+        """
+        with driver.session() as session:
+            shop_res = session.run(shop_query, email=user_email).single()
+            if shop_res:
+                user_data["shop_name"] = shop_res["shop_name"]
+
+    return user_data

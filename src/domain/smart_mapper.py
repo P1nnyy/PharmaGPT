@@ -33,7 +33,7 @@ def enrich_hsn_details(hsn_code: str) -> Dict[str, any]:
         """
         try:
             with driver.session() as session:
-                result = session.run(query, code=clean_code).single()
+                result = session.execute_read(lambda tx: tx.run(query, code=clean_code).single())
                 if result:
                     return {"desc": result["desc"], "tax": result["tax"]}
         except Exception:
@@ -99,7 +99,7 @@ async def enrich_line_items_from_master(line_items: List[Dict[str, Any]], user_e
             # Simple fallback for standard products if not in user's managed list?
             # For now, strictly User's inventory.
             
-            rec = session.run(lookup_query, user_email=user_email, desc=raw_desc).single()
+            rec = session.execute_read(lambda tx: tx.run(lookup_query, user_email=user_email, desc=raw_desc).single())
             
             logic_notes = []
             if item.get("Logic_Note"):
@@ -144,7 +144,7 @@ async def enrich_line_items_from_master(line_items: List[Dict[str, Any]], user_e
                  RETURN h.description as desc
                  LIMIT 1
                  """
-                 hsn_rec = session.run(hsn_query, code=hsn_code).single()
+                 hsn_rec = session.execute_read(lambda tx: tx.run(hsn_query, code=hsn_code).single())
                  if hsn_rec and hsn_rec["desc"]:
                      # We don't have a field "HSN_Description" in standard LineItem schema usually?
                      # Sometimes schema uses 'Description' for product. 
