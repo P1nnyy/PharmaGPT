@@ -22,7 +22,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                         </div>
 
                         <div className="divide-y divide-gray-800/50">
-                            {lineItems.map((item, idx) => (
+                            {(lineItems || []).filter(item => item != null).map((item, idx) => (
                                 <div
                                     key={idx}
                                     className={`grid grid-cols-12 gap-4 items-center py-3 px-4 transition-colors group ${item?.is_price_hike ? 'bg-red-900/10 hover:bg-red-900/20 border-l-2 border-red-500' : 'hover:bg-gray-800/30 border-l-2 border-transparent hover:border-gray-700'
@@ -104,19 +104,27 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                             </div>
                                         )}
 
-                                        <input
-                                            type="number"
-                                            value={readOnly ? (parseFloat(item?.Net_Line_Amount) || 0).toFixed(2) : (item?.Net_Line_Amount || 0)}
-                                            onChange={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
-                                            onBlur={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value).toFixed(2))}
-                                            className={`w-32 bg-transparent outline-none font-mono text-right font-bold text-base disabled:text-green-500/80
-                                                ${item?.Is_Calculated
-                                                    ? 'text-amber-400 focus:text-amber-300 bg-amber-900/20 rounded px-1'
-                                                    : 'text-green-400 focus:text-green-300'
-                                                }
-                                            `}
-                                            disabled={readOnly}
-                                        />
+                                        <div className="flex flex-col items-end">
+                                            <input
+                                                type="number"
+                                                value={readOnly ? (parseFloat(item?.Net_Line_Amount) || 0).toFixed(2) : (item?.Net_Line_Amount || 0)}
+                                                onChange={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value))}
+                                                onBlur={(e) => onInputChange(idx, 'Net_Line_Amount', parseFloat(e.target.value).toFixed(2))}
+                                                className={`w-32 bg-transparent outline-none font-mono text-right font-bold text-base disabled:text-green-500/80
+                                                    ${item?.Is_Calculated
+                                                        ? 'text-amber-400 focus:text-amber-300 bg-amber-900/20 rounded px-1'
+                                                        : 'text-green-400 focus:text-green-300'
+                                                    }
+                                                `}
+                                                disabled={readOnly}
+                                            />
+                                            {item?.effective_landing_cost > 0 && (
+                                                <div className="text-[10px] text-indigo-400/70 font-medium flex items-center gap-1 mt-0.5">
+                                                    <span className="text-gray-600">Landed:</span>
+                                                    <span>₹{parseFloat(item.effective_landing_cost).toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -127,7 +135,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
 
             {/* --- MOBILE VIEW (Compact Cards) --- */}
             <div className="md:hidden flex flex-col gap-1">
-                {lineItems.map((item, idx) => (
+                {(lineItems || []).filter(item => item != null).map((item, idx) => (
                     <div
                         key={idx}
                         className={`bg-gray-800/40 rounded-lg p-2 border transition-all relative overflow-hidden ${item?.is_price_hike ? 'border-red-500/50 shadow-[0_0_15px_-3px_rgba(239,68,68,0.2)]' : 'border-gray-700/50 shadow-sm'

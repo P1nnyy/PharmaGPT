@@ -29,6 +29,7 @@ class RawLineItem(BaseModel):
 
     # New Field for Manufacturer Extraction
     Manufacturer: Optional[str] = Field(None, description="The manufacturer or company name extracted from the line item.")
+    effective_landing_cost: float = Field(0.0, description="The true cost of the item after tax and global discounts.")
 
 class InvoiceExtraction(BaseModel):
     """
@@ -51,6 +52,14 @@ class InvoiceExtraction(BaseModel):
     image_path: Optional[str] = Field(None, description="Relative path to the stored invoice image.")
     raw_text: Optional[str] = Field(None, description="Raw OCR Text for Vector Storage (RAG).")
     trace_id: Optional[str] = Field(None, description="Langfuse Trace ID for debugging.")
+
+    # Strict Ledger Fields
+    sub_total: float = Field(0.0, description="Pre-tax, pre-discount total of all line items.")
+    global_discount: float = Field(0.0, description="Global discount applied to the entire invoice.")
+    taxable_value: float = Field(0.0, description="Sub-total minus global discount.")
+    total_sgst: float = Field(0.0, description="Total SGST from the footer.")
+    total_cgst: float = Field(0.0, description="Total CGST from the footer.")
+    round_off: float = Field(0.0, description="Rounding adjustment.")
 
 class NormalizedLineItem(BaseModel):
     """
@@ -77,6 +86,7 @@ class NormalizedLineItem(BaseModel):
     
     # Financials
     Calculated_Tax_Amount: Optional[float] = Field(None, description="Calculated Tax Amount based on Rate.")
+    effective_landing_cost: float = Field(0.0, description="The true cost of the item after tax and global discounts.")
 
     # --- New Ops/Pharma Fields ---
     is_enriched: bool = Field(False, description="True if data was fetched from the internet.")

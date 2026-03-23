@@ -66,6 +66,25 @@ async def get_current_user_email(token: str = Depends(oauth2_scheme)):
         logger.error(f"JWT Validation Failed: {e}")
         raise HTTPException(status_code=401, detail=f"Could not validate credentials: {str(e)}")
 
+async def get_current_user_role(user_email: str = Depends(get_current_user_email)) -> str:
+    """
+    Fetches the role of the currently logged-in user.
+    """
+    driver = get_db_driver()
+    if not driver:
+         raise HTTPException(status_code=503, detail="Database unavailable")
+    
+    query = """
+    MATCH (u:User {email: $email})
+    OPTIONAL MATCH (u)-[:HAS_ROLE]->(r:Role)
+    RETURN r.name AS role
+    """
+    with driver.session() as session:
+        result = session.execute_read(lambda tx: tx.run(query, email=user_email).single())
+        if result and result["role"]:
+            return result["role"]
+    return "Employee"
+
 # --- Endpoints ---
 
 @router.get("/google/login")
@@ -187,3 +206,30 @@ async def get_current_user_profile(user_email: str = Depends(get_current_user_em
             user_data["shop_id"] = "personal"
 
     return user_data
+
+@router.post("/leave-shop")
+async def leave_shop(user_email: str = Depends(get_current_user_email)):
+    """
+    Removes the user's affiliation with their current shop.
+    Returns the user to a "Personal Workspace" state.
+    """
+    driver = get_db_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+        
+    # Logic: Delete WORKS_AT relationship. 
+    # If they are an OWNER, we might want to warn them, 
+    # but for now, we just delete the relationship.
+    query = """
+    MATCH (u:User {email: $email})-[rel:WORKS_AT|OWNS_SHOP]->(s:Shop)
+    DELETE rel
+    RETURN s.name as shop_name
+    """
+    
+    with driver.session() as session:
+        result = session.run(query, email=user_email).single()
+        if not result:
+            raise HTTPException(status_code=400, detail="User is not currently affiliated with any shop.")
+            
+    logger.info(f"User {user_email} left shop: {result['shop_name']}")
+    return {"message": f"Successfully left shop: {result['shop_name']}", "shop_name": result["shop_name"]}

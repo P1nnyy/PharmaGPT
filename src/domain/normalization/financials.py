@@ -86,75 +86,65 @@ def parse_quantity(value: Union[str, float, None], free_qty: Union[str, float, N
 
 def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: float) -> list:
     """
-    SMART DIRECTIONAL RECONCILIATION:
-    Adjusts line items to match Grand Total based on mathematical directionality.
+    PERFECT LEDGER MATH ENGINE:
+    Implements a Strict Ledger Equation and Proportional Allocation.
     """
-    if not line_items or grand_total <= 0:
+    if not line_items:
         return line_items
+
+    # 1. Calculate Sub-Total from Line Items
+    calculated_sub_total = sum(float(item.get("Amount", 0.0)) for item in line_items)
+    
+    # 2. Extract Modifier values
+    global_discount = parse_float(global_modifiers.get("global_discount", 0.0))
+    total_sgst = parse_float(global_modifiers.get("total_sgst", 0.0))
+    total_cgst = parse_float(global_modifiers.get("total_cgst", 0.0))
+    round_off = parse_float(global_modifiers.get("round_off", 0.0))
+    
+    # 3. Calculate Derived Values
+    taxable_value = calculated_sub_total - global_discount
+    expected_grand_total = taxable_value + total_sgst + total_cgst + round_off
+    
+    # 4. Consistency Check (Margin 1.0)
+    gap = abs(expected_grand_total - grand_total)
+    if gap > 1.0:
+        error_msg = f"Financial Mismatch: Expected Grand Total {expected_grand_total:.2f} (Sub:{calculated_sub_total:.2f} - Disc:{global_discount:.2f} + GST:{total_sgst+total_cgst:.2f} + RO:{round_off:.2f}) does not match Stated Grand Total {grand_total:.2f} (Gap: {gap:.2f})"
+        logger.error(error_msg)
+        # We append this to the first item's logic note or a general state error if available
+        if line_items:
+            line_items[0]["Validation_Error"] = error_msg
+
+    # 5. Proportional Allocation for Effective Landing Cost
+    for item in line_items:
+        item_amount = float(item.get("Amount", 0.0))
         
-    current_sum = sum(float(item.get("Net_Line_Amount", 0)) for item in line_items)
-    gap = current_sum - grand_total
-    
-    if abs(gap) < 0.01:
-        # Truly negligible
-        return line_items
-
-    logger.info(f"Reconcile: GAP DETECTED. Sum {current_sum:.2f} vs Total {grand_total:.2f} (Gap {gap:.2f})")
-    
-    # Initialize
-    modifier_to_apply = -gap # We always want to negate the gap
-    action = "FORCED_MATCH"
-    
-    # Extract Modifiers for labeling
-    g_disc = abs(float(global_modifiers.get("Global_Discount_Amount", 0) or 0))
-    g_tax = abs(float(global_modifiers.get("Global_Tax_Amount", 0) or 0) + 
-                float(global_modifiers.get("SGST_Amount", 0) or 0) + 
-                float(global_modifiers.get("CGST_Amount", 0) or 0) + 
-                float(global_modifiers.get("IGST_Amount", 0) or 0))
-    
-    if gap > 0:
-        # Inflation (Sum > Total). Reduce.
-        if g_disc > 0:
-            action = "APPLY_DISCOUNT_CORRECTION"
-            logger.info("Reconcile: Gap attributed to Global Discount.")
-        else:
-            action = "IMPLICIT_REDUCTION" 
-            logger.info("Reconcile: Gap treated as Implicit Reduction/Rounding.")
+        # Safe Weight Ratio
+        weight_ratio = item_amount / calculated_sub_total if calculated_sub_total > 0 else 0
+        
+        # Allocation
+        item_discount_share = global_discount * weight_ratio
+        item_taxable = item_amount - item_discount_share
+        
+        # Tax Calculation (Default 5% if missing)
+        # Use sum of percentages if available
+        gst_percent = (float(item.get("SGST_Percent", 0.0) or 0.0) + 
+                       float(item.get("CGST_Percent", 0.0) or 0.0) + 
+                       float(item.get("IGST_Percent", 0.0) or 0.0))
+        if gst_percent <= 0:
+            gst_percent = 5.0 # User's default
             
-    elif gap < 0:
-        # Deflation (Sum < Total). Increase.
-        adder_sum = g_tax 
-        if adder_sum > 0:
-            action = "APPLY_TAX_CORRECTION"
-            logger.info("Reconcile: Gap attributed to Global Tax.")
-        else:
-            action = "IMPLICIT_ADDITION"
-            logger.info("Reconcile: Gap treated as Implicit Addition/Rounding.")
-
-    # EXECUTE DISTRIBUTION
-    if modifier_to_apply != 0:
-        for item in line_items:
-            original_net = float(item.get("Net_Line_Amount", 0))
-            ratio = original_net / current_sum if current_sum > 0 else 0
+        item_tax = item_taxable * (gst_percent / 100)
+        
+        # Final Landed Cost
+        item["effective_landing_cost"] = round(item_taxable + item_tax, 2)
+        
+        # Calculate Unit Cost (Landed)
+        qty = float(item.get("Standard_Quantity", 1) or 1)
+        if qty > 0:
+            item["Final_Unit_Cost"] = round(item["effective_landing_cost"] / qty, 2)
             
-            share = modifier_to_apply * ratio
-            new_net = original_net + share # Add (modifier might be negative)
-            
-            # Metadata for UI Feedback "Perfect Match"
-            correction_factor = new_net / original_net if original_net != 0 else 1.0
-            
-            item["Net_Line_Amount"] = round(new_net, 2)
-            item["Is_Calculated"] = True # New Flag for Frontend UI (Calculator Icon)
-            
-            # Recalculate Unit Cost
-            qty = float(item.get("Standard_Quantity", 1) or 1)
-            if qty > 0:
-                item["Final_Unit_Cost"] = round(new_net / qty, 2)
-            
-            # logic_note update
-            factor_str = f"{correction_factor:.4f}x"
-            # Append specific note
-            old_note = item.get("Logic_Note", "")
-            item["Logic_Note"] = f"{old_note} [Reconcile: {action}, Factor: {factor_str}]"
+        # Logic Note Update
+        old_note = item.get("Logic_Note", "")
+        item["Logic_Note"] = f"{old_note} [Ledger: Taxable {item_taxable:.2f}, Tax {item_tax:.2f}, Landing {item['effective_landing_cost']:.2f}]"
 
     return line_items

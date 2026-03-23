@@ -20,7 +20,14 @@ const Sidebar = ({ activeTab, onTabChange, isMobile, isOpen, onClose, user, onLo
         { id: 'inventory', label: 'Inventory', icon: Package, adminOnly: true },
         { id: 'history', label: 'History', icon: Clock },
         { id: 'admin', label: 'System Admin', icon: Shield, adminOnly: true }
-    ].filter(item => !item.adminOnly || user?.role === 'Admin');
+    ].filter(item => {
+        if (!item.adminOnly) return true;
+        if (user?.role === 'Admin') return true;
+        // Logic: If user is not yet part of any shop (Personal Workspace), let them see all tabs (e.g. Master Items) 
+        // until they get invited to a shop which then enforces role-based restrictions.
+        if (user?.shop_id === 'personal' || !user?.shop_id) return true;
+        return false;
+    });
 
     return (
         <>

@@ -59,6 +59,7 @@ const DataEditor = ({
             />
 
             <EditorFooter
+                invoiceData={invoiceData}
                 lineItems={lineItems}
                 isSaving={isSaving}
                 onExport={onExport}

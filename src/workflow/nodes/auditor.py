@@ -304,7 +304,13 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
              except:
                  pass
     
-    return {"line_items": deduped_line_items, "global_modifiers": cleaned_modifiers}
+    # Strict Python list comprehension to purge invalid items and nulls
+    cleaned_items = [
+        item for item in deduped_line_items
+        if item is not None and isinstance(item, dict) and (item.get('name') or item.get('Product') or item.get('Standard_Item_Name') or item.get('Amount') or item.get('Net_Line_Amount'))
+    ]
+
+    return {"line_items": cleaned_items, "global_modifiers": cleaned_modifiers}
 
 def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """

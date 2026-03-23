@@ -59,7 +59,8 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             - **DUPLICATES**: If the Exact Same Item appears on multiple lines (e.g. "Dolo 650" twice), LIST IT TWICE. Do not combine them.
             - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
             - **NO MERGING**: Do not merge distinct visual rows.
-            - **COLUMNS**: Aggressively look for "Net Amount", "Total", "Amount", "Value".
+            - **COLUMNS**: Aggressively look for "Amount", "Value", "Total". 
+            - **AMOUNT RULE**: The "Amount" column is the PRE-TAX, PRE-GLOBAL-DISCOUNT value (Rate * Qty).
             - **MANUFACTURER**: Aggressively look for "Mfr", "CMPNY", "Co", "Make" columns. extract them!
             
             NEGATIVE CONSTRAINTS (CRITICAL):
@@ -87,31 +88,29 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             prompt = f"""
             Target Zone: {description}
             
-            Task: Extract global financial fields from this section. Ignore line items.
+            Task: Extract global financial fields from the summary/footer block.
             
             Fields to Extract:
-            - **Global_Discount_Amount**: 
-                - SUM of ALL broad discounts in the footer (e.g. "Less 5%", "Cash Discount", "Scheme Discount", "CD", "Trade Discount").
-                - IF multiple discounts exist (e.g. Discount + CD), ADD THEM TOGETHER.
-                - Ignore line-item level discount sums unless they are clearly deducted from the SubTotal.
-            - **Freight_Charges**: Shipping/Transport costs.
-            - Round_Off
-            - SGST_Amount (Total S.GST from footer summary)
-            - CGST_Amount (Total C.GST from footer summary)
-            - IGST_Amount (Total I.GST from footer summary)
-            - Stated_Grand_Total (The final 'Net Payable' or 'Grand Total'). This is the **ANCHOR** truth for the invoice.
+            - **sub_total**: The total of all line items BEFORE tax and discount.
+            - **global_discount**: Total discount applied at the bottom (Cash Discount, CD, Scheme, etc).
+            - **taxable_value**: Sub-total minus global_discount.
+            - **total_sgst**: Total SGST amount.
+            - **total_cgst**: Total CGST amount.
+            - **round_off**: Rounding adjustment.
+            - **Stated_Grand_Total**: The final 'Net Payable' amount.
             
             CRITICAL:
-            - The 'Stated_Grand_Total' is the most important field. If it is ambiguous, look for the double-bolded or final bottom-right figure.
+            - The 'Stated_Grand_Total' is the absolute anchor.
+            - If you see "Taxable Value" in the footer, map it to 'taxable_value'.
             
             Return JSON:
             {{
-                "Global_Discount_Amount": float,
-                "Freight_Charges": float,
-                "Round_Off": float,
-                "SGST_Amount": float,
-                "CGST_Amount": float,
-                "IGST_Amount": float,
+                "sub_total": float,
+                "global_discount": float,
+                "taxable_value": float,
+                "total_sgst": float,
+                "total_cgst": float,
+                "round_off": float,
                 "Stated_Grand_Total": float
             }}
             """
@@ -264,13 +263,17 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             1. Find the main table with Products, Qty, Amounts.
             2. Convert it VISUALLY into a Pipe-Separated Markdown table.
             3. **Do not merge rows**. Keep every single line item separate.
-            4. **DUPLICATES**: If the Exact Same Item appears multiple times, LIST IT MULTIPLE TIMES.
-            5. Capture exact headers like "Pcode", "Rate", "Amount", "Net Amount", "Total".
+            4. **AMOUNT RULE**: Extract the PRE-TAX, PRE-DISCOUNT "Amount" for each line.
+            5. **FOOTER**: Extract sub_total, global_discount, total_sgst, total_cgst, and round_off from the bottom summary.
+            6. **DUPLICATES**: If the Exact Same Item appears multiple times, LIST IT MULTIPLE TIMES.
+            7. Capture exact headers like "Pcode", "Rate", "Amount", "Total".
             
             NEGATIVE CONSTRAINTS (CRITICAL):
             - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.
             - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
             - **IGNORE "Bank Details"**: Do not extract bank info as rows.
+            
+            Output Header (if first try): sub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total.
             
             Output ONLY the table.
             """

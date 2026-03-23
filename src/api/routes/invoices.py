@@ -55,8 +55,10 @@ async def clear_drafts(user_email: str = Depends(get_current_user_email)):
     delete_draft_invoices(driver, user_email)
     return {"status": "success", "message": "Drafts cleared and active scans cancelled"}
 
+from src.api.routes.auth import get_current_user_email, get_current_user_role
+...
 @router.delete("/{invoice_id}")
-async def discard_invoice(invoice_id: str, user_email: str = Depends(get_current_user_email)):
+async def discard_invoice(invoice_id: str, wipe: bool = False, user_email: str = Depends(get_current_user_email), role: str = Depends(get_current_user_role)):
     driver = get_db_driver()
     if not driver:
          raise HTTPException(status_code=503, detail="Database unavailable")
@@ -65,8 +67,9 @@ async def discard_invoice(invoice_id: str, user_email: str = Depends(get_current
     task_manager.cancel(user_email, invoice_id)
     
     # 2. Delete from DB
-    delete_invoice_by_id(driver, invoice_id, user_email)
-    return {"status": "success", "message": f"Invoice {invoice_id} discarded and scan cancelled"}
+    is_admin = (role == "Admin")
+    delete_invoice_by_id(driver, invoice_id, user_email, wipe=wipe, is_admin=is_admin)
+    return {"status": "success", "message": f"Invoice {invoice_id} {'wiped' if wipe else 'discarded'} and scan cancelled"}
 
 @router.get("/stream-status")
 async def stream_status(

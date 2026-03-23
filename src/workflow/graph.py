@@ -177,6 +177,22 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
         logger.info(f"Merging Supplier Details into Output: {supplier_details}")
         final_output["supplier_details"] = supplier_details
         
+        # FALLBACK FIX: If the main worker failed to extract the header, use the highly accurate supplier extractor's data
+        if not final_output.get("Supplier_Name") or final_output.get("Supplier_Name") == "Unknown":
+            if supplier_details.get("Supplier_Name"):
+                logger.info(f"Fallback: Applying Supplier_Name '{supplier_details['Supplier_Name']}' from specialized node.")
+                final_output["Supplier_Name"] = supplier_details["Supplier_Name"]
+                
+        if not final_output.get("Invoice_No"):
+            if supplier_details.get("Invoice_No"):
+                logger.info(f"Fallback: Applying Invoice_No '{supplier_details['Invoice_No']}' from specialized node.")
+                final_output["Invoice_No"] = supplier_details["Invoice_No"]
+                
+        if not final_output.get("Invoice_Date"):
+            if supplier_details.get("Invoice_Date"):
+                logger.info(f"Fallback: Applying Invoice_Date '{supplier_details['Invoice_Date']}' from specialized node.")
+                final_output["Invoice_Date"] = supplier_details["Invoice_Date"]
+        
     error_logs = result_state.get("error_logs", [])
     
     if error_logs:

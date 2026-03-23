@@ -21,7 +21,12 @@ def get_activity_log(driver, user_email: str):
       )
     
     OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
-    RETURN inv.invoice_number as invoice_number, 
+    
+    // Get the User who OWNS this invoice
+    OPTIONAL MATCH (owner:User)-[:OWNS]->(inv)
+    
+    RETURN inv.invoice_id as id,
+           inv.invoice_number as invoice_number, 
            coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, 
            inv.created_at as created_at, 
            inv.updated_at as saved_at,
@@ -31,7 +36,7 @@ def get_activity_log(driver, user_email: str):
            supp.phone as supplier_phone,
            supp.dl_no as supplier_dl,
            supp.address as supplier_address,
-           coalesce(u.name, 'User') as saved_by
+           coalesce(owner.name, 'User') as saved_by
     ORDER BY inv.updated_at DESC LIMIT 20
     """
     with driver.session() as session:
@@ -140,16 +145,35 @@ def get_grouped_invoice_history(driver, user_email: str):
         (s_node IS NULL AND (u)-[:OWNS]->(inv))
       )
     
-    // Group by Supplier Name (ensure non-null)
-    WITH coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, 
-         collect(inv) as invoices, 
-         coalesce(u.name, 'User') as user_name
+    // Group by Supplier Name
+    WITH coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, inv
     
-    // Calculate total spend per supplier
-    WITH supplier_name, invoices, user_name,
-         reduce(msg = 0.0, inver in invoices | msg + coalesce(inver.grand_total, 0.0)) as total_spend
+    // Get the User who OWNS this invoice
+    OPTIONAL MATCH (owner:User)-[:OWNS]->(inv)
+    
+    WITH supplier_name, 
+         inv, 
+         coalesce(owner.name, 'Unknown') as uploader_name,
+         coalesce(owner.email, '') as uploader_email
+    
+    WITH supplier_name, 
+         collect({
+            id: inv.invoice_id,
+            invoice_number: inv.invoice_number,
+            date: inv.invoice_date,
+            uploaded_at: inv.created_at,
+            saved_at: inv.updated_at,
+            total: coalesce(inv.grand_total, 0.0),
+            image_path: inv.image_path,
+            saved_by: uploader_name,
+            saved_by_email: uploader_email
+         }) as inv_details
          
-    RETURN supplier_name, total_spend, invoices, user_name
+    // Calculate total spend per supplier
+    WITH supplier_name, inv_details,
+         reduce(msg = 0.0, entry in inv_details | msg + entry.total) as total_spend
+         
+    RETURN supplier_name, total_spend, inv_details
     ORDER BY total_spend DESC
     """
     
@@ -158,30 +182,17 @@ def get_grouped_invoice_history(driver, user_email: str):
             result = tx.run(query, user_email=user_email)
             data = []
             for record in result:
-                supplier_name = record["supplier_name"] or "Unknown Supplier"
-                total_spend = record["total_spend"] or 0.0
-                invoice_nodes = record["invoices"] or []
-                user_name = record["user_name"] or "User"
+                supplier_name = record["supplier_name"]
+                total_spend = record["total_spend"]
+                invoices = record["inv_details"]
                 
-                formatted_invoices = []
-                for node in invoice_nodes:
-                    inv = dict(node)
-                    formatted_invoices.append({
-                        "invoice_number": inv.get("invoice_number"),
-                        "date": inv.get("invoice_date"),
-                        "uploaded_at": inv.get("created_at"),
-                        "saved_at": inv.get("updated_at"),
-                        "total": inv.get("grand_total"),
-                        "image_path": inv.get("image_path")
-                    })
-                    
-                formatted_invoices.sort(key=lambda x: x.get("date") or "", reverse=True)
+                # Sort invoices by date
+                invoices.sort(key=lambda x: x.get("date") or "", reverse=True)
                 
                 data.append({
                     "name": supplier_name,
                     "total_spend": total_spend,
-                    "invoices": formatted_invoices,
-                    "saved_by": user_name
+                    "invoices": invoices
                 })
             return data
 

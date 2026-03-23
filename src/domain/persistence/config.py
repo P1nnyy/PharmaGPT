@@ -243,3 +243,38 @@ def assign_user_role(user_email: str, role_name: str) -> bool:
     except Exception as e:
         logger.error(f"Error assigning role: {e}")
         return False
+
+def seed_system_roles():
+    """Seeds the base system roles."""
+    roles = [
+        {"name": "Admin", "permissions": ["all"]},
+        {"name": "Employee", "permissions": ["view", "upload"]}
+    ]
+    query = """
+    UNWIND $roles AS role
+    MERGE (r:Role {name: role.name})
+    SET r.permissions = role.permissions
+    """
+    db = get_db_driver()
+    try:
+        with db.session() as session:
+            session.execute_write(lambda tx: tx.run(query, roles=roles))
+            logger.info("System roles seeded.")
+    except Exception as e:
+        logger.error(f"Error seeding roles: {e}")
+
+def bootstrap_admin_user(email: str):
+    """Ensures a specific user has the Admin role."""
+    query = """
+    MERGE (u:User {email: $email})
+    WITH u
+    MATCH (r:Role {name: 'Admin'})
+    MERGE (u)-[:HAS_ROLE]->(r)
+    """
+    db = get_db_driver()
+    try:
+        with db.session() as session:
+            session.execute_write(lambda tx: tx.run(query, email=email))
+            logger.info(f"User {email} bootstrapped as Admin.")
+    except Exception as e:
+        logger.error(f"Error bootstrapping admin: {e}")

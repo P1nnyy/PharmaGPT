@@ -178,15 +178,70 @@ def create_invoice_draft(driver, state: Dict[str, Any], user_email: str):
 def _create_draft_tx(tx, invoice_no, supplier, state, user_email):
     pass
 
-def delete_invoice_by_id(driver, invoice_id: str, user_email: str):
+def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = False, is_admin: bool = False):
     """
     Deletes a specific invoice by ID.
-    Used for 'Discard' menu action.
+    If wipe=True, performs a cascading delete of all associated line items and correction history.
+    If is_admin=True, bypasses ownership checks.
     """
-    query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_id: $invoice_id})
-    DETACH DELETE i
-    """
+    if wipe:
+        # Cascading Deep Wipe
+        if is_admin:
+            query = """
+            MATCH (i:Invoice {invoice_id: $invoice_id})
+            OPTIONAL MATCH (i)-[:CONTAINS]->(li:Line_Item)
+            OPTIONAL MATCH (i)-[:HAS_CORRECTION]->(cs:CorrectionSet)
+            OPTIONAL MATCH (cs)-[:INCLUDES]->(diff:Diff)
+            WITH i, collect(distinct li) as lis, collect(distinct cs) as css, collect(distinct diff) as diffs
+            DETACH DELETE i
+            WITH lis, css, diffs
+            UNWIND (lis + css + diffs) as x
+            DETACH DELETE x
+            """
+        else:
+            query = """
+            MATCH (u:User {email: $user_email})
+            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+            WITH u, s
+            
+            MATCH (i:Invoice {invoice_id: $invoice_id})
+            WHERE (
+                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
+                (s IS NULL AND (u)-[:OWNS]->(i))
+            )
+            
+            OPTIONAL MATCH (i)-[:CONTAINS]->(li:Line_Item)
+            OPTIONAL MATCH (i)-[:HAS_CORRECTION]->(cs:CorrectionSet)
+            OPTIONAL MATCH (cs)-[:INCLUDES]->(diff:Diff)
+            WITH i, collect(distinct li) as lis, collect(distinct cs) as css, collect(distinct diff) as diffs
+            DETACH DELETE i
+            WITH lis, css, diffs
+            UNWIND (lis + css + diffs) as x
+            DETACH DELETE x
+            """
+        logger.info(f"PERFORMING {'ADMIN ' if is_admin else ''}DEEP WIPE for Invoice {invoice_id}")
+    else:
+        # Standard Shallow Delete
+        if is_admin:
+            query = """
+            MATCH (i:Invoice {invoice_id: $invoice_id})
+            DETACH DELETE i
+            """
+        else:
+            query = """
+            MATCH (u:User {email: $user_email})
+            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+            WITH u, s
+            
+            MATCH (i:Invoice {invoice_id: $invoice_id})
+            WHERE (
+                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
+                (s IS NULL AND (u)-[:OWNS]->(i))
+            )
+            DETACH DELETE i
+            """
+        logger.info(f"Performing {'admin ' if is_admin else ''}shallow delete for Invoice {invoice_id}")
+
     with driver.session() as session:
         session.execute_write(lambda tx: tx.run(query, user_email=user_email, invoice_id=invoice_id))
 

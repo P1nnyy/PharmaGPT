@@ -64,6 +64,8 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
         5. **Phone_Number**: Contact number.
         6. **Email**: Email address.
         7. **PAN**: PAN Number.
+        8. **Invoice_No**: The Invoice Number (e.g. INV-123).
+        9. **Invoice_Date**: The Date of the Invoice (YYYY-MM-DD preferred).
         
         Return JSON structure:
         {
@@ -73,7 +75,9 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
             "DL_No": "string",
             "Phone_Number": "string",
             "Email": "string",
-            "PAN": "string"
+            "PAN": "string",
+            "Invoice_No": "string",
+            "Invoice_Date": "string"
         }
         
         - Return null for missing fields.

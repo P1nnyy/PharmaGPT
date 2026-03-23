@@ -10,13 +10,20 @@ def init_db_constraints(driver):
     """
     Ensures unique constraints exist for GlobalProduct item_code.
     """
-    query = "CREATE CONSTRAINT item_code_unique IF NOT EXISTS FOR (p:GlobalProduct) REQUIRE p.item_code IS UNIQUE"
     try:
         with driver.session() as session:
-            session.execute_write(lambda tx: tx.run(query))
-            logger.info("Checked/Created Unique Constraint for GlobalProduct.item_code")
+            # 1. GlobalProduct Constraint
+            session.execute_write(lambda tx: tx.run("CREATE CONSTRAINT item_code_unique IF NOT EXISTS FOR (p:GlobalProduct) REQUIRE p.item_code IS UNIQUE"))
+            
+            # 2. Invoice ID Constraint (CRITICAL for performance)
+            session.execute_write(lambda tx: tx.run("CREATE CONSTRAINT invoice_id_unique IF NOT EXISTS FOR (i:Invoice) REQUIRE i.invoice_id IS UNIQUE"))
+            
+            # 3. Invoice Number Index
+            session.execute_write(lambda tx: tx.run("CREATE INDEX invoice_number_idx IF NOT EXISTS FOR (i:Invoice) ON (i.invoice_number)"))
+            
+            logger.info("Database constraints and indices initialized.")
     except Exception as e:
-        logger.error(f"Failed to create constraint: {e}")
+        logger.error(f"Failed to create constraints/indices: {e}")
 
 def _generate_sku(tx, product_name: str) -> str:
     """

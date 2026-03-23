@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Clock, ChevronDown, Image } from 'lucide-react';
-import { getActivityLog, getInvoiceDetails } from '../../services/api';
+import { FileText, Clock, ChevronDown, Image, Trash2, AlertTriangle, Loader2, X } from 'lucide-react';
+import { getActivityLog, getInvoiceDetails, discardInvoice } from '../../services/api';
 import { getImageUrl } from '../../utils/urlHelper';
 import AnalysisModal from '../invoice/AnalysisModal';
+import { useInvoice } from '../../context/InvoiceContext';
 
 const ActivityHistory = () => {
+    const { user } = useInvoice();
     const [activityLog, setActivityLog] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);
-
-
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -17,6 +17,10 @@ const ActivityHistory = () => {
     const [selectedInvoiceData, setSelectedInvoiceData] = useState(null);
     const [selectedLineItems, setSelectedLineItems] = useState(null);
     const [selectedImagePath, setSelectedImagePath] = useState(null);
+
+    // Delete State
+    const [confirmDelete, setConfirmDelete] = useState(null); // {id, number, supplier}
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const handleViewInvoice = async (e, item) => {
         e.stopPropagation();
@@ -84,6 +88,21 @@ const ActivityHistory = () => {
         }
     };
 
+    const handleDelete = async (invoiceId, wipe = true) => {
+        setIsDeleting(true);
+        try {
+            await discardInvoice(invoiceId, wipe);
+            // Refresh list
+            await fetchActivity();
+            setConfirmDelete(null);
+        } catch (err) {
+            console.error("Failed to delete invoice:", err);
+            alert("Failed to delete invoice. Please try again.");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     const formatTimestamp = (timestamp, isExpanded = false) => {
         if (!timestamp) return 'N/A';
         const date = new Date(timestamp);
@@ -129,12 +148,66 @@ const ActivityHistory = () => {
 
     if (loading) return <div className="p-8 text-center text-slate-500">Loading History...</div>;
 
+    const getInitials = (name) => {
+        if (!name || name === 'Unknown' || name === 'User') return '??';
+        return name.split(' ').map(n => n ? n[0] : '').join('').substring(0, 2).toUpperCase();
+    };
+
+    const isAdmin = user?.role === 'Admin';
+
     return (
         <div className="p-4 md:p-8 max-w-5xl mx-auto h-[calc(100vh-80px)] overflow-y-auto pb-24">
             <h2 className="text-2xl font-bold text-slate-100 mb-6 flex items-center gap-2">
                 <Clock className="w-6 h-6 text-blue-500" />
                 History
             </h2>
+
+            {/* Delete Confirmation Modal */}
+            {confirmDelete && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-red-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-4 mb-4 text-red-500">
+                            <div className="p-3 bg-red-500/10 rounded-full">
+                                <AlertTriangle className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-100">Deep Wipe Invoice?</h3>
+                        </div>
+                        
+                        <p className="text-slate-400 mb-6 leading-relaxed">
+                            This will permanently delete invoice <span className="text-slate-200 font-mono">#{confirmDelete.number}</span> from <span className="text-slate-200 font-semibold">{confirmDelete.supplier}</span>.
+                            <br /><br />
+                            <span className="text-red-400 font-medium italic">Safety Warning:</span> This also wipes all associated line items and extracted data from your database. This action <b>cannot</b> be undone.
+                        </p>
+
+                        <div className="flex gap-3">
+                            <button
+                                disabled={isDeleting}
+                                onClick={() => setConfirmDelete(null)}
+                                className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors font-medium disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={isDeleting}
+                                onClick={() => handleDelete(confirmDelete.id, true)}
+                                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Wiping...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4" />
+                                        Confirm Wipe
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="space-y-3">
                 {activityLog.length === 0 ? (
@@ -241,7 +314,7 @@ const ActivityHistory = () => {
                                                 <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Saved By</span>
                                                 <div className="flex items-center gap-2 mt-0.5">
                                                     <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-[9px] font-bold">
-                                                        PG
+                                                        {getInitials(item.saved_by)}
                                                     </div>
                                                     <span className="text-slate-300 text-sm font-medium">{item.saved_by || 'Unknown'}</span>
                                                 </div>
@@ -255,28 +328,42 @@ const ActivityHistory = () => {
                                                 </span>
                                             </div>
 
-                                            {/* Split Circle Action Icon */}
-                                            <button
-                                                className="relative w-12 h-12 rounded-full overflow-hidden shadow-lg hover:scale-105 transition-transform group shrink-0"
-                                                onClick={(e) => handleViewInvoice(e, item)}
-                                                title="View Details"
-                                            >
-                                                {/* Left Half - Image Icon */}
-                                                <div className="absolute inset-y-0 left-0 w-1/2 bg-blue-600 flex items-center justify-center text-white">
-                                                    <Image className="w-4 h-4" />
-                                                </div>
+                                            {/* Actions */}
+                                            <div className="flex items-center gap-3 shrink-0">
+                                                {/* Delete Button (Admin Only) */}
+                                                {isAdmin && (
+                                                    <button
+                                                        className="w-12 h-12 rounded-full bg-red-600/10 border border-red-600/20 flex items-center justify-center text-red-500 hover:bg-red-600 hover:text-white transition-all shadow-lg shadow-red-900/10 group"
+                                                        onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: item.id, number: item.invoice_number, supplier: item.supplier_name }); }}
+                                                        title="Delete Invoice"
+                                                    >
+                                                        <Trash2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                                                    </button>
+                                                )}
 
-                                                {/* Right Half - Bar/Content Icon */}
-                                                <div className="absolute inset-y-0 right-0 w-1/2 bg-indigo-600 flex items-center justify-center text-white">
-                                                    <FileText className="w-4 h-4" />
-                                                </div>
+                                                {/* Split Circle Action Icon (View) */}
+                                                <button
+                                                    className="relative w-12 h-12 rounded-full overflow-hidden shadow-lg hover:scale-105 transition-transform group shrink-0"
+                                                    onClick={(e) => handleViewInvoice(e, item)}
+                                                    title="View Details"
+                                                >
+                                                    {/* Left Half - Image Icon */}
+                                                    <div className="absolute inset-y-0 left-0 w-1/2 bg-blue-600 flex items-center justify-center text-white">
+                                                        <Image className="w-4 h-4" />
+                                                    </div>
 
-                                                {/* Divisive Line */}
-                                                <div className="absolute inset-y-0 left-1/2 w-px bg-white/20"></div>
+                                                    {/* Right Half - Bar/Content Icon */}
+                                                    <div className="absolute inset-y-0 right-0 w-1/2 bg-indigo-600 flex items-center justify-center text-white">
+                                                        <FileText className="w-4 h-4" />
+                                                    </div>
 
-                                                {/* Shine Effect */}
-                                                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            </button>
+                                                    {/* Divisive Line */}
+                                                    <div className="absolute inset-y-0 left-1/2 w-px bg-white/20"></div>
+
+                                                    {/* Shine Effect */}
+                                                    <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 )}

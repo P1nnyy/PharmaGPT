@@ -10,6 +10,7 @@ import MobileHeader from './components/layout/MobileHeader';
 import InvoiceViewer from './components/invoice/InvoiceViewer';
 import DataEditor from './components/invoice/DataEditor';
 import Login from './components/Login';
+import Settings from './components/layout/Settings';
 
 // Lazy Loaded Dashboards
 const InventoryView = lazy(() => import('./components/dashboard/Inventory'));
@@ -46,8 +47,10 @@ function AppContent() {
   // --- UI Bouncer: Role Protection ---
   useEffect(() => {
     const adminTabs = ['admin', 'items', 'inventory'];
-    if (user && user.role !== 'Admin' && adminTabs.includes(activeTab)) {
-      console.warn(`Unauthorized access attempt to ${activeTab}. Redirecting...`);
+    const isPersonal = user?.shop_id === 'personal' || !user?.shop_id;
+
+    if (user && user.role !== 'Admin' && !isPersonal && adminTabs.includes(activeTab)) {
+      console.warn(`Unauthorized access attempt to ${activeTab} while in shop ${user?.shop_name}. Redirecting...`);
       setActiveTab('scan');
     }
   }, [activeTab, user]);
@@ -172,17 +175,7 @@ function AppContent() {
             {activeTab === 'admin' && <AdminDashboard />}
           </Suspense>
 
-          {activeTab === 'settings' && (
-            <div className="p-8 text-center text-slate-500">
-              <h2 className="text-xl text-slate-300 mb-2">Settings</h2>
-              <p>Configure app preferences here.</p>
-              <div className="mt-8 p-4 bg-slate-800 rounded-lg text-xs font-mono text-left inline-block">
-                <div className="mb-2 text-indigo-400">DEBUG INFO:</div>
-                <div>SSE: Connected</div>
-                <div>Version: v6.0 (Optimized)</div>
-              </div>
-            </div>
-          )}
+          {activeTab === 'settings' && <Settings />}
         </div>
       </div>
 

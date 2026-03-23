@@ -65,8 +65,9 @@ const clearDrafts = async () => {
     return response.data;
 };
 
-const discardInvoice = async (invoiceId) => {
-    const response = await api.delete(`/invoices/${invoiceId}`);
+const discardInvoice = async (invoiceId, wipe = false) => {
+    const url = `/invoices/${invoiceId}${wipe ? '?wipe=true' : ''}`;
+    const response = await api.delete(url);
     return response.data;
 };
 
