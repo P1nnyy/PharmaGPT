@@ -146,6 +146,8 @@ services:
       - ./config/monitoring/rules.yml:/etc/prometheus/rules.yml
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - default
 

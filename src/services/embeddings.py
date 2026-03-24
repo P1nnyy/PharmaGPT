@@ -25,10 +25,10 @@ def generate_embedding(text: str) -> List[float]:
     """
     if not text or not API_KEY: return []
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {
-            "model": "models/text-embedding-004",
+            "model": "models/gemini-embedding-001",
             "content": {
                 "parts": [{"text": text}]
             },

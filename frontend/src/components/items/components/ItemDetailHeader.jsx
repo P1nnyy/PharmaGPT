@@ -17,8 +17,8 @@ const ItemDetailHeader = ({
                 <span className="font-bold text-sm">Back</span>
             </div>
 
-            {/* Detail Header & Tabs */}
-            <div className="px-6 pt-6 pb-0 flex flex-col gap-4 border-b border-slate-700 bg-slate-800 z-10">
+            {/* Detail Header */}
+            <div className="px-6 py-6 flex flex-col gap-4 border-b border-slate-700 bg-slate-800 z-10">
                 {/* Title Row */}
                 <div className="flex justify-between items-start">
                     <div className="space-y-1 flex-1 mr-4">
@@ -57,22 +57,6 @@ const ItemDetailHeader = ({
                         <Save className="w-4 h-4" />
                         {saving ? 'Saving...' : 'Save'}
                     </button>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex gap-6 text-sm font-medium overflow-x-auto no-scrollbar">
-                    {['overview', 'inventory_packaging', 'pricing', 'history'].map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={`pb-3 capitalize transition-colors border-b-2 whitespace-nowrap px-1 ${activeTab === tab
-                                ? 'border-blue-500 text-white'
-                                : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
-                                }`}
-                        >
-                            {tab === 'inventory_packaging' ? 'Packaging/ Item Management' : tab}
-                        </button>
-                    ))}
                 </div>
             </div>
         </>
