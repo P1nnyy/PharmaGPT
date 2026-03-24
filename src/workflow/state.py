@@ -33,11 +33,11 @@ class InvoiceState(TypedDict):
     # Log of logic decisions vs failures
     error_logs: Annotated[List[str], operator.add]
     
-    # Smart Feedback from Critic/Auditor to Worker (for Retries)
-    feedback_logs: Annotated[List[str], operator.add]
-    
-    # NEW: Dedicated Supplier Details (Parallel Pipeline)
-    supplier_details: Dict[str, Any]
+    # NEW: Automated Logic History (Circuit Breaker)
+    # retry_counters: Maps node name/reason to count
+    # error_history: Running log of all validation failures
+    retry_counters: Annotated[Dict[str, int], operator.ior]
+    error_history: Annotated[List[str], operator.add]
     
     # Context
     user_email: str

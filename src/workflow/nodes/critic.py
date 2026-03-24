@@ -139,8 +139,12 @@ async def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 f"You have hallucinated approx {excess_val:.2f}. "
                 "Check if you accidentally extracted 'Total' or 'Subtotal' rows as line items."
             )
-            
+        
+        # Increment Retry Counter & Log Error
+        current_retries = state.get("retry_counters", {}).get("math_verification", 0)
         return {
             "critic_verdict": "RETRY_OCR",
-            "feedback_logs": [feedback_msg]
+            "feedback_logs": [feedback_msg],
+            "retry_counters": {"math_verification": current_retries + 1},
+            "error_history": [f"Math Mismatch: {diff_percent:.2f}% (Attempt {current_retries + 1})"]
         }

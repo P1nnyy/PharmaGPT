@@ -1,5 +1,70 @@
-from typing import List, Optional, Union
-from pydantic import BaseModel, Field
+from typing import List, Optional, Union, Literal
+from pydantic import BaseModel, Field, model_validator
+
+class DiscountModel(BaseModel):
+    """
+    Represents a structured discount at line or global level.
+    """
+    amount: float = Field(0.0, description="The absolute discount amount.")
+    percentage: Optional[float] = Field(None, description="The discount percentage.")
+    discount_type: Literal['trade', 'scheme', 'cash', 'other', 'none'] = Field('none', description="Type of discount (trade, scheme, cash).")
+
+class TaxModel(BaseModel):
+    """
+    Represents a structured tax entry (SGST, CGST, etc).
+    """
+    tax_type: Literal['SGST', 'CGST', 'IGST', 'GST'] = Field(..., description="The type of tax.")
+    percentage: float = Field(..., description="Tax percentage rate.")
+    amount: float = Field(..., description="The absolute tax amount.")
+
+class LineItemModel(BaseModel):
+    """
+    Enterprise-grade Line Item model with mathematical integrity checks (V2).
+    """
+    product_name: str = Field(..., alias="Product", description="Standardized product name.")
+    quantity: float = Field(..., alias="Qty", description="Billed Quantity.")
+    unit_price: float = Field(..., alias="Rate", description="Base Unit Rate (Extracted).")
+    gross_amount: float = Field(..., alias="Amount", description="The stated row total before discounts/taxes.")
+    
+    # Nested Structures
+    discounts: List[DiscountModel] = Field(default_factory=list)
+    taxes: List[TaxModel] = Field(default_factory=list)
+    
+    # Metadata
+    batch: Optional[str] = Field(None, alias="Batch")
+    expiry: Optional[str] = Field(None, alias="Expiry")
+    mrp: Optional[float] = Field(None, alias="MRP")
+    hsn: Optional[str] = Field(None, alias="HSN")
+
+    @model_validator(mode='after')
+    def validate_math(self) -> 'LineItemModel':
+        """
+        Verify that unit_price * quantity accurately reflects the gross_amount.
+        Allowing for minor precision differences (0.05).
+        """
+        expected_gross = round(self.unit_price * self.quantity, 2)
+        if abs(expected_gross - self.gross_amount) > 0.05:
+            raise ValueError(
+                f"Mathematical Mismatch in {self.product_name}: "
+                f"{self.unit_price} * {self.quantity} = {expected_gross}, "
+                f"but stated Amount is {self.gross_amount}"
+            )
+        return self
+
+class InvoiceSummaryModel(BaseModel):
+    """
+    Consolidated footer summary for ledger-perfect indexing.
+    """
+    sub_total: float = Field(0.0, description="Gross total of all line items.")
+    total_discount: float = Field(0.0, description="Sum of all types of discounts.")
+    taxable_value: float = Field(0.0, description="Subtotal - Trade Discounts.")
+    total_tax: float = Field(0.0, description="Sum of all tax components.")
+    round_off: float = Field(0.0, description="Paise-level rounding adjustment.")
+    grand_total: float = Field(..., description="Final amount payable (The Truth).")
+    
+    # Traceability
+    discounts_breakdown: List[DiscountModel] = Field(default_factory=list)
+    taxes_breakdown: List[TaxModel] = Field(default_factory=list)
 
 class RawLineItem(BaseModel):
     """

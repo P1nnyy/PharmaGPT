@@ -1,9 +1,49 @@
 import re
 import math
 import logging
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Union, List
 
 logger = logging.getLogger(__name__)
+
+def largest_remainder_allocation(global_total: float, item_weights: List[float]) -> List[float]:
+    """
+    Hamilton/Largest Remainder Method for precise distribution.
+    Distributes a global total across multiple items without rounding loss.
+    """
+    if not item_weights or global_total == 0:
+        return [0.0] * len(item_weights)
+    
+    total_weight = sum(item_weights)
+    if total_weight == 0:
+        return [0.0] * len(item_weights)
+
+    # Work in "cents" (integers) using Decimal for fair shares
+    total_to_distribute = int(round(global_total * 100))
+    weights_dec = [Decimal(str(w)) for w in item_weights]
+    total_weight_dec = sum(weights_dec)
+    
+    # 1. FAIR SHARES (as decimals)
+    fair_shares = [(Decimal(str(total_to_distribute)) * w) / total_weight_dec for w in weights_dec]
+    
+    # 2. QUOTAS (Integer parts)
+    quotas = [int(f) for f in fair_shares]
+    
+    # 3. REMAINDER
+    current_sum = sum(quotas)
+    remainder = total_to_distribute - current_sum
+    
+    # 4. RANKING by fractional parts
+    fractions = [(f - int(f), i) for i, f in enumerate(fair_shares)]
+    # Sort by fractional part descending
+    fractions.sort(key=lambda x: x[0], reverse=True)
+    
+    # 5. DISTRIBUTION of remainder
+    for i in range(remainder):
+        idx = fractions[i][1]
+        quotas[idx] += 1
+        
+    return [round(q / 100.0, 2) for q in quotas]
 
 def parse_float(value: Union[str, float, None]) -> float:
     """
@@ -168,22 +208,30 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
             line_items[0]["Validation_Error"] = error_msg
 
     # 6. Proportional Allocation for Effective Landing Cost
-    for item in line_items:
+    # Pre-calculate distributions for GLOBAL mode to avoid penny drops
+    discount_shares = []
+    freight_shares = []
+    if mode == "GLOBAL":
+        item_amounts = [float(item.get("Net_Line_Amount") or item.get("Amount") or item.get("Stated_Net_Amount") or 0.0) for item in line_items]
+        discount_shares = largest_remainder_allocation(global_discount, item_amounts)
+        # Note: If freight exists in global_modifiers, allocate it too
+        freight_charges = abs(parse_float(global_modifiers.get("freight_charges") or global_modifiers.get("Freight_Charges") or 0.0))
+        freight_shares = largest_remainder_allocation(freight_charges, item_amounts)
+
+    for i, item in enumerate(line_items):
         # Use Net_Line_Amount or fallback
         item_amount = float(item.get("Net_Line_Amount") or item.get("Amount") or item.get("Stated_Net_Amount") or 0.0)
-        weight_ratio = item_amount / line_sum if line_sum > 0 else 0
         
         if mode == "PER_ITEM":
             # Items ALREADY have tax and discount included
             item["effective_landing_cost"] = round(item_amount, 2)
         else:
-            # GLOBAL Mode: Allocate discount and calculate tax
-            item_discount_share = global_discount * weight_ratio
-            item_taxable = item_amount - item_discount_share
+            # GLOBAL Mode: Use Hamilton Method shares
+            item_discount_share = discount_shares[i]
+            item_freight_share = freight_shares[i]
+            item_taxable = item_amount - item_discount_share + item_freight_share
             
             # --- GST PRIORITY FIX (Against Double Taxation) ---
-            # Priority 1: Raw_GST_Percentage (Master value from OCR/Standardization)
-            # Priority 2: SGST + CGST + IGST
             raw_gst_pct = float(item.get("Raw_GST_Percentage") or 0.0)
             sum_gst_pct = (float(item.get("SGST_Percent") or 0.0) + 
                            float(item.get("CGST_Percent") or 0.0) + 
@@ -192,7 +240,7 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
             # If Raw_GST exists, use it. Only use sum if Raw_GST is 0.
             gst_percent = raw_gst_pct if raw_gst_pct > 0 else sum_gst_pct
             
-            # Global Fallback (only if absolutely no tax evidence but footer says tax exists)
+            # Global Fallback
             if gst_percent <= 0 and (total_sgst > 0 or total_cgst > 0): 
                 gst_percent = 5.0 
             
@@ -212,7 +260,7 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     return {
         "line_items": line_items,
         "mode": mode,
-        "round_off": round_off, # Pass back the discovered value
+        "round_off": round_off,
         "calculated_stats": {
             "sub_total": round(line_sum, 2),
             "taxable_value": round(taxable_value, 2),

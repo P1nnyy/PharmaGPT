@@ -1,3 +1,4 @@
+from typing import Dict, Any
 from langgraph.graph import StateGraph, START, END
 from langfuse.langchain import CallbackHandler
 from src.workflow.state import InvoiceState
@@ -24,6 +25,13 @@ def build_graph():
     workflow.add_node("critic", critic.critique_extraction)
     workflow.add_node("solver", mathematics.apply_correction)
     workflow.add_node("supplier_extractor", supplier_extractor.extract_supplier_details)
+    
+    # NEW: Terminal State for Recursive Failures
+    def human_fallback_queue(state: InvoiceState) -> Dict[str, Any]:
+        logger.warning(f"CIRCUIT BREAKER: Invoice {state.get('image_path')} routed to HUMAN FALLBACK.")
+        return {"final_output": {"status": "HUMAN_REVIEW_REQUIRED", "reason": "Mathematical Verification Loop Exhausted"}}
+    
+    workflow.add_node("human_fallback", human_fallback_queue)
     
     # Define Edges
     workflow.add_edge(START, "surveyor")
@@ -57,14 +65,20 @@ def build_graph():
     workflow.add_edge("researcher", "critic")
     
     # Conditional Feedback Loop
-    def route_critic(state):
+    def route_critic(state: InvoiceState):
         verdict = state.get("critic_verdict")
-        logger.info(f"Graph Decision: Verdict is {verdict}")
+        # retry_counters maps node name/reason to count
+        retry_count = state.get("retry_counters", {}).get("math_verification", 0)
+        logger.info(f"Graph Decision: Verdict is {verdict} (Math Retry: {retry_count})")
         
         if verdict in ["APPLY_MARKUP", "APPLY_MARKDOWN"]:
             return "solver"
-        elif verdict == "RETRY_OCR" and state.get("retry_count", 0) < 3:
+        elif verdict == "RETRY_OCR":
+            if retry_count > 3:
+                logger.error("CIRCUIT BREAKER: Too many math retries. Routing to Human Fallback.")
+                return "human_fallback"
             return "worker"
+            
         return "end"
 
     workflow.add_conditional_edges(
@@ -73,11 +87,13 @@ def build_graph():
         {
             "solver": "solver",
             "worker": "worker",
+            "human_fallback": "human_fallback",
             "end": END
         }
     )
     
     workflow.add_edge("solver", END)
+    workflow.add_edge("human_fallback", END)
     
     return workflow.compile()
 
@@ -101,7 +117,9 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
         "line_item_fragments": [],
         "global_modifiers": {},
         "final_output": {},
-        "error_logs": []
+        "error_logs": [],
+        "retry_counters": {"math_verification": 0},
+        "error_history": []
     }
     
     # Initialize Langfuse Callback
