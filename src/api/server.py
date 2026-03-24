@@ -123,4 +123,4 @@ def shutdown_event():
     close_db()
 
 if __name__ == "__main__":
-    uvicorn.run("src.api.server:app", host="0.0.0.0", port=5005, reload=False)
+    uvicorn.run("src.api.server:app", host="0.0.0.0", port=5005, reload=True)

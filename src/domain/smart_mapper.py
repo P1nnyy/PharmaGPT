@@ -82,7 +82,7 @@ async def enrich_line_items_from_master(line_items: List[Dict[str, Any]], user_e
             OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)
             WHERE toLower(gp.name) = toLower($desc)
             OR EXISTS {
-                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)
+                MATCH (gp)<-[:MAPS_TO]-(alias:ProductAlias)
                 WHERE toLower(alias.name) = toLower($desc)
             }
             RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp

@@ -97,6 +97,10 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
         logger.info(f"Solver Healing: sub_total filled from math -> {calc_stats['sub_total']}")
         final_json["sub_total"] = calc_stats["sub_total"]
         
+    if not parse_float(final_json.get("taxable_value")):
+        logger.info(f"Solver Healing: taxable_value filled from math -> {calc_stats['taxable_value']}")
+        final_json["taxable_value"] = calc_stats["taxable_value"]
+
     if not parse_float(final_json.get("total_sgst")) and not parse_float(final_json.get("total_cgst")):
         # If GST is missing, try to use the calculated one
         gst_split = round(calc_stats["total_gst"] / 2, 2)

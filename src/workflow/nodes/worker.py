@@ -327,7 +327,9 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         # Increment Retry Count
         new_retry_count = retry_count + 1
         
-        logger.info(f"Worker: Extraction Complete. Retry {retry_count} -> {new_retry_count}. Items Found: {len(line_item_fragments)}")
+        # Calculate effective count for logging
+        effective_count = len(line_item_fragments) if line_item_fragments else len(raw_text_rows)
+        logger.info(f"Worker: Extraction Complete. Retry {retry_count} -> {new_retry_count}. Items Found: {effective_count} (Raw Fragments: {len(raw_text_rows)})")
 
         if retry_count > 0:
             return {

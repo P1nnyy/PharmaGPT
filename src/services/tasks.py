@@ -13,6 +13,8 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
     """
     Background Task: Runs extraction and updates DB status.
     """
+    import asyncio
+    print(f"DEBUG LOOP process_invoice_background [{invoice_id}]: {id(asyncio.get_running_loop())}")
     from src.services.task_manager import manager as task_manager
     # Register current task for cancellation tracking
     current_task = asyncio.current_task()
@@ -65,6 +67,7 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
             normalized_items.append(norm_item)
             
         # Reconcile
+        grand_total = extracted_data.get("Stated_Grand_Total") or extracted_data.get("grand_total")
         recon_result = reconcile_financials(normalized_items, extracted_data, grand_total)
         normalized_items = recon_result.get("line_items", [])
         calc_stats = recon_result.get("calculated_stats", {})

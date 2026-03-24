@@ -54,12 +54,12 @@ class InvoiceExtraction(BaseModel):
     trace_id: Optional[str] = Field(None, description="Langfuse Trace ID for debugging.")
 
     # Strict Ledger Fields
-    sub_total: float = Field(0.0, description="Pre-tax, pre-discount total of all line items.")
-    global_discount: float = Field(0.0, description="Global discount applied to the entire invoice.")
-    taxable_value: float = Field(0.0, description="Sub-total minus global discount.")
-    total_sgst: float = Field(0.0, description="Total SGST from the footer.")
-    total_cgst: float = Field(0.0, description="Total CGST from the footer.")
-    round_off: float = Field(0.0, description="Rounding adjustment.")
+    sub_total: Union[float, None] = Field(0.0, description="Pre-tax, pre-discount total of all line items.")
+    global_discount: Union[float, None] = Field(0.0, description="Global discount applied to the entire invoice.")
+    taxable_value: Union[float, None] = Field(0.0, description="Sub-total minus global discount.")
+    total_sgst: Union[float, None] = Field(0.0, description="Total SGST from the footer.")
+    total_cgst: Union[float, None] = Field(0.0, description="Total CGST from the footer.")
+    round_off: Union[float, None] = Field(0.0, description="Rounding adjustment.")
 
 class NormalizedLineItem(BaseModel):
     """

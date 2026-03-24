@@ -1,0 +1,241 @@
+Running extraction pipeline for tmp/failed_invoice.jpeg...
+[2026-03-24 18:19:05,339] [INFO] [src.workflow.graph] [Req: SYSTEM] - Starting Extraction Graph for tmp/failed_invoice.jpeg (User: pranavgupta1638@gmail.com)
+[2026-03-24 18:19:10,075] [INFO] [surveyor] [Req: SYSTEM] - File uploaded successfully: files/rndm26jaj3ge
+[2026-03-24 18:19:10,076] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:19:14,896] [INFO] [surveyor] [Req: SYSTEM] - Surveyor Plan: 3 zones identified.
+[2026-03-24 18:19:14,903] [INFO] [src.workflow.nodes.supplier_extractor] [Req: SYSTEM] - SupplierExtractor: Starting specialized extraction...
+[2026-03-24 18:19:14,904] [INFO] [src.workflow.nodes.worker] [Req: SYSTEM] - Worker: Preprocessing image (Perspective Warp + Binarization)...
+[2026-03-24 18:19:14,923] [INFO] [src.workflow.nodes.worker] [Req: SYSTEM] - Worker: Processed image saved to /var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpflj855i7.jpg
+[2026-03-24 18:19:18,441] [INFO] [src.workflow.nodes.supplier_extractor] [Req: SYSTEM] - SupplierExtractor: Executing extraction task
+[2026-03-24 18:19:18,450] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:19:19,734] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:19:19,746] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:19:19,748] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:19:22,121] [INFO] [src.workflow.nodes.supplier_extractor] [Req: SYSTEM] - SupplierExtractor: Extracted ATUL AGENCIES with GSTIN 03ABYFA2174Q1ZS
+[2026-03-24 18:19:27,794] [INFO] [src.workflow.nodes.worker] [Req: SYSTEM] - Worker: Extraction Complete. Retry 0 -> 1. Items Found: 0
+[2026-03-24 18:19:27,799] [INFO] [mapper] [Req: SYSTEM] - Mapper: Processing 1 raw text fragments...
+[2026-03-24 18:19:27,805] [INFO] [mapper] [Req: SYSTEM] - Mapper: Applying Vendor Rules for 'atul agencies'
+[2026-03-24 18:19:28,499] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:29,848] [INFO] [database] [Req: SYSTEM] - Connected to Neo4j.
+[2026-03-24 18:19:30,116] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX invoice_examples_index IF NOT EXISTS FOR (e:InvoiceExample) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX invoice_examples_index FOR (e:InvoiceExample) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX invoice_examples_index IF NOT EXISTS\n    FOR (n:InvoiceExample)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-24 18:19:30,260] [INFO] [database] [Req: SYSTEM] - Vector Index 'invoice_examples_index' initialization checked.
+[2026-03-24 18:19:30,551] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX hsn_vector_index IF NOT EXISTS FOR (e:HSN) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX hsn_vector_index FOR (e:HSN) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX hsn_vector_index IF NOT EXISTS\n    FOR (n:HSN)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-24 18:19:30,664] [INFO] [database] [Req: SYSTEM] - Vector Index 'hsn_vector_index' initialization checked.
+[2026-03-24 18:19:30,915] [INFO] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: INFORMATION} {code: Neo.ClientNotification.Schema.IndexOrConstraintAlreadyExists} {category: SCHEMA} {title: `CREATE VECTOR INDEX product_index IF NOT EXISTS FOR (e:Product) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: "cosine"}}` has no effect.} {description: `VECTOR INDEX product_index FOR (e:Product) ON (e.embedding)` already exists.} {position: None} for query: "\n    CREATE VECTOR INDEX product_index IF NOT EXISTS\n    FOR (n:Product)\n    ON (n.embedding)\n    OPTIONS {indexConfig: {\n      `vector.dimensions`: 768,\n      `vector.similarity_function`: 'cosine'\n    }}\n    "
+[2026-03-24 18:19:31,035] [INFO] [database] [Req: SYSTEM] - Vector Index 'product_index' initialization checked.
+[2026-03-24 18:19:31,537] [INFO] [src.domain.persistence.config] [Req: SYSTEM] - Default categories seeded and legacy defaults cleaned up successfully.
+[2026-03-24 18:19:31,924] [INFO] [src.domain.persistence.config] [Req: SYSTEM] - System roles seeded.
+[2026-03-24 18:19:32,310] [INFO] [src.domain.persistence.config] [Req: SYSTEM] - User pranavgupta1638@gmail.com bootstrapped as Admin.
+[2026-03-24 18:19:32,310] [INFO] [mapper] [Req: SYSTEM] - Mapper: No vector match. Checking generic example for supplier 'atul agencies'
+[2026-03-24 18:19:32,692] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:19:44,152] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:45,221] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:46,253] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:46,955] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:47,991] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:49,920] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:51,003] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:52,061] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:52,776] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:53,442] [ERROR] [src.services.embeddings] [Req: SYSTEM] - REST Embedding generation failed: 404 Client Error: Not Found for url: https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=AIzaSyC-SE1p0W0VFS-ui3Yb6AVIlQ4wywXqOjw
+[2026-03-24 18:19:53,444] [INFO] [mapper] [Req: SYSTEM] - Mapper: Successfully mapped 10 items.
+[2026-03-24 18:19:53,451] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'pantop 40 tab'
+[2026-03-24 18:19:53,451] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'mactor 10'
+[2026-03-24 18:19:53,451] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'telmikind beta 50'
+[2026-03-24 18:19:53,451] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'telvas 20 tab x15'
+[2026-03-24 18:19:53,451] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'cilacar 1015'
+[2026-03-24 18:19:53,452] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'rantac 1.50 1030'
+[2026-03-24 18:19:53,452] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'nicardia retard 20mg'
+[2026-03-24 18:19:53,452] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'princical tab15'
+[2026-03-24 18:19:53,452] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'deriva cms gel'
+[2026-03-24 18:19:53,453] [INFO] [auditor] [Req: SYSTEM] - Auditor Check: 'aristozyme syp'
+[2026-03-24 18:19:53,453] [INFO] [auditor] [Req: SYSTEM] - Auditor: Deduplication: Reduced 10 items to 10 unique items.
+[2026-03-24 18:19:53,453] [INFO] [auditor] [Req: SYSTEM] - Auditor: Math Mismatch for 'RANTAC 1.50 1030'. Trusting OCR Qty 5.0. Adjusting Rate 38.67 -> 34.80
+[2026-03-24 18:19:53,453] [INFO] [auditor] [Req: SYSTEM] - Auditor: Qty 1.0 detected but Math implies Qty 2 (Amt 313.52 / Rate 156.76). Correcting Qty.
+[2026-03-24 18:19:53,453] [INFO] [auditor] [Req: SYSTEM] - Auditor verification complete.
+[2026-03-24 18:19:53,457] [INFO] [detective] [Req: SYSTEM] - Detective: Starting investigation for missing details...
+[2026-03-24 18:19:57,740] [INFO] [detective] [Req: SYSTEM] - Detective: No missing batches found. Case closed.
+[2026-03-24 18:19:57,742] [INFO] [researcher] [Req: SYSTEM] - Researcher: Starting parallel enrichment for 10 items...
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,745] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,745] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,746] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,746] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,746] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,747] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,747] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,749] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,751] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+/Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/src/workflow/nodes/researcher.py:44: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  ddgs = DDGS() # Initialized locally for thread safety with to_thread
+[2026-03-24 18:19:57,753] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:19:58,741] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Telmikind Beta 50 manufacturer composition India'...
+[2026-03-24 18:19:59,241] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'NICARDIA RETARD 20MG manufacturer composition India'...
+[2026-03-24 18:19:59,420] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Telvas 20 Tablet manufacturer composition India'...
+[2026-03-24 18:19:59,430] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Rantac 150 manufacturer composition India'...
+[2026-03-24 18:19:59,613] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'PRINCICAL TAB15 manufacturer composition India'...
+[2026-03-24 18:19:59,613] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Deriva CMS Gel manufacturer composition India'...
+[2026-03-24 18:19:59,613] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Aristo Zyme Syrup manufacturer composition India'...
+[2026-03-24 18:19:59,732] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Pantoprazole 40mg Tablet manufacturer composition India'...
+[2026-03-24 18:19:59,765] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'CILACAR 1015 manufacturer composition India'...
+[2026-03-24 18:20:00,056] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Mactor 10 manufacturer composition India'...
+[2026-03-24 18:20:01,463] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Telmikind+Beta+50+manufacturer+composition+India 200
+[2026-03-24 18:20:01,757] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Telmikind Beta 50 brand owner active ingredients'...
+[2026-03-24 18:20:01,830] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=NICARDIA+RETARD+20MG+manufacturer+composition+India 200
+[2026-03-24 18:20:01,943] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Telvas+20+Tablet+manufacturer+composition+India 200
+[2026-03-24 18:20:02,015] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Aristo+Zyme+Syrup+manufacturer+composition+India 200
+[2026-03-24 18:20:02,040] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Rantac+150+manufacturer+composition+India 200
+[2026-03-24 18:20:02,078] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Deriva+CMS+Gel+manufacturer+composition+India 200
+[2026-03-24 18:20:02,094] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=PRINCICAL+TAB15+manufacturer+composition+India 200
+[2026-03-24 18:20:02,196] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Pantoprazole+40mg+Tablet+manufacturer+composition+India 200
+[2026-03-24 18:20:02,390] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=CILACAR+1015+manufacturer+composition+India 200
+[2026-03-24 18:20:02,568] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Mactor+10+manufacturer+composition+India 200
+[2026-03-24 18:20:03,218] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Telmikind+Beta+50+brand+owner+active+ingredients 200
+[2026-03-24 18:20:03,679] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'NICARDIA RETARD 20MG brand owner active ingredients'...
+[2026-03-24 18:20:03,819] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'PRINCICAL TAB15 brand owner active ingredients'...
+[2026-03-24 18:20:03,820] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Deriva CMS Gel brand owner active ingredients'...
+[2026-03-24 18:20:03,861] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Rantac 150 brand owner active ingredients'...
+[2026-03-24 18:20:03,888] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Telvas 20 Tablet brand owner active ingredients'...
+[2026-03-24 18:20:04,040] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Pantoprazole 40mg Tablet brand owner active ingredients'...
+[2026-03-24 18:20:04,043] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'CILACAR 1015 brand owner active ingredients'...
+[2026-03-24 18:20:04,133] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Mactor 10 brand owner active ingredients'...
+[2026-03-24 18:20:04,378] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:04,481] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Aristo Zyme Syrup brand owner active ingredients'...
+[2026-03-24 18:20:05,017] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=NICARDIA+RETARD+20MG+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,144] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Deriva+CMS+Gel+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,164] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Rantac+150+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,166] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=PRINCICAL+TAB15+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,253] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Telvas+20+Tablet+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,464] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Pantoprazole+40mg+Tablet+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,477] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Mactor+10+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,499] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=CILACAR+1015+brand+owner+active+ingredients 200
+[2026-03-24 18:20:05,764] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Rantac 150mg manufacturer composition India'...
+[2026-03-24 18:20:05,787] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:05,811] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Telmisartan 20mg Tablet manufacturer composition India'...
+[2026-03-24 18:20:06,059] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Aristo+Zyme+Syrup+brand+owner+active+ingredients 200
+[2026-03-24 18:20:06,072] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:06,198] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:06,392] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Mactor 10mg manufacturer composition India'...
+[2026-03-24 18:20:06,497] [INFO] [researcher] [Req: SYSTEM] - Researcher: Searching for 'Pantoprazole 40 Tablet manufacturer composition India'...
+[2026-03-24 18:20:06,538] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:06,575] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:06,758] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Rantac+150mg+manufacturer+composition+India 200
+[2026-03-24 18:20:06,810] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Telmisartan+20mg+Tablet+manufacturer+composition+India 200
+[2026-03-24 18:20:06,998] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:07,020] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:07,370] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Mactor+10mg+manufacturer+composition+India 200
+[2026-03-24 18:20:07,486] [INFO] [primp] [Req: SYSTEM] - response: https://www.bing.com/search?q=Pantoprazole+40+Tablet+manufacturer+composition+India 200
+[2026-03-24 18:20:07,592] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:07,755] [INFO] [google_genai.models] [Req: SYSTEM] - AFC is enabled with max remote calls: 10.
+[2026-03-24 18:20:08,887] [INFO] [researcher] [Req: SYSTEM] - Researcher: Completed. Enriched 4 items.
+[2026-03-24 18:20:08,892] [INFO] [critic] [Req: SYSTEM] - Critic: Starting extraction critique...
+[2026-03-24 18:20:08,892] [INFO] [critic] [Req: SYSTEM] - Critic: ALL Items: [('PANTOP 40 TAB', 364.26), ('MACTOR 10', 80.4), ('TELMIKIND BETA 50', 235.56), ('TELVAS 20 TAB X15', 127.44), ('CILACAR 1015', 334.4), ('RANTAC 1.50 1030', 174.02), ('NICARDIA RETARD 20MG', 221.26), ('PRINCICAL TAB15', 313.52), ('DERIVA CMS GEL', 354.33), ('ARISTOZYME SYP', 115.71)]
+[2026-03-24 18:20:08,892] [INFO] [critic] [Req: SYSTEM] - Critic: Anchor 2291.0 vs Line Sum 2320.9
+[2026-03-24 18:20:08,892] [INFO] [critic] [Req: SYSTEM] - Critic: Over-sum detected (Markdown needed). Ratio 0.9871
+[2026-03-24 18:20:08,894] [INFO] [src.workflow.graph] [Req: SYSTEM] - Graph Decision: Verdict is APPLY_MARKDOWN
+[2026-03-24 18:20:08,897] [INFO] [solver] [Req: SYSTEM] - Solver: Applying Final Correction Factor 0.9871170666551768 to 10 items.
+[2026-03-24 18:20:08,897] [INFO] [solver] [Req: SYSTEM] - Solver Healing: taxable_value filled from math -> 2181.65
+[2026-03-24 18:20:08,903] [INFO] [src.workflow.graph] [Req: SYSTEM] - Langfuse Trace ID: 3eca685a349167bb3801fb9f9882c63d
+[2026-03-24 18:20:08,903] [INFO] [src.workflow.graph] [Req: SYSTEM] - FINAL OUTPUT HAS TRACE ID: 3eca685a349167bb3801fb9f9882c63d
+[2026-03-24 18:20:08,903] [INFO] [src.workflow.graph] [Req: SYSTEM] - Merging Supplier Details into Output: {'Supplier_Name': 'ATUL AGENCIES', 'Address': 'OPPOSITE RAM LILA GROUND\nPATHANKOT-145001', 'GSTIN': '03ABYFA2174Q1ZS', 'DL_No': 'PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361', 'Phone_Number': '7696141249', 'Email': None, 'PAN': None, 'Invoice_No': 'AA08438', 'Invoice_Date': '28-11-2025'}
+[2026-03-24 18:20:08,903] [INFO] [src.workflow.graph] [Req: SYSTEM] - Running Smart Mapper Enrichment...
+[2026-03-24 18:20:10,084] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:10,985] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:11,760] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:12,516] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:13,231] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:15,240] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:16,070] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:16,790] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:17,513] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+[2026-03-24 18:20:18,532] [WARNING] [neo4j.notifications] [Req: SYSTEM] - Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning} {category: UNRECOGNIZED} {title: The provided relationship type is not in the database.} {description: One of the relationship types in your query is not available in the database, make sure you didn't misspell it or that the label is available when you run this statement in your application (the missing relationship type is: ALIAS_OF)} {position: line: 6, column: 31, offset: 217} for query: '\n            MATCH (u:User {email: $user_email})\n            OPTIONAL MATCH (u)-[:MANAGES]->(gp:GlobalProduct)\n            WHERE toLower(gp.name) = toLower($desc)\n            OR EXISTS {\n                MATCH (gp)<-[:ALIAS_OF]-(alias:ProductAlias)\n                WHERE toLower(alias.name) = toLower($desc)\n            }\n            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp\n            LIMIT 1\n            '
+
+--- Pipeline Output (Partial) ---
+Items Found: 10
+taxable_value: 2181.65
+sub_total: 2320.9
+
+Attempting Pydantic Validation...
+Success! Pydantic validation passed.
+/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/neo4j/_sync/driver.py:542: ResourceWarning: unclosed  Neo4jDriver: <neo4j._sync.driver.Neo4jDriver object at 0x1692ff8b0>.
+/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/neo4j/_sync/driver.py:547: DeprecationWarning: Relying on Driver's destructor to close the session is deprecated. Please make sure to close the session. Use it as a context (`with` statement) or make sure to call `.close()` explicitly. Future versions of the driver will not close drivers automatically.
+/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/aiohttp/client.py:455: ResourceWarning: Unclosed client session <aiohttp.client.ClientSession object at 0x169372fa0>
+--- Logging error ---
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/logging/handlers.py", line 73, in emit
+    if self.shouldRollover(record):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/logging/handlers.py", line 189, in shouldRollover
+    self.stream = self._open()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/logging/__init__.py", line 1175, in _open
+    return open(self.baseFilename, self.mode, encoding=self.encoding,
+NameError: name 'open' is not defined
+Call stack:
+  File "/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/aiohttp/client.py", line 461, in __del__
+    self._loop.call_exception_handler(context)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/base_events.py", line 1764, in call_exception_handler
+    self.default_exception_handler(context)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/base_events.py", line 1738, in default_exception_handler
+    logger.error('\n'.join(log_lines), exc_info=exc_info)
+Message: 'Unclosed client session\nclient_session: <aiohttp.client.ClientSession object at 0x169372fa0>'
+Arguments: ()
+[2026-03-24 18:20:20,766] [ERROR] [asyncio] [Req: SYSTEM] - Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x169372fa0>
+/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/aiohttp/connector.py:380: ResourceWarning: Unclosed connector <aiohttp.connector.TCPConnector object at 0x169372f70>
+--- Logging error ---
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/logging/handlers.py", line 73, in emit
+    if self.shouldRollover(record):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/logging/handlers.py", line 189, in shouldRollover
+    self.stream = self._open()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/logging/__init__.py", line 1175, in _open
+    return open(self.baseFilename, self.mode, encoding=self.encoding,
+NameError: name 'open' is not defined
+Call stack:
+  File "/Users/pranavgupta/Library/Python/3.9/lib/python/site-packages/aiohttp/connector.py", line 388, in __del__
+    self._loop.call_exception_handler(context)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/base_events.py", line 1764, in call_exception_handler
+    self.default_exception_handler(context)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/base_events.py", line 1738, in default_exception_handler
+    logger.error('\n'.join(log_lines), exc_info=exc_info)
+Message: "Unclosed connector\nconnections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x169343b20>, 63.475837458), (<aiohttp.client_proto.ResponseHandler object at 0x16a50eb80>, 64.706093333), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bc400>, 64.7107975), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bcca0>, 64.715347333), (<aiohttp.client_proto.ResponseHandler object at 0x16a02eca0>, 64.998926041), (<aiohttp.client_proto.ResponseHandler object at 0x16a50e220>, 65.13255675), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bc6a0>, 65.424285333), (<aiohttp.client_proto.ResponseHandler object at 0x16a0a0040>, 65.475449125), (<aiohttp.client_proto.ResponseHandler object at 0x16a50e8e0>, 65.977780791), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bc520>, 66.13195975)])']\nconnector: <aiohttp.connector.TCPConnector object at 0x169372f70>"
+Arguments: ()
+[2026-03-24 18:20:20,768] [ERROR] [asyncio] [Req: SYSTEM] - Unclosed connector
+connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x169343b20>, 63.475837458), (<aiohttp.client_proto.ResponseHandler object at 0x16a50eb80>, 64.706093333), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bc400>, 64.7107975), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bcca0>, 64.715347333), (<aiohttp.client_proto.ResponseHandler object at 0x16a02eca0>, 64.998926041), (<aiohttp.client_proto.ResponseHandler object at 0x16a50e220>, 65.13255675), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bc6a0>, 65.424285333), (<aiohttp.client_proto.ResponseHandler object at 0x16a0a0040>, 65.475449125), (<aiohttp.client_proto.ResponseHandler object at 0x16a50e8e0>, 65.977780791), (<aiohttp.client_proto.ResponseHandler object at 0x16a0bc520>, 66.13195975)])']
+connector: <aiohttp.connector.TCPConnector object at 0x169372f70>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16939e400>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a50eca0>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a50ee80>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a50e6a0>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a0bc820>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a50e460>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a0bcd60>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a50e0a0>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a50ea00>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/sslproto.py:320: ResourceWarning: unclosed transport <asyncio.sslproto._SSLProtocolTransport object at 0x16a0bcb20>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=12>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=20>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=17>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=22>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=15>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=23>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=18>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=13>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=21>
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/selector_events.py:704: ResourceWarning: unclosed transport <_SelectorSocketTransport fd=16>

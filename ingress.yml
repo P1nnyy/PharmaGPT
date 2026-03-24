@@ -5,12 +5,20 @@ ingress:
   - hostname: dev.pharmagpt.co
     path: ^/(auth|invoices|products|reporting|inventory|system|config|feedback|activity-log|history|export-excel|invitations)
     service: http://localhost:5005
+  - hostname: grafana.pharmagpt.co
+    service: http://localhost:3001
+  - hostname: monitoring.pharmagpt.co
+    service: http://localhost:3001
   - hostname: dev.pharmagpt.co
     service: http://localhost:3000
+    originRequest:
+      connectTimeout: 60s
   - hostname: pharmagpt.co
     service: http://localhost:3000
+    originRequest:
+      connectTimeout: 60s
   - hostname: api.pharmagpt.co
     service: http://localhost:5005
     originRequest:
-      connectTimeout: 30s
+      connectTimeout: 60s
   - service: http_status:404

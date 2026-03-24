@@ -22,7 +22,6 @@ const InvoiceViewer = ({
 
     const onQueueSelect = setSelectedQueueId;
     const onFileChange = handleFileChange;
-    const onReset = handleReset;
     const onDiscard = handleDiscard;
 
     // Derived active state
@@ -197,7 +196,7 @@ const InvoiceViewer = ({
 
                     {fileQueue.length > 0 && (
                         <button
-                            onClick={onReset}
+                            onClick={handleReset}
                             className="flex items-center gap-1 text-[10px] md:text-sm text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700 shadow-sm active:bg-gray-700"
                         >
                             <RefreshCw className="w-3 h-3" />

@@ -12,25 +12,37 @@ if not API_KEY:
     logger.warning("GOOGLE_API_KEY not found. Embeddings will fail.")
     client = None
 else:
-    client = genai.Client(api_key=API_KEY)
+    # Force v1 to ensure text-embedding-004 is found
+    client = genai.Client(api_key=API_KEY, http_options={'api_version': 'v1'})
+
+import requests
+import json
 
 @ai_retry
 def generate_embedding(text: str) -> List[float]:
     """
-    Generates a vector embedding for the given text using the new Google Gen AI SDK.
+    Generates a vector embedding using a direct REST API call to bypass SDK bugs.
     """
-    if not text or not client: return []
+    if not text or not API_KEY: return []
     try:
-        # Use text-embedding-004 with explicit 768 dimensionality to match Neo4j index
-        result = client.models.embed_content(
-            model="text-embedding-004",
-            contents=text,
-            config={
-                "output_dimensionality": 768
-            }
-        )
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "model": "models/text-embedding-004",
+            "content": {
+                "parts": [{"text": text}]
+            },
+            "outputDimensionality": 768
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        embedding = data.get("embedding", {}).get("values", [])
+        
         # Final safeguard: Truncate if still larger than 768
-        return result.embeddings[0].values[:768]
+        return embedding[:768]
     except Exception as e:
-        logger.error(f"Embedding generation failed: {e}")
+        logger.error(f"REST Embedding generation failed: {e}")
         return []

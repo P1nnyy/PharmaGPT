@@ -1,0 +1,2854 @@
+{
+  "trace_id": "c07e0d496d47a111c864034cf83c0cd5",
+  "timestamp": "2026-03-24T08:30:37.233Z",
+  "input": {
+    "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+    "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+    "user_email": "pranavgupta1638@gmail.com",
+    "extraction_plan": [],
+    "line_item_fragments": [],
+    "global_modifiers": {},
+    "final_output": {},
+    "error_logs": []
+  },
+  "output": {
+    "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+    "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+    "extraction_plan": [
+      {
+        "zone_id": "header_1",
+        "type": "header",
+        "description": "Top section with supplier details, invoice number and date"
+      },
+      {
+        "zone_id": "table_1",
+        "type": "primary_table",
+        "description": "Main product grid with columns Item, Qty, Rate, Amount"
+      },
+      {
+        "zone_id": "footer_1",
+        "type": "footer",
+        "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+      }
+    ],
+    "line_item_fragments": [
+      {
+        "Product": "ONDERO MET 2.5/1000",
+        "Pack": "10 S",
+        "Qty": 2,
+        "Free": 0,
+        "Batch": "UB02123",
+        "Expiry": "07/27",
+        "HSN": "30049099",
+        "MRP": 168.95,
+        "Rate": 135.16,
+        "Amount": 270.32,
+        "Category": "Tablet",
+        "Manufacturer": "Lupin",
+        "Raw_GST_Percentage": 5,
+        "manufacturer": "Lupin",
+        "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+        "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+        "Pack_Size_Description": "Strip of 10 Tablets",
+        "pack_size_description": "Strip of 10 Tablets",
+        "is_enriched": true,
+        "Logic_Note": "[Enriched via Web]"
+      },
+      {
+        "Product": "GLIPTACREAT-M 500",
+        "Pack": "10 S",
+        "Qty": 1.84,
+        "Free": 0,
+        "Batch": "OOPZY045-",
+        "Expiry": "05/27",
+        "HSN": "30049099",
+        "MRP": 84.16,
+        "Rate": 64.13,
+        "Amount": 118,
+        "Category": "Tablet",
+        "Manufacturer": "MANKIN",
+        "Raw_GST_Percentage": 5
+      }
+    ],
+    "raw_text_rows": [
+      "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+    ],
+    "line_items": [
+      {
+        "Product": "ONDERO MET 2.5/1000",
+        "Pack": "10 S",
+        "Qty": 2,
+        "Free": 0,
+        "Batch": "UB02123",
+        "Expiry": "07/27",
+        "HSN": "30049099",
+        "MRP": 168.95,
+        "Rate": 135.16,
+        "Amount": 270.32,
+        "Category": "Tablet",
+        "Manufacturer": "Lupin",
+        "Raw_GST_Percentage": 5,
+        "manufacturer": "Lupin",
+        "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+        "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+        "Pack_Size_Description": "Strip of 10 Tablets",
+        "pack_size_description": "Strip of 10 Tablets",
+        "is_enriched": true,
+        "Logic_Note": "[Enriched via Web]"
+      },
+      {
+        "Product": "GLIPTACREAT-M 500",
+        "Pack": "10 S",
+        "Qty": 1.84,
+        "Free": 0,
+        "Batch": "OOPZY045-",
+        "Expiry": "05/27",
+        "HSN": "30049099",
+        "MRP": 84.16,
+        "Rate": 64.13,
+        "Amount": 118,
+        "Category": "Tablet",
+        "Manufacturer": "MANKIN",
+        "Raw_GST_Percentage": 5
+      }
+    ],
+    "anchor_totals": {},
+    "critic_verdict": "PASS_WITH_WARNING",
+    "retry_count": 2,
+    "global_modifiers": {
+      "Supplier_Name": "ABKA MEDICOS",
+      "Invoice_No": "GSM-6629",
+      "Invoice_Date": "2025-11-27"
+    },
+    "final_output": {},
+    "error_logs": [
+      "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+      "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+      "Auditor: Missing input data."
+    ],
+    "feedback_logs": [
+      "Extraction yielded 0 items. Retry with Full Page Scan."
+    ],
+    "supplier_details": {
+      "Supplier_Name": "ABKA MEDICOS",
+      "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+      "GSTIN": "03AAJFR4013K1ZE",
+      "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+      "Phone_Number": "9814042203,9257336460",
+      "Email": null,
+      "PAN": null,
+      "Invoice_No": "GSM-6629",
+      "Invoice_Date": "27/11/2025"
+    },
+    "user_email": "pranavgupta1638@gmail.com"
+  },
+  "nodes": [
+    {
+      "name": "worker",
+      "type": "CHAIN",
+      "level": "ERROR",
+      "status_message": "",
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "critic_verdict": "RETRY_OCR",
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "2025-11-28"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": null
+    },
+    {
+      "name": "critic",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "2025-11-28"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "critic_verdict": "RETRY_OCR",
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ]
+      }
+    },
+    {
+      "name": "researcher",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "2025-11-28"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {}
+    },
+    {
+      "name": "route_critic",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "critic_verdict": "RETRY_OCR",
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "2025-11-28"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": "worker"
+    },
+    {
+      "name": "detective",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "2025-11-28"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {}
+    },
+    {
+      "name": "detective_investigation",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+            "extraction_plan": [
+              {
+                "zone_id": "header_1",
+                "type": "header",
+                "description": "Top section with supplier details, invoice number, and date"
+              },
+              {
+                "zone_id": "table_1",
+                "type": "primary_table",
+                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+              },
+              {
+                "zone_id": "footer_1",
+                "type": "footer",
+                "description": "Footer area with Grand Total and Tax Breakdown"
+              }
+            ],
+            "line_item_fragments": [],
+            "raw_text_rows": [],
+            "anchor_totals": {},
+            "retry_count": 1,
+            "global_modifiers": {
+              "Supplier_Name": "ATUL AGENCIES",
+              "Invoice_No": "AA08438",
+              "Invoice_Date": "2025-11-28"
+            },
+            "final_output": {},
+            "error_logs": [
+              "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Auditor: Missing input data."
+            ],
+            "feedback_logs": [],
+            "supplier_details": {
+              "Supplier_Name": "ATUL AGENCIES",
+              "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+              "GSTIN": "03ABYFA2174Q1ZS",
+              "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+              "Phone_Number": "7696141249",
+              "Email": null,
+              "PAN": null,
+              "Invoice_No": "AA08438",
+              "Invoice_Date": "28-11-2025"
+            },
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {}
+    },
+    {
+      "name": "mapper_execution",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+            "extraction_plan": [
+              {
+                "zone_id": "header_1",
+                "type": "header",
+                "description": "Top section with supplier details, invoice number, and date"
+              },
+              {
+                "zone_id": "table_1",
+                "type": "primary_table",
+                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+              },
+              {
+                "zone_id": "footer_1",
+                "type": "footer",
+                "description": "Footer area with Grand Total and Tax Breakdown"
+              }
+            ],
+            "line_item_fragments": [],
+            "raw_text_rows": [],
+            "anchor_totals": {},
+            "retry_count": 1,
+            "global_modifiers": {
+              "Supplier_Name": "ATUL AGENCIES",
+              "Invoice_No": "AA08438",
+              "Invoice_Date": "2025-11-28"
+            },
+            "final_output": {},
+            "error_logs": [
+              "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop"
+            ],
+            "feedback_logs": [],
+            "supplier_details": {
+              "Supplier_Name": "ATUL AGENCIES",
+              "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+              "GSTIN": "03ABYFA2174Q1ZS",
+              "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+              "Phone_Number": "7696141249",
+              "Email": null,
+              "PAN": null,
+              "Invoice_No": "AA08438",
+              "Invoice_Date": "28-11-2025"
+            },
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {}
+    },
+    {
+      "name": "auditor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "2025-11-28"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop"
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "error_logs": [
+          "Auditor: Missing input data."
+        ]
+      }
+    },
+    {
+      "name": "mapper",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "2025-11-28"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2513' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2514' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop"
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {}
+    },
+    {
+      "name": "supplier_extractor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": [],
+        "feedback_logs": [],
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "supplier_details": {
+          "Supplier_Name": "ATUL AGENCIES",
+          "Address": "OPPOSITE RAM LILA GROUND\nPATHANKOT-145001",
+          "GSTIN": "03ABYFA2174Q1ZS",
+          "DL_No": "PB/PTK-131046 PB/PTK-131047\n20-151360 21-151361",
+          "Phone_Number": "7696141249",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "AA08438",
+          "Invoice_Date": "28-11-2025"
+        }
+      }
+    },
+    {
+      "name": "route_surveyor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ],
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": [],
+        "feedback_logs": [],
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": "worker"
+    },
+    {
+      "name": "surveyor_layout_analysis",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+            "extraction_plan": [],
+            "line_item_fragments": [],
+            "global_modifiers": {},
+            "final_output": {},
+            "error_logs": [],
+            "feedback_logs": [],
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ]
+      }
+    },
+    {
+      "name": "surveyor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "extraction_plan": [],
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": [],
+        "feedback_logs": [],
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number, and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LangGraph",
+      "type": "CHAIN",
+      "level": "ERROR",
+      "status_message": "",
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpv8m9_pjx.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/1b5b7675bc884a339547561b7b30712a.jpeg",
+        "user_email": "pranavgupta1638@gmail.com",
+        "extraction_plan": [],
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": []
+      },
+      "output": null
+    },
+    {
+      "name": "route_critic",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "critic_verdict": "PASS_WITH_WARNING",
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "anchor_totals": {},
+        "retry_count": 2,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": "end"
+    },
+    {
+      "name": "critic",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "anchor_totals": {},
+        "critic_verdict": "RETRY_OCR",
+        "retry_count": 2,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "critic_verdict": "PASS_WITH_WARNING"
+      }
+    },
+    {
+      "name": "researcher",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "anchor_totals": {},
+        "critic_verdict": "RETRY_OCR",
+        "retry_count": 2,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "normalized_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "detective_investigation",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+            "extraction_plan": [
+              {
+                "zone_id": "header_1",
+                "type": "header",
+                "description": "Top section with supplier details, invoice number and date"
+              },
+              {
+                "zone_id": "table_1",
+                "type": "primary_table",
+                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+              },
+              {
+                "zone_id": "footer_1",
+                "type": "footer",
+                "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+              }
+            ],
+            "line_item_fragments": [
+              {
+                "Product": "ONDERO MET 2.5/1000",
+                "Pack": "10 S",
+                "Qty": 2,
+                "Free": 0,
+                "Batch": "UB02123",
+                "Expiry": "07/27",
+                "HSN": "30049099",
+                "MRP": 168.95,
+                "Rate": 135.16,
+                "Amount": 270.32,
+                "Category": "Tablet",
+                "Manufacturer": "LUPIN",
+                "Raw_GST_Percentage": 5
+              },
+              {
+                "Product": "GLIPTACREAT-M 500",
+                "Pack": "10 S",
+                "Qty": 1.84,
+                "Free": 0,
+                "Batch": "OOPZY045-",
+                "Expiry": "05/27",
+                "HSN": "30049099",
+                "MRP": 84.16,
+                "Rate": 64.13,
+                "Amount": 118,
+                "Category": "Tablet",
+                "Manufacturer": "MANKIN",
+                "Raw_GST_Percentage": 5
+              }
+            ],
+            "raw_text_rows": [
+              "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+            ],
+            "line_items": [
+              {
+                "Product": "ONDERO MET 2.5/1000",
+                "Pack": "10 S",
+                "Qty": 2,
+                "Free": 0,
+                "Batch": "UB02123",
+                "Expiry": "07/27",
+                "HSN": "30049099",
+                "MRP": 168.95,
+                "Rate": 135.16,
+                "Amount": 270.32,
+                "Category": "Tablet",
+                "Manufacturer": "LUPIN",
+                "Raw_GST_Percentage": 5
+              },
+              {
+                "Product": "GLIPTACREAT-M 500",
+                "Pack": "10 S",
+                "Qty": 1.84,
+                "Free": 0,
+                "Batch": "OOPZY045-",
+                "Expiry": "05/27",
+                "HSN": "30049099",
+                "MRP": 84.16,
+                "Rate": 64.13,
+                "Amount": 118,
+                "Category": "Tablet",
+                "Manufacturer": "MANKIN",
+                "Raw_GST_Percentage": 5
+              }
+            ],
+            "anchor_totals": {},
+            "critic_verdict": "RETRY_OCR",
+            "retry_count": 2,
+            "global_modifiers": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "2025-11-27"
+            },
+            "final_output": {},
+            "error_logs": [
+              "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Auditor: Missing input data."
+            ],
+            "feedback_logs": [
+              "Extraction yielded 0 items. Retry with Full Page Scan."
+            ],
+            "supplier_details": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+              "GSTIN": "03AAJFR4013K1ZE",
+              "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+              "Phone_Number": "9814042203,9257336460",
+              "Email": null,
+              "PAN": null,
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "27/11/2025"
+            },
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "detective",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "anchor_totals": {},
+        "critic_verdict": "RETRY_OCR",
+        "retry_count": 2,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "auditor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "anchor_totals": {},
+        "critic_verdict": "RETRY_OCR",
+        "retry_count": 2,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        }
+      }
+    },
+    {
+      "name": "mapper_execution",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+            "extraction_plan": [
+              {
+                "zone_id": "header_1",
+                "type": "header",
+                "description": "Top section with supplier details, invoice number and date"
+              },
+              {
+                "zone_id": "table_1",
+                "type": "primary_table",
+                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+              },
+              {
+                "zone_id": "footer_1",
+                "type": "footer",
+                "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+              }
+            ],
+            "line_item_fragments": [],
+            "raw_text_rows": [
+              "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+            ],
+            "anchor_totals": {},
+            "critic_verdict": "RETRY_OCR",
+            "retry_count": 2,
+            "global_modifiers": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "2025-11-27"
+            },
+            "final_output": {},
+            "error_logs": [
+              "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Auditor: Missing input data."
+            ],
+            "feedback_logs": [
+              "Extraction yielded 0 items. Retry with Full Page Scan."
+            ],
+            "supplier_details": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+              "GSTIN": "03AAJFR4013K1ZE",
+              "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+              "Phone_Number": "9814042203,9257336460",
+              "Email": null,
+              "PAN": null,
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "27/11/2025"
+            },
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "mapper",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "anchor_totals": {},
+        "critic_verdict": "RETRY_OCR",
+        "retry_count": 2,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "LUPIN",
+            "Raw_GST_Percentage": 5
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "critic_verdict": "RETRY_OCR",
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "error_logs": [],
+        "retry_count": 2
+      }
+    },
+    {
+      "name": "route_critic",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "critic_verdict": "RETRY_OCR",
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": "worker"
+    },
+    {
+      "name": "critic",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "critic_verdict": "RETRY_OCR",
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ]
+      }
+    },
+    {
+      "name": "researcher",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {}
+    },
+    {
+      "name": "detective_investigation",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+            "extraction_plan": [
+              {
+                "zone_id": "header_1",
+                "type": "header",
+                "description": "Top section with supplier details, invoice number and date"
+              },
+              {
+                "zone_id": "table_1",
+                "type": "primary_table",
+                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+              },
+              {
+                "zone_id": "footer_1",
+                "type": "footer",
+                "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+              }
+            ],
+            "line_item_fragments": [],
+            "raw_text_rows": [],
+            "anchor_totals": {},
+            "retry_count": 1,
+            "global_modifiers": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "2025-11-27"
+            },
+            "final_output": {},
+            "error_logs": [
+              "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Auditor: Missing input data."
+            ],
+            "feedback_logs": [],
+            "supplier_details": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+              "GSTIN": "03AAJFR4013K1ZE",
+              "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+              "Phone_Number": "9814042203,9257336460",
+              "Email": null,
+              "PAN": null,
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "27/11/2025"
+            },
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {}
+    },
+    {
+      "name": "detective",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {}
+    },
+    {
+      "name": "auditor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop"
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "error_logs": [
+          "Auditor: Missing input data."
+        ]
+      }
+    },
+    {
+      "name": "mapper_execution",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+            "extraction_plan": [
+              {
+                "zone_id": "header_1",
+                "type": "header",
+                "description": "Top section with supplier details, invoice number and date"
+              },
+              {
+                "zone_id": "table_1",
+                "type": "primary_table",
+                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+              },
+              {
+                "zone_id": "footer_1",
+                "type": "footer",
+                "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+              }
+            ],
+            "line_item_fragments": [],
+            "raw_text_rows": [],
+            "anchor_totals": {},
+            "retry_count": 1,
+            "global_modifiers": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "2025-11-27"
+            },
+            "final_output": {},
+            "error_logs": [
+              "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+              "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop"
+            ],
+            "feedback_logs": [],
+            "supplier_details": {
+              "Supplier_Name": "ABKA MEDICOS",
+              "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+              "GSTIN": "03AAJFR4013K1ZE",
+              "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+              "Phone_Number": "9814042203,9257336460",
+              "Email": null,
+              "PAN": null,
+              "Invoice_No": "GSM-6629",
+              "Invoice_Date": "27/11/2025"
+            },
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {}
+    },
+    {
+      "name": "mapper",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "anchor_totals": {},
+        "retry_count": 1,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop"
+        ],
+        "feedback_logs": [],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {}
+    },
+    {
+      "name": "worker",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": [],
+        "feedback_logs": [],
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "line_item_fragments": [],
+        "raw_text_rows": [],
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "anchor_totals": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop"
+        ],
+        "retry_count": 1
+      }
+    },
+    {
+      "name": "supplier_extractor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": [],
+        "feedback_logs": [],
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        }
+      }
+    },
+    {
+      "name": "route_surveyor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": [],
+        "feedback_logs": [],
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": "worker"
+    },
+    {
+      "name": "surveyor_layout_analysis",
+      "type": "SPAN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "args": [
+          {
+            "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+            "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+            "extraction_plan": [],
+            "line_item_fragments": [],
+            "global_modifiers": {},
+            "final_output": {},
+            "error_logs": [],
+            "feedback_logs": [],
+            "user_email": "pranavgupta1638@gmail.com"
+          }
+        ],
+        "kwargs": {}
+      },
+      "output": {
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ]
+      }
+    },
+    {
+      "name": "surveyor",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [],
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": [],
+        "feedback_logs": [],
+        "user_email": "pranavgupta1638@gmail.com"
+      },
+      "output": {
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LangGraph",
+      "type": "CHAIN",
+      "level": "DEFAULT",
+      "status_message": null,
+      "input": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "user_email": "pranavgupta1638@gmail.com",
+        "extraction_plan": [],
+        "line_item_fragments": [],
+        "global_modifiers": {},
+        "final_output": {},
+        "error_logs": []
+      },
+      "output": {
+        "image_path": "/var/folders/47/928ljscj1p59cn2x2vqg9gw00000gn/T/tmpzaxa8z6a.jpeg",
+        "public_url": "https://pub-2e012305a5fe4f4085b3a3080bd8a663.r2.dev/d5f07b264af643718982c5fad6501fbd.jpeg",
+        "extraction_plan": [
+          {
+            "zone_id": "header_1",
+            "type": "header",
+            "description": "Top section with supplier details, invoice number and date"
+          },
+          {
+            "zone_id": "table_1",
+            "type": "primary_table",
+            "description": "Main product grid with columns Item, Qty, Rate, Amount"
+          },
+          {
+            "zone_id": "footer_1",
+            "type": "footer",
+            "description": "Footer area with Grand Total and Tax Breakdown, bank details"
+          }
+        ],
+        "line_item_fragments": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "raw_text_rows": [
+          "```\nsub_total, global_discount, taxable_value, total_sgst, total_cgst, round_off, Stated_Grand_Total\n388.32, 19.42, , 9.22, 9.22, -0.34, 387.00\n```\n\n```\n| SNO | ITEM NAME           | HSN CODE PACK | CMPNY | BATCH NO   | QTY  | DISC | RATE    | EXP    | NEW MRP | OLD MRP | GST% | AMOUNT |\n|-----|---------------------|-----------------|-------|------------|------|------|---------|--------|---------|---------|------|--------|\n| 1   | ONDERO MET 2.5/1000 | 30049099 10 S   | LUPIN | UB02123    | 2.00 | -    | 135.16  | 07/27  | 168.95  | -       | 5    | 270.32 |\n| 2   | GLIPTACREAT-M 500   | 30049099 10 S   | MANKIN| OOPZY045-  | 1.84 | 0.16 | 64.13   | 05/27  | 84.16   | 90      | 5    | 118.00 |\n```"
+        ],
+        "line_items": [
+          {
+            "Product": "ONDERO MET 2.5/1000",
+            "Pack": "10 S",
+            "Qty": 2,
+            "Free": 0,
+            "Batch": "UB02123",
+            "Expiry": "07/27",
+            "HSN": "30049099",
+            "MRP": 168.95,
+            "Rate": 135.16,
+            "Amount": 270.32,
+            "Category": "Tablet",
+            "Manufacturer": "Lupin",
+            "Raw_GST_Percentage": 5,
+            "manufacturer": "Lupin",
+            "Salt": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "salt_composition": "Linagliptin 2.5 mg, Metformin Hydrochloride 1000 mg",
+            "Pack_Size_Description": "Strip of 10 Tablets",
+            "pack_size_description": "Strip of 10 Tablets",
+            "is_enriched": true,
+            "Logic_Note": "[Enriched via Web]"
+          },
+          {
+            "Product": "GLIPTACREAT-M 500",
+            "Pack": "10 S",
+            "Qty": 1.84,
+            "Free": 0,
+            "Batch": "OOPZY045-",
+            "Expiry": "05/27",
+            "HSN": "30049099",
+            "MRP": 84.16,
+            "Rate": 64.13,
+            "Amount": 118,
+            "Category": "Tablet",
+            "Manufacturer": "MANKIN",
+            "Raw_GST_Percentage": 5
+          }
+        ],
+        "anchor_totals": {},
+        "critic_verdict": "PASS_WITH_WARNING",
+        "retry_count": 2,
+        "global_modifiers": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "2025-11-27"
+        },
+        "final_output": {},
+        "error_logs": [
+          "Zone Extraction Failed: Task <Task pending name='Task-2441' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Zone Extraction Failed: Task <Task pending name='Task-2442' coro=<extract_from_zone() running at /Users/pranavgupta/Desktop/untitled folder/Invoice Extractor/.venv/lib/python3.9/site-packages/tenacity/asyncio/__init__.py:189> cb=[gather.<locals>._done_callback() at /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py:764]> got Future <Future pending> attached to a different loop",
+          "Auditor: Missing input data."
+        ],
+        "feedback_logs": [
+          "Extraction yielded 0 items. Retry with Full Page Scan."
+        ],
+        "supplier_details": {
+          "Supplier_Name": "ABKA MEDICOS",
+          "Address": "NEAR VISHWKARMA MANDIR PATHANKOT-145001",
+          "GSTIN": "03AAJFR4013K1ZE",
+          "DL_No": "2GB 117016 VALID UPTO 12/05/2027\n21B 117017 VALID UPTO 12/05/2027",
+          "Phone_Number": "9814042203,9257336460",
+          "Email": null,
+          "PAN": null,
+          "Invoice_No": "GSM-6629",
+          "Invoice_Date": "27/11/2025"
+        },
+        "user_email": "pranavgupta1638@gmail.com"
+      }
+    }
+  ]
+}

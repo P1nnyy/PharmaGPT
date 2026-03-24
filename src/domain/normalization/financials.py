@@ -93,13 +93,15 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         return line_items
 
     # 1. Calculate Sub-Total from Line Items
-    calculated_sub_total = sum(float(item.get("Amount", 0.0)) for item in line_items)
+    # Robust: Check for Net_Line_Amount (Normalized) or Amount (Raw)
+    calculated_sub_total = sum(float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0) for item in line_items)
     
-    # 2. Extract Modifier values
-    global_discount = parse_float(global_modifiers.get("global_discount", 0.0))
-    total_sgst = parse_float(global_modifiers.get("total_sgst", 0.0))
-    total_cgst = parse_float(global_modifiers.get("total_cgst", 0.0))
-    round_off = parse_float(global_modifiers.get("round_off", 0.0))
+    # 2. Extract Modifier values (Robust casing for schema compatibility)
+    # Strategy: Use absolute values to ensure subtraction logic works regardless of OCR sign (-)
+    global_discount = abs(parse_float(global_modifiers.get("global_discount") or global_modifiers.get("Global_Discount_Amount") or 0.0))
+    total_sgst = abs(parse_float(global_modifiers.get("total_sgst") or global_modifiers.get("SGST_Amount") or 0.0))
+    total_cgst = abs(parse_float(global_modifiers.get("total_cgst") or global_modifiers.get("CGST_Amount") or 0.0))
+    round_off = parse_float(global_modifiers.get("round_off") or global_modifiers.get("Round_Off") or 0.0) # RO can be negative/positive for adjustment
     
     # 3. Calculate Derived Values
     taxable_value = calculated_sub_total - global_discount
@@ -117,8 +119,8 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     # 5. Proportional Allocation for Effective Landing Cost
     total_calculated_tax = 0.0
     for item in line_items:
-        # UPDATED: Use Amount or Stated_Net_Amount
-        item_amount = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0.0)
+        # UPDATED: Use Amount or Net_Line_Amount
+        item_amount = float(item.get("Net_Line_Amount") or item.get("Amount") or item.get("Stated_Net_Amount") or 0.0)
         
         # Safe Weight Ratio
         weight_ratio = item_amount / calculated_sub_total if calculated_sub_total > 0 else 0
@@ -156,6 +158,7 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         "line_items": line_items,
         "calculated_stats": {
             "sub_total": round(calculated_sub_total, 2),
+            "taxable_value": round(taxable_value, 2),
             "total_gst": round(total_calculated_tax, 2),
             "grand_total": round(calculated_sub_total - global_discount + total_calculated_tax + round_off, 2)
         }
