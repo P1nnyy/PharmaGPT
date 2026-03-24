@@ -115,8 +115,10 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
             line_items[0]["Validation_Error"] = error_msg
 
     # 5. Proportional Allocation for Effective Landing Cost
+    total_calculated_tax = 0.0
     for item in line_items:
-        item_amount = float(item.get("Amount", 0.0))
+        # UPDATED: Use Amount or Stated_Net_Amount
+        item_amount = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0.0)
         
         # Safe Weight Ratio
         weight_ratio = item_amount / calculated_sub_total if calculated_sub_total > 0 else 0
@@ -126,20 +128,22 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         item_taxable = item_amount - item_discount_share
         
         # Tax Calculation (Default 5% if missing)
-        # Use sum of percentages if available
-        gst_percent = (float(item.get("SGST_Percent", 0.0) or 0.0) + 
-                       float(item.get("CGST_Percent", 0.0) or 0.0) + 
-                       float(item.get("IGST_Percent", 0.0) or 0.0))
+        gst_percent = (float(item.get("SGST_Percent") or 0.0) + 
+                       float(item.get("CGST_Percent") or 0.0) + 
+                       float(item.get("IGST_Percent") or 0.0) +
+                       float(item.get("Raw_GST_Percentage") or 0.0))
+                       
         if gst_percent <= 0:
             gst_percent = 5.0 # User's default
             
         item_tax = item_taxable * (gst_percent / 100)
+        total_calculated_tax += item_tax
         
         # Final Landed Cost
         item["effective_landing_cost"] = round(item_taxable + item_tax, 2)
         
         # Calculate Unit Cost (Landed)
-        qty = float(item.get("Standard_Quantity", 1) or 1)
+        qty = float(item.get("Qty", 1) or 1)
         if qty > 0:
             item["Final_Unit_Cost"] = round(item["effective_landing_cost"] / qty, 2)
             
@@ -147,4 +151,12 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         old_note = item.get("Logic_Note", "")
         item["Logic_Note"] = f"{old_note} [Ledger: Taxable {item_taxable:.2f}, Tax {item_tax:.2f}, Landing {item['effective_landing_cost']:.2f}]"
 
-    return line_items
+    # Return items AND calculated footer stats for fallback healing
+    return {
+        "line_items": line_items,
+        "calculated_stats": {
+            "sub_total": round(calculated_sub_total, 2),
+            "total_gst": round(total_calculated_tax, 2),
+            "grand_total": round(calculated_sub_total - global_discount + total_calculated_tax + round_off, 2)
+        }
+    }

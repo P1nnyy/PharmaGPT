@@ -73,6 +73,9 @@ class TestAPI(unittest.TestCase):
             mock_session = MagicMock()
             mock_driver.session.return_value.__enter__.return_value = mock_session
             
+            # Allow execute_read to run the transaction lambda
+            mock_session.execute_read.side_effect = lambda f: f(mock_session)
+            
             # Use a mock record that supports .get() and indexing
             mock_result = MagicMock()
             mock_result.__getitem__.side_effect = lambda k: {

@@ -21,13 +21,16 @@ def generate_embedding(text: str) -> List[float]:
     """
     if not text or not client: return []
     try:
-        # Use gemini-embedding-001 which is verified available
+        # Use text-embedding-004 with explicit 768 dimensionality to match Neo4j index
         result = client.models.embed_content(
-            model="models/gemini-embedding-001",
-            contents=text
+            model="text-embedding-004",
+            contents=text,
+            config={
+                "output_dimensionality": 768
+            }
         )
-        # Note: The new SDK returns embeddings in a slightly different structure
-        return result.embeddings[0].values
+        # Final safeguard: Truncate if still larger than 768
+        return result.embeddings[0].values[:768]
     except Exception as e:
         logger.error(f"Embedding generation failed: {e}")
         return []

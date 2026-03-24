@@ -65,12 +65,13 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
             normalized_items.append(norm_item)
             
         # Reconcile
-        grand_total = parse_float(extracted_data.get("Stated_Grand_Total") or extracted_data.get("Invoice_Amount", 0.0))
-        normalized_items = reconcile_financials(normalized_items, extracted_data, grand_total)
+        recon_result = reconcile_financials(normalized_items, extracted_data, grand_total)
+        normalized_items = recon_result.get("line_items", [])
+        calc_stats = recon_result.get("calculated_stats", {})
         
         # Validation checks
         validation_flags = []
-        calculated_total = sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
+        calculated_total = calc_stats.get("grand_total") or sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
         if grand_total:
              if abs(calculated_total - grand_total) > 5.0:
                  validation_flags.append(f"Mismatch: Calc {calculated_total:.2f} != Stated {grand_total:.2f}")

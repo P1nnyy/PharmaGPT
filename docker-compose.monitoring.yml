@@ -140,6 +140,7 @@ services:
 
   prometheus:
     image: prom/prometheus
+    restart: always
     volumes:
       - ./config/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./config/monitoring/rules.yml:/etc/prometheus/rules.yml
@@ -186,6 +187,7 @@ services:
 
   loki:
     image: grafana/loki:latest
+    restart: always
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -194,6 +196,7 @@ services:
 
   promtail:
     image: grafana/promtail:latest
+    restart: always
     volumes:
       - ./logs:/var/log/app
       - ./config/monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml
@@ -203,6 +206,7 @@ services:
 
   grafana:
     image: grafana/grafana
+    restart: always
     volumes:
       - ./config/monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
       - ./config/monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml

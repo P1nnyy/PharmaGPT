@@ -16,7 +16,7 @@ class InvoiceState(TypedDict):
     line_item_fragments: Annotated[List[Dict[str, Any]], operator.add]
     
     # NEW: Raw Text from Worker (Stage 1) - Before Mapping
-    raw_text_rows: Annotated[List[str], operator.add]
+    raw_text_rows: List[str]
     
     # Unified, Deduplicated Line Items (Output of Auditor)
     # Default behavior is replace/overwrite, which is what we want for this stage

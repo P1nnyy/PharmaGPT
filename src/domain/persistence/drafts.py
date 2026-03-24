@@ -10,15 +10,16 @@ def get_draft_invoices(driver, user_email: str):
     """
     query = """
     MATCH (u:User {email: $user_email})
-    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-    WITH u, s
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)<-[:BELONGS_TO]-(i1:Invoice)
+    WHERE i1.status IN ['PROCESSING', 'DRAFT', 'ERROR']
     
-    MATCH (i:Invoice)
-    WHERE (i.status IN ['PROCESSING', 'DRAFT', 'ERROR'])
-      AND (
-        (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
-        (s IS NULL AND (u)-[:OWNS]->(i))
-      )
+    OPTIONAL MATCH (u)-[:OWNS]->(i2:Invoice)
+    WHERE i2.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    
+    WITH collect(i1) + collect(i2) as all_i
+    UNWIND all_i as i
+    WITH DISTINCT i
+    WHERE i IS NOT NULL
     
     RETURN i.invoice_id as id,
            i.filename as filename,
@@ -40,6 +41,7 @@ def get_draft_invoices(driver, user_email: str):
              
              invoices.append({
                  "id": record["id"],
+                 "filename": record["filename"],
                  "file": {"name": record["filename"]}, 
                  "status": record["status"].lower(), 
                  "previewUrl": record["image_path"],
@@ -60,15 +62,16 @@ def delete_draft_invoices(driver, user_email: str):
     """
     query = """
     MATCH (u:User {email: $user_email})
-    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-    WITH u, s
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)<-[:BELONGS_TO]-(i1:Invoice)
+    WHERE i1.status IN ['PROCESSING', 'DRAFT', 'ERROR']
     
-    MATCH (i:Invoice)
-    WHERE (i.status IN ['PROCESSING', 'DRAFT', 'ERROR'])
-      AND (
-        (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
-        (s IS NULL AND (u)-[:OWNS]->(i))
-      )
+    OPTIONAL MATCH (u)-[:OWNS]->(i2:Invoice)
+    WHERE i2.status IN ['PROCESSING', 'DRAFT', 'ERROR']
+    
+    WITH collect(i1) + collect(i2) as all_i
+    UNWIND all_i as i
+    WITH DISTINCT i
+    WHERE i IS NOT NULL
       
     WITH i, count(i) as cnt
     DETACH DELETE i

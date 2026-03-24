@@ -329,6 +329,13 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         
         logger.info(f"Worker: Extraction Complete. Retry {retry_count} -> {new_retry_count}. Items Found: {len(line_item_fragments)}")
 
+        if retry_count > 0:
+            return {
+                "raw_text_rows": raw_text_rows,
+                "error_logs": error_logs,
+                "retry_count": new_retry_count
+            }
+
         return {
             "line_item_fragments": [], # Empty, because Mapper will fill this later
             "raw_text_rows": raw_text_rows,

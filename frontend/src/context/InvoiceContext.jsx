@@ -89,15 +89,17 @@ export const InvoiceProvider = ({ children }) => {
 
     const handleReset = useCallback(async () => {
         try {
+            // Optimistic UI clear
+            setFileQueue([]);
+            setSelectedQueueId(null);
+            setRecentlySavedIds(new Set());
+            
             const now = Date.now();
             setLastClearedAt(now);
             lastClearedAtRef.current = now;
-            setRecentlySavedIds(new Set());
             
-            await getDrafts(); 
+            // Server-side clear
             await apiClearDrafts();
-            setFileQueue([]);
-            setSelectedQueueId(null);
             showToast("All drafts cleared.", "success");
         } catch (error) {
             console.error("Failed to clear drafts:", error);
@@ -270,7 +272,8 @@ export const InvoiceProvider = ({ children }) => {
                                     result: d.result,
                                     error: d.error,
                                     warning: d.duplicate_warning,
-                                    filename: d.filename || localItem?.filename
+                                    filename: d.filename || d.file?.name || localItem?.filename,
+                                    file: d.file || localItem?.file
                                 };
                             });
 

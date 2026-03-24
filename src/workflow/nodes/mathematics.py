@@ -80,6 +80,53 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     final_json = headers.copy()
     final_json["Line_Items"] = updated_lines
     
+    # --- FOOTER HEALING (The "Grand Total Fix") ---
+    # Perform math reconciliation to get calculated fallbacks
+    from src.domain.normalization.financials import reconcile_financials, parse_float
+    
+    # For reconciliation, we need a "Stated Grand Total" anchor. 
+    # Use extracted one or fallback to 0.
+    stated_total = parse_float(headers.get("Stated_Grand_Total") or headers.get("grand_total") or 0.0)
+    
+    recon_results = reconcile_financials(updated_lines, headers, stated_total)
+    calc_stats = recon_results.get("calculated_stats", {})
+    
+    # HEAL: If extracted totals are missing/zero, use calculated ones
+    # This fixes the "₹0.00" issue in the Frontend when Footer extraction fails.
+    if not parse_float(final_json.get("sub_total")):
+        logger.info(f"Solver Healing: sub_total filled from math -> {calc_stats['sub_total']}")
+        final_json["sub_total"] = calc_stats["sub_total"]
+        
+    if not parse_float(final_json.get("total_sgst")) and not parse_float(final_json.get("total_cgst")):
+        # If GST is missing, try to use the calculated one
+        gst_split = round(calc_stats["total_gst"] / 2, 2)
+        if gst_split > 0:
+            logger.info(f"Solver Healing: GST filled from math -> SGST/CGST {gst_split}")
+            final_json["total_sgst"] = gst_split
+            final_json["total_cgst"] = gst_split
+        
+    if not parse_float(final_json.get("Stated_Grand_Total")) and not parse_float(final_json.get("grand_total")):
+        logger.info(f"Solver Healing: Grand Total filled from math -> {calc_stats['grand_total']}")
+        final_json["Stated_Grand_Total"] = calc_stats["grand_total"]
+        final_json["grand_total"] = calc_stats["grand_total"]
+    
+    # --- SMART INVERSE SOLVING (The "Robustness" Layer) ---
+    # If we have Grand Total and Sub-Total, but Discount is missing or 0, infer it.
+    curr_sub = parse_float(final_json.get("sub_total"))
+    curr_grand = parse_float(final_json.get("Stated_Grand_Total") or final_json.get("grand_total"))
+    curr_gst = parse_float(final_json.get("total_sgst") or 0) * 2
+    curr_disc = parse_float(final_json.get("global_discount"))
+    
+    if curr_grand > 0 and curr_sub > 0 and curr_disc == 0:
+        # Expected = Sub - Disc + Tax
+        # Actually: Disc = Sub + Tax - Grand
+        implied_disc = round(curr_sub + curr_gst - curr_grand, 2)
+        # Only apply if it's a "reasonable" positive discount (e.g. up to 15% of subtotal or large enough to not be roundoff)
+        if implied_disc > 0.5: 
+             logger.info(f"Solver Robustness: Inferred Global Discount of {implied_disc} from {curr_sub} -> {curr_grand}")
+             final_json["global_discount"] = implied_disc
+             final_json["Logic_Note"] = final_json.get("Logic_Note", "") + f" [Inferred Disc {implied_disc}]"
+
     return {
         "line_items": updated_lines, 
         "final_output": final_json 
