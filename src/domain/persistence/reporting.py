@@ -16,8 +16,8 @@ def get_activity_log(driver, user_email: str):
     MATCH (inv:Invoice)
     WHERE inv.status = 'CONFIRMED'
       AND (
-        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s)) OR
-        (s IS NULL AND (u)-[:OWNS]->(inv))
+        (u)-[:OWNS]->(inv) OR
+        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s))
       )
     
     OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
@@ -60,8 +60,8 @@ def get_inventory(driver, user_email: str):
     MATCH (inv:Invoice)-[:CONTAINS]->(l:Line_Item)
     WHERE inv.status = 'CONFIRMED'
       AND (
-        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s)) OR
-        (s IS NULL AND (u)-[:OWNS]->(inv))
+        (u)-[:OWNS]->(inv) OR
+        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s))
       )
       
     MATCH (l)-[:IS_VARIANT_OF]->(gp:GlobalProduct)
@@ -84,8 +84,8 @@ def get_invoice_details(driver, invoice_no, user_email: str):
     
     MATCH (inv:Invoice {invoice_number: $invoice_no})
     WHERE (
-        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s)) OR
-        (s IS NULL AND (u)-[:OWNS]->(inv))
+        (u)-[:OWNS]->(inv) OR
+        (s IS NOT NULL AND (inv)-[:BELONGS_TO]->(s))
     )
     
     OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
@@ -141,8 +141,8 @@ def get_grouped_invoice_history(driver, user_email: str):
     MATCH (inv:Invoice)
     WHERE inv.status = 'CONFIRMED'
       AND (
-        (s_node IS NOT NULL AND (inv)-[:BELONGS_TO]->(s_node)) OR
-        (s_node IS NULL AND (u)-[:OWNS]->(inv))
+        (u)-[:OWNS]->(inv) OR
+        (s_node IS NOT NULL AND (inv)-[:BELONGS_TO]->(s_node))
       )
     
     // Group by Supplier Name

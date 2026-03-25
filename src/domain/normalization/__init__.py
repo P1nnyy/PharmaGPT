@@ -74,7 +74,8 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
     # Check for "Raw_GST_Percentage" (from Mapper) or older "GST_Percent"
     raw_gst = parse_float(raw_item.get("Raw_GST_Percentage") or raw_item.get("GST_Percent"))
     
-    net_line_amount = parse_float(raw_item.get("Amount"))
+    # 4. Financials (Preserve Solved Values if available)
+    net_line_amount = parse_float(raw_item.get("Net_Line_Amount") or raw_item.get("Amount"))
     base_amount = net_line_amount # Default to net if no tax
     calc_tax_amt = 0.0
     

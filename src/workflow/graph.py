@@ -74,8 +74,10 @@ def build_graph():
         if verdict in ["APPLY_MARKUP", "APPLY_MARKDOWN"]:
             return "solver"
         elif verdict == "RETRY_OCR":
-            if retry_count > 3:
-                logger.error("CIRCUIT BREAKER: Too many math retries. Routing to Human Fallback.")
+            # Circuit Breaker: Check total accumulated retries from ALL nodes
+            total_retries = state.get("retry_count", 0)
+            if total_retries > 5:
+                logger.error(f"CIRCUIT BREAKER: Total retries {total_retries} exceeded limit. Routing to Human Fallback.")
                 return "human_fallback"
             return "worker"
             

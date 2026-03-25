@@ -13,9 +13,9 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                         <div className="sticky top-0 z-10 bg-gray-900 pt-2 border-b border-gray-800">
                             <div className="grid grid-cols-12 gap-4 mb-2 text-xs font-bold text-gray-500 uppercase tracking-wider px-4">
                                 <div className="col-span-1 text-center">#</div>
-                                <div className="col-span-5">Item Name</div>
+                                <div className="col-span-4">Item Name</div>
                                 <div className="col-span-2">Batch / Expiry</div>
-                                <div className="col-span-1 text-center">MRP</div>
+                                <div className="col-span-2 text-center">MRP</div>
                                 <div className="col-span-1 text-center">Qty</div>
                                 <div className="col-span-2 text-right">Net Amount</div>
                             </div>
@@ -32,7 +32,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     <div className="col-span-1 text-center text-gray-600 font-mono text-xs">{idx + 1}</div>
 
                                     {/* Name */}
-                                    <div className="col-span-5">
+                                    <div className="col-span-4">
                                         <input
                                             value={item?.Standard_Item_Name || ''}
                                             onChange={(e) => onInputChange(idx, 'Standard_Item_Name', e.target.value)}
@@ -61,7 +61,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                     </div>
 
                                     {/* MRP */}
-                                    <div className="col-span-1">
+                                    <div className="col-span-2">
                                         <input
                                             type="number"
                                             value={item?.MRP || 0}
@@ -77,7 +77,7 @@ const EditorTable = ({ lineItems, onInputChange, onAddRow, readOnly = false }) =
                                             type="number"
                                             value={item?.Standard_Quantity || 0}
                                             onChange={(e) => onInputChange(idx, 'Standard_Quantity', parseFloat(e.target.value))}
-                                            className="w-16 bg-gray-800/50 rounded text-center font-mono text-sm text-indigo-300 font-bold focus:bg-gray-700 outline-none py-1 border border-transparent focus:border-indigo-500/50 transition-all disabled:opacity-75 disabled:bg-transparent"
+                                            className="w-full max-w-[4rem] bg-gray-800/50 rounded text-center font-mono text-sm text-indigo-300 font-bold focus:bg-gray-700 outline-none py-1 border border-transparent focus:border-indigo-500/50 transition-all disabled:opacity-75 disabled:bg-transparent"
                                             disabled={readOnly}
                                         />
                                     </div>

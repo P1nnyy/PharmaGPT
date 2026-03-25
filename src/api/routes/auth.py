@@ -90,9 +90,9 @@ async def get_current_user_role(user_email: str = Depends(get_current_user_email
 @router.get("/google/login")
 async def login(request: Request):
     # Absolute URL for callback
-    logger.info(f"Login Request Headers: {dict(request.headers)}") # DEBUG HEADERS
-    # Dynamic Base URL from Config (Safe)
-    # request.base_url is unreliable behind double proxies (Cloudflare -> Vite -> Uvicorn)
+    logger.info(f"LOGIN START: Cookies: {request.cookies}")
+    logger.info(f"LOGIN START: Scheme: {request.url.scheme}")
+    
     base_url = get_base_url().rstrip('/')
     
     redirect_uri = f"{base_url}/auth/google/callback"

@@ -150,19 +150,18 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     eq_a_result = line_sum + round_off
     eq_b_result = line_sum - global_discount + total_sgst + total_cgst + round_off
     
-    mode = "GLOBAL" # Default
-    if abs(eq_a_result - grand_total) < 2.0:
+    # 3. Mode Detection (Smallest Gap Wins)
+    gap_a = abs(eq_a_result - grand_total)
+    gap_b = abs(eq_b_result - grand_total)
+    
+    # Threshold check: If both are huge (>50), we might have a data failure, 
+    # but we still pick the closer one.
+    if gap_a <= gap_b:
         mode = "PER_ITEM"
-        logger.info(f"Financials: Detected PER_ITEM mode (Sum {line_sum:.2f} matches Grand Total {grand_total:.2f})")
-    elif abs(eq_b_result - grand_total) < 2.0:
-        mode = "GLOBAL"
-        logger.info(f"Financials: Detected GLOBAL mode (Sum {line_sum:.2f} - Disc {global_discount:.2f} + Tax {total_sgst+total_cgst:.2f} matches Grand Total {grand_total:.2f})")
+        logger.info(f"Financials: Detected PER_ITEM mode (Gap: {gap_a:.2f} is smaller than Gap B: {gap_b:.2f})")
     else:
-        # If neither matches perfectly, use whichever is closer as the working assumption
-        gap_a = abs(eq_a_result - grand_total)
-        gap_b = abs(eq_b_result - grand_total)
-        mode = "PER_ITEM" if gap_a < gap_b else "GLOBAL"
-        logger.warning(f"Financials: Ambiguous Mode (Gap A: {gap_a:.2f}, Gap B: {gap_b:.2f}). Operating in fallback mode: {mode}")
+        mode = "GLOBAL"
+        logger.info(f"Financials: Detected GLOBAL mode (Gap: {gap_b:.2f} is smaller than Gap A: {gap_a:.2f})")
 
     # 4. Automated Rounding Discovery (The "Paise" Fix)
     # If the gap is small (< 1.0), absorb it into round_off to ensure a perfect match
@@ -207,55 +206,26 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         if line_items:
             line_items[0]["Validation_Error"] = error_msg
 
-    # 6. Proportional Allocation for Effective Landing Cost
-    # Pre-calculate distributions for GLOBAL mode to avoid penny drops
-    discount_shares = []
-    freight_shares = []
-    if mode == "GLOBAL":
-        item_amounts = [float(item.get("Net_Line_Amount") or item.get("Amount") or item.get("Stated_Net_Amount") or 0.0) for item in line_items]
-        discount_shares = largest_remainder_allocation(global_discount, item_amounts)
-        # Note: If freight exists in global_modifiers, allocate it too
-        freight_charges = abs(parse_float(global_modifiers.get("freight_charges") or global_modifiers.get("Freight_Charges") or 0.0))
-        freight_shares = largest_remainder_allocation(freight_charges, item_amounts)
-
+    # 6. Perfect Proportional Allocation for Effective Landing Cost
+    # Goal: Sum of item['effective_landing_cost'] MUST EXACTLY EQUAL grand_total.
+    # We use the Hamilton Method to distribute the Grand Total based on line item weights.
+    # Weighting Factor: Net_Line_Amount (The share of the sub-total)
+    
+    item_weights = [float(item.get("Net_Line_Amount") or item.get("Amount") or item.get("Stated_Net_Amount") or 0.0) for item in line_items]
+    landed_costs = largest_remainder_allocation(grand_total, item_weights)
+    
     for i, item in enumerate(line_items):
-        # Use Net_Line_Amount or fallback
-        item_amount = float(item.get("Net_Line_Amount") or item.get("Amount") or item.get("Stated_Net_Amount") or 0.0)
-        
-        if mode == "PER_ITEM":
-            # Items ALREADY have tax and discount included
-            item["effective_landing_cost"] = round(item_amount, 2)
-        else:
-            # GLOBAL Mode: Use Hamilton Method shares
-            item_discount_share = discount_shares[i]
-            item_freight_share = freight_shares[i]
-            item_taxable = item_amount - item_discount_share + item_freight_share
-            
-            # --- GST PRIORITY FIX (Against Double Taxation) ---
-            raw_gst_pct = float(item.get("Raw_GST_Percentage") or 0.0)
-            sum_gst_pct = (float(item.get("SGST_Percent") or 0.0) + 
-                           float(item.get("CGST_Percent") or 0.0) + 
-                           float(item.get("IGST_Percent") or 0.0))
-            
-            # If Raw_GST exists, use it. Only use sum if Raw_GST is 0.
-            gst_percent = raw_gst_pct if raw_gst_pct > 0 else sum_gst_pct
-            
-            # Global Fallback
-            if gst_percent <= 0 and (total_sgst > 0 or total_cgst > 0): 
-                gst_percent = 5.0 
-            
-            item_tax = item_taxable * (gst_percent / 100)
-            item["effective_landing_cost"] = round(item_taxable + item_tax, 2)
-            item["Calculated_GST_Rate"] = gst_percent
+        item["effective_landing_cost"] = landed_costs[i]
         
         # Calculate Unit Cost (Landed)
-        qty = float(item.get("Qty", 1) or 1)
+        # Use Standard_Quantity (Billed + Free) to get the true Landing Cost per piece
+        qty = float(item.get("Standard_Quantity") or item.get("Qty", 1) or 1)
         if qty > 0:
             item["Final_Unit_Cost"] = round(item["effective_landing_cost"] / qty, 2)
             
         # Logic Note Update
         old_note = item.get("Logic_Note", "")
-        item["Logic_Note"] = f"{old_note} [Landed: {item['effective_landing_cost']:.2f}]".strip()
+        item["Logic_Note"] = f"{old_note} [Landed: ₹{item['effective_landing_cost']:.2f}]".strip()
 
     return {
         "line_items": line_items,

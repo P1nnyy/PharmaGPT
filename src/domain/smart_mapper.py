@@ -85,7 +85,12 @@ async def enrich_line_items_from_master(line_items: List[Dict[str, Any]], user_e
                 MATCH (gp)<-[:MAPS_TO]-(alias:ProductAlias)
                 WHERE toLower(alias.name) = toLower($desc)
             }
-            RETURN gp.name as name, gp.hsn_code as hsn, gp.tax_rate as tax, gp.sale_price as mrp
+            RETURN gp.name as name, 
+                   gp.hsn_code as hsn, 
+                   gp.tax_rate as tax, 
+                   gp.sale_price as mrp,
+                   gp.manufacturer as manufacturer,
+                   gp.salt_composition as salt
             LIMIT 1
             """
             
@@ -125,6 +130,14 @@ async def enrich_line_items_from_master(line_items: List[Dict[str, Any]], user_e
                     if master_mrp and master_mrp > 0:
                         item["MRP"] = master_mrp
                         logic_notes.append(f"[Auto-filled MRP {master_mrp}]")
+
+                # C. Manufacturer & Salt (New)
+                if rec["manufacturer"]:
+                    item["Manufacturer"] = rec["manufacturer"]
+                    item["manufacturer"] = rec["manufacturer"] # Both for safety
+                if rec["salt"]:
+                    item["salt_composition"] = rec["salt"]
+                    item["Salt"] = rec["salt"]
             
             # 2. HSN DESCRIPTION LOOKUP (Independent of Product Match)
             # If we have an HSN Code (extracted or filled), but no Description, try to fetch official text.

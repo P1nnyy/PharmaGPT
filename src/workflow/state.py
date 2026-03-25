@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Dict, Any
+from typing import TypedDict, List, Dict, Any, Optional
 from typing_extensions import Annotated
 import operator
 
@@ -25,7 +25,7 @@ class InvoiceState(TypedDict):
     anchor_totals: Dict[str, float]  # Stores "Grand Total" from Footer Agent (The Truth)
     critic_verdict: str              # Decision: "APPROVE", "APPLY_MARKUP", "APPLY_MARKDOWN", "RETRY_OCR"
     correction_factor: float         # Ratio to apply for markup/markdown
-    retry_count: int                 # Safety counter for infinite loops
+    retry_count: Annotated[int, operator.add]  # Total Graph Loops (Circuit Breaker)
     
     global_modifiers: Dict[str, Any]      # Invoice-level data (Global Discount, Freight)
     final_output: Dict[str, Any]          # Final cleaned JSON for API
@@ -41,3 +41,11 @@ class InvoiceState(TypedDict):
     
     # Context
     user_email: str
+    trace_id: Optional[str]               # Langfuse Trace ID for debugging
+    supplier_details: Dict[str, Any]      # Specialized extraction (GST, DL, Address)
+    
+    # --- Observability & Tracking ---
+    # error_metadata: Stores specific error codes and context
+    # reconciliation_stats: Stores mathematical variances for Prometheus
+    error_metadata: Annotated[Dict[str, Any], operator.ior]
+    reconciliation_stats: Annotated[Dict[str, Any], operator.ior]

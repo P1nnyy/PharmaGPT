@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 import logging
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
+from src.api.metrics import invoice_healer_triggered_total, invoice_unreconciled_value
 
 logger = get_logger("solver")
 
@@ -30,12 +31,27 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     
     # 2. DECISION: Do we need a correction factor?
     # If gap is > 2.0 across both modes, we calculate a correction factor to force match.
+    recon_stats = {
+        "initial_gap": round(gap, 2),
+        "mode": mode,
+        "healer_active": False
+    }
+
     if gap > 2.0 and stated_total > 0 and initial_calc_total > 0:
         # Formula: (Stated / Initial_Calc) - Apply to all line items proportionally
         correction_factor = stated_total / initial_calc_total
         logger.info(f"Solver: Unexplained gap {gap:.2f} (Mode: {mode}). Calculated correction factor {correction_factor:.4f}")
+        
+        # PROMETHEUS: Track the financial gap of this "broken" invoice
+        invoice_unreconciled_value.set(gap)
+        recon_stats["tolerance_breached"] = True
     else:
         logger.info(f"Solver: Gap {gap:.2f} explained by {mode} logic. No correction factor needed.")
+        # PROMETHEUS: If we are in GLOBAL mode and the gap was explained, the "Healer" worked
+        if mode == "GLOBAL":
+            invoice_healer_triggered_total.inc()
+            recon_stats["healer_active"] = True
+        invoice_unreconciled_value.set(0) # Reset on success
 
     # 3. APPLY RECONCILED DATA & CALCULATE RATES
     updated_lines = []
@@ -82,6 +98,10 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     # 5. FINAL HEALING
     final_json = headers.copy()
     final_json["Line_Items"] = updated_lines
+    # Merge specialized supplier details if available
+    supplier_details = state.get("supplier_details")
+    if supplier_details:
+        final_json["supplier_details"] = supplier_details
     
     # Run one final reconciliation pass to ensure footer stats match the corrected items
     final_recon = reconcile_financials(updated_lines, headers, stated_total)
@@ -103,5 +123,6 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
 
     return {
         "line_items": updated_lines, 
-        "final_output": final_json 
+        "final_output": final_json,
+        "reconciliation_stats": recon_stats
     }

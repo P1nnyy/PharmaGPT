@@ -153,7 +153,7 @@ const ActivityHistory = () => {
         return name.split(' ').map(n => n ? n[0] : '').join('').substring(0, 2).toUpperCase();
     };
 
-    const isAdmin = user?.role === 'Admin';
+    const isAdmin = user?.role === 'Admin' || user?.shop_id === 'personal' || !user?.shop_id;
 
     return (
         <div className="p-4 md:p-8 max-w-5xl mx-auto h-[calc(100vh-80px)] overflow-y-auto pb-24">

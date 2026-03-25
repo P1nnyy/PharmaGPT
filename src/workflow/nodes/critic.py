@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 import logging
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
+from src.api.metrics import circuit_breaker_tripped_total, invoice_extraction_retries_total
 
 logger = get_logger("critic")
 
@@ -14,13 +15,9 @@ async def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     logger.info("Critic: Starting extraction critique...")
     
     # 1. Get Extracted Totals
-    # PREFER: Cleaned 'line_items' from Auditor
-    # FALLBACK: 'line_item_fragments' from Worker (Dirty/Duplicate)
     lines = state.get("line_items") or state.get("line_item_fragments", [])
     
     # Calculate Anchor (Header/Footer Truth)
-    # Ensure Anchor agent saved 'Stated_Grand_Total' into global_modifiers or anchor_totals
-    # User requested global_modifiers access, checking both for robustness
     anchor_curr = state.get("global_modifiers", {}).get("Stated_Grand_Total", 0.0)
     if not anchor_curr:
         anchor_curr = state.get("anchor_totals", {}).get("Stated_Grand_Total", 0.0)
@@ -30,77 +27,68 @@ async def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     except:
         anchor_total = 0.0
     
-    if not lines:
-        logger.warning("Critic: Missing lines. Requesting RETRY.")
+    # Common helper for RETRY_OCR response
+    def retry_response(reason: str, error_type: str = "general_fault"):
+        invoice_extraction_retries_total.inc()
+        current_total = state.get("retry_count", 0) + 1
         return {
             "critic_verdict": "RETRY_OCR",
-            "feedback_logs": ["Extraction yielded 0 items. Retry with Full Page Scan."]
+            "feedback_logs": [reason],
+            "retry_count": 1, # Increments state due to operator.add
+            "error_metadata": {"last_error": error_type, "total_attempts": current_total}
         }
+
+    if not lines:
+        logger.warning("Critic: Missing lines. Requesting RETRY.")
+        return retry_response("Extraction yielded 0 items. Retry with Full Page Scan.", "missing_lines")
 
     if anchor_total <= 0:
         logger.warning("Critic: Missing anchor total. Passing with warning.")
-        return {"critic_verdict": "PASS_WITH_WARNING"} # Fail open
+        return {"critic_verdict": "PASS_WITH_WARNING"} 
 
     # 2. Calculate Line Sum
     line_sum = 0.0
     debug_vals = []
-    
-    # METADATA HEALTH CHECKS
     zero_mrp_count = 0
     zero_rate_count = 0
     total_items = len(lines)
     
     for i, item in enumerate(lines):
         try:
-             # UPDATED: Use Amount (Blind Schema)
              val = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
              line_sum += val
              debug_vals.append((item.get("Product"), val))
-             
-             # Health Check Stats
              mrp = float(item.get("MRP") or 0)
              rate = float(item.get("Rate") or 0)
-             
              if mrp == 0: zero_mrp_count += 1
              if rate == 0: zero_rate_count += 1
-             
         except:
              pass
     
     logger.info(f"Critic: ALL Items: {debug_vals}")
     
-    # 3. COLUMN HEALTH CHECK (Prioritize Data Quality over Totals)
-    # If > 50% of items are missing MRP, FAIL immediately.
+    # 3. COLUMN HEALTH CHECK
     if total_items > 0:
         if (zero_mrp_count / total_items) > 0.5:
             logger.warning(f"Critic: Critical Data Fault. {zero_mrp_count}/{total_items} items missing MRP.")
-            return {
-                "critic_verdict": "RETRY_OCR",
-                "feedback_logs": ["CRITICAL FAULT: You missed the 'MRP' column. The user requires MRP extraction. Look for headers like 'MRP', 'Max Price', 'Rate' and capture them."]
-            }
+            return retry_response("CRITICAL FAULT: You missed the 'MRP' column. Look for headers like 'MRP' and capture them.", "missing_mrp_column")
             
-    # 4. Calculate Ratio (The "Magic Number")
-    logger.info(f"Critic: Anchor {anchor_total} vs Line Sum {line_sum}")
-    
+    # 4. Calculate Ratio
     if line_sum == 0: 
         logger.warning("Critic: Line Sum is 0. Requesting Retry.")
-        return {"critic_verdict": "RETRY_OCR"}
+        return retry_response("Line Sum is 0. Please re-extract item amounts carefully.", "zero_sum")
     
     ratio = anchor_total / line_sum
     diff_percent = abs(1 - ratio) * 100
 
-    # 4. Universal Decision Matrix
-    # 4. Universal Decision Matrix
-    feedback_msg = ""
-    
     if diff_percent < 1.0:
         logger.info(f"Critic: Match Exact (or close). APPROVE.")
-        
-        # On APPROVE, we must Construct Final Output (Headers + Lines)
-        # because we skip the Solver node.
         headers = state.get("global_modifiers", {})
         final_output = headers.copy()
         final_output["Line_Items"] = lines
+        supplier_details = state.get("supplier_details")
+        if supplier_details:
+             final_output["supplier_details"] = supplier_details
         
         return {
             "critic_verdict": "APPROVE", 
@@ -109,42 +97,29 @@ async def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         } 
         
     elif ratio > 1.0 and ratio < 1.30:
-        # Sum is LESS than Total (e.g. 875 vs 920). 
-        # This implies Global Tax or Freight was added at the bottom.
-        logger.info(f"Critic: Under-sum detected (Markup needed). Ratio {ratio:.4f}")
+        logger.info(f"Critic: Under-sum detected. Ratio {ratio:.4f}")
         return {"critic_verdict": "APPLY_MARKUP", "correction_factor": ratio} 
         
     elif ratio < 1.0 and ratio > 0.70:
-        # Sum is MORE than Total.
-        # This implies Global Discount was subtracted at the bottom.
-        logger.info(f"Critic: Over-sum detected (Markdown needed). Ratio {ratio:.4f}")
+        logger.info(f"Critic: Over-sum detected. Ratio {ratio:.4f}")
         return {"critic_verdict": "APPLY_MARKDOWN", "correction_factor": ratio} 
         
     else:
-        # Massive mismatch (>30%). Likely a bad OCR scan or missing rows.
+        # Massive mismatch (>30%)
         logger.warning(f"Critic: Massive mismatch ({diff_percent:.2f}%). RETRY_OCR.")
-        
-        # GENERATE SMART FEEDBACK
         if line_sum < anchor_total:
             missing_val = anchor_total - line_sum
-            feedback_msg = (
-                f"Validation Failed: Extracted Total ({line_sum:.2f}) is significantly LOWER than Invoice Total ({anchor_total:.2f}). "
-                f"You are missing items worth approx {missing_val:.2f}. "
-                "Check for missed rows at bottom of table or tax rows misidentified."
-            )
+            feedback_msg = f"Validation Failed: Extracted Total ({line_sum:.2f}) < Invoice Total ({anchor_total:.2f}). Missing approx {missing_val:.2f}."
         else:
             excess_val = line_sum - anchor_total
-            feedback_msg = (
-                f"Validation Failed: Extracted Total ({line_sum:.2f}) is significantly HIGHER than Invoice Total ({anchor_total:.2f}). "
-                f"You have hallucinated approx {excess_val:.2f}. "
-                "Check if you accidentally extracted 'Total' or 'Subtotal' rows as line items."
-            )
+            feedback_msg = f"Validation Failed: Extracted Total ({line_sum:.2f}) > Invoice Total ({anchor_total:.2f}). Hallucinated approx {excess_val:.2f}."
         
-        # Increment Retry Counter & Log Error
-        current_retries = state.get("retry_counters", {}).get("math_verification", 0)
-        return {
-            "critic_verdict": "RETRY_OCR",
-            "feedback_logs": [feedback_msg],
-            "retry_counters": {"math_verification": current_retries + 1},
-            "error_history": [f"Math Mismatch: {diff_percent:.2f}% (Attempt {current_retries + 1})"]
-        }
+        # PROMETHEUS: If we are hitting a high number of retries (e.g. 5 total loops), circuit breaker is prepped.
+        current_total = state.get("retry_count", 0) + 1
+        if current_total >= 5:
+            circuit_breaker_tripped_total.inc()
+            logger.warning(f"Critic: Circuit breaker triggered after {current_total} attempts.")
+
+        res = retry_response(feedback_msg, "math_mismatch")
+        res["error_history"] = [f"Math Mismatch: {diff_percent:.2f}% (Attempt {current_total})"]
+        return res

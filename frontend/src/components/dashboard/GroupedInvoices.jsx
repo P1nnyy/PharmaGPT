@@ -65,7 +65,7 @@ const GroupedInvoices = () => {
         return name.split(' ').map(n => n ? n[0] : '').join('').substring(0, 2).toUpperCase();
     };
 
-    const isAdmin = user?.role === 'Admin';
+    const isAdmin = user?.role === 'Admin' || user?.shop_id === 'personal' || !user?.shop_id;
 
     return (
         <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto">

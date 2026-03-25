@@ -77,7 +77,7 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         calculated_total = calc_stats.get("grand_total") or sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
         if grand_total:
              if abs(calculated_total - grand_total) > 5.0:
-                 validation_flags.append(f"Mismatch: Calc {calculated_total:.2f} != Stated {grand_total:.2f}")
+                 validation_flags.append(f"Calculation Audit: Total is ₹{calculated_total:.2f} but invoice states ₹{grand_total:.2f}. Please verify line amounts.")
 
         # Construct Final Result State
         result_state = {

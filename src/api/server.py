@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+# Removed imports to avoid circular deps. Metrics moved to src/api/metrics.py
 
 from src.core.config import SECRET_KEY, get_base_url
 from src.services.database import connect_db, close_db
@@ -34,6 +35,14 @@ logger = get_logger("api")
 app = FastAPI(title="Invoice Extractor API")
 
 # --- Middleware ---
+@app.middleware("http")
+async def diagnostic_middleware(request: Request, call_next):
+    """
+    Injected Diagnostic for Tunnel/Proxy issues.
+    """
+    logger.debug(f"DEBUG: Scheme: {request.url.scheme}, Host: {request.url.hostname}, Headers: {dict(request.headers)}")
+    return await call_next(request)
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     """
@@ -70,7 +79,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://dev.pharmagpt.co", "http://localhost:5174", "http://127.0.0.1:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,9 +89,8 @@ app.add_middleware(
 app.add_middleware(
     SessionMiddleware, 
     secret_key=SECRET_KEY, 
-    https_only=True,  # REQUIRED for HTTPS Tunnel to ensure Secure flag
-    same_site='lax',   
-    max_age=86400      
+    same_site="lax", 
+    https_only=False
 )
 
 # Proxy Headers (Must be last added to be outermost)
@@ -98,7 +106,18 @@ app.include_router(system_router)
 app.include_router(config_router)
 app.include_router(invitations_router)
 
-# --- Observability ---
+# --- Observability & Custom Metrics ---
+
+# Metrics are imported here to ensure they are registered with the default registry
+# before the Instrumentator instruments the app.
+from src.api.metrics import (
+    invoice_healer_triggered_total,
+    invoice_unreconciled_value,
+    circuit_breaker_tripped_total,
+    invoice_extraction_retries_total
+)
+
+# Standard instrumentator (serves as base and exposes /metrics)
 Instrumentator().instrument(app).expose(app)
 
 # --- Static Frontend Serving ---
@@ -123,4 +142,5 @@ def shutdown_event():
     close_db()
 
 if __name__ == "__main__":
-    uvicorn.run("src.api.server:app", host="0.0.0.0", port=5005, reload=True)
+    port = int(os.environ.get("PORT", 5005))
+    uvicorn.run("src.api.server:app", host="0.0.0.0", port=port, reload=False)

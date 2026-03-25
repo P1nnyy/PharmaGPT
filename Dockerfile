@@ -18,7 +18,7 @@ COPY src/ ./src/
 
 # Environment Variables
 ENV PORT=8000
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 
 # Expose Port
 EXPOSE 8000

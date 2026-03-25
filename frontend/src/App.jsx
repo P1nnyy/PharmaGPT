@@ -19,7 +19,7 @@ import Settings from './components/layout/Settings';
 const InventoryView = lazy(() => import('./components/dashboard/Inventory'));
 const ActivityHistory = lazy(() => import('./components/dashboard/ActivityHistory'));
 const GroupedInvoices = lazy(() => import('./components/dashboard/GroupedInvoices'));
-const ItemMaster = lazy(() => import('./components/items/ItemMaster'));
+import ItemMaster from './components/items/ItemMaster';
 const AdminDashboard = lazy(() => import('./components/dashboard/AdminDashboard'));
 
 function AppContent() {

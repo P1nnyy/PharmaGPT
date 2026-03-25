@@ -194,6 +194,7 @@ async def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                 "Amount": float,
                 "Category": "str",
                 "Manufacturer": "str",
+                "Salt": "str",
                 "Raw_GST_Percentage": float
             }}
         ]

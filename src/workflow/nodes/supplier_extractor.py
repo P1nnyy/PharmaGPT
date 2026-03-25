@@ -59,9 +59,9 @@ async def extract_supplier_details(state: InvoiceStateDict) -> Dict[str, Any]:
            - This is NEVER the entity next to "Customer Name:", "Bill To:", or "Consignee:".
            - Usually near the top, near the GSTIN, DL No.
         2. **Address**: Full physical address of the seller.
-        3. **GSTIN**: 15-character GST Number.
-        4. **DL_No**: Drug License Numbers (keywords: D.L., Lic No, 20B, 21B).
-        5. **Phone_Number**: Contact number.
+        3. **GSTIN**: 15-character GST Number (Keywords: GST No, GSTIN, GST, T.I.N, Reg No).
+        4. **DL_No**: Drug License Numbers (Keywords: D.L., Lic No, 20B, 21B, Drug Lic).
+        5. **Phone_Number**: Contact number (Keywords: Ph, Mob, Tel, Contact).
         6. **Email**: Email address.
         7. **PAN**: PAN Number.
         8. **Invoice_No**: The Invoice Number (e.g. INV-123).

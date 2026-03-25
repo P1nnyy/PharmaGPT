@@ -32,7 +32,7 @@ const EditorHeader = ({
             {warnings.length > 0 && (
                 <div className="mb-2 p-2 bg-red-900/20 border border-red-500/30 rounded-lg animate-in fade-in slide-in-from-top-2">
                     <h4 className="flex items-center gap-2 text-red-400 font-bold mb-1 text-xs md:text-sm">
-                        <AlertCircle className="w-3 h-3 md:w-4 md:h-4" /> Missing Items
+                        <AlertCircle className="w-3 h-3 md:w-4 md:h-4" /> Extraction Warnings
                     </h4>
                     <ul className="text-[10px] md:text-xs text-red-200/70 list-disc list-inside space-y-0.5 pl-1">
                         {warnings.map((w, idx) => <li key={idx}>{w}</li>)}

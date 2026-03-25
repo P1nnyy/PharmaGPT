@@ -286,8 +286,6 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             
             raw_text_rows = [text] 
             line_item_fragments = []
-            global_modifiers = {} 
-            anchor_totals = {}
             error_logs = []
             
         else:
@@ -300,7 +298,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             results = await asyncio.gather(*tasks)
             
             # Aggregate Results
-            line_item_fragments = [] # Worker no longer produces these directly
+            line_item_fragments = [] 
             raw_text_rows = [] 
             global_modifiers = {}
             anchor_totals = {}
@@ -324,33 +322,33 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 elif res.get("type") == "error":
                     error_logs.append(f"Zone Extraction Failed: {res.get('error')}")
                 
-        # Increment Retry Count
-        new_retry_count = retry_count + 1
+        # Increment Strategy: Just return 1, the state reducer (operator.add) handles the accumulation.
+        current_total_retries = int(state.get("retry_count", 0))
+        new_total = current_total_retries + 1
         
         # Calculate effective count for logging
         effective_count = len(line_item_fragments) if line_item_fragments else len(raw_text_rows)
-        logger.info(f"Worker: Extraction Complete. Retry {retry_count} -> {new_retry_count}. Items Found: {effective_count} (Raw Fragments: {len(raw_text_rows)})")
+        logger.info(f"Worker: Extraction Complete. Attempt {new_total}. Items Found: {effective_count} (Raw Fragments: {len(raw_text_rows)})")
 
         if retry_count > 0:
             return {
                 "raw_text_rows": raw_text_rows,
                 "error_logs": error_logs,
-                "retry_count": new_retry_count
+                "retry_count": 1
             }
 
         return {
-            "line_item_fragments": [], # Empty, because Mapper will fill this later
+            "line_item_fragments": [], 
             "raw_text_rows": raw_text_rows,
             "global_modifiers": global_modifiers,
             "anchor_totals": anchor_totals,
             "error_logs": error_logs,
-            "retry_count": new_retry_count
+            "retry_count": 1
         }
         
     except Exception as e:
         logger.error(f"Worker Master Error: {e}")
-        retry_count = int(state.get("retry_count", 0)) + 1
         return {
             "error_logs": [f"Worker Execution Failed: {str(e)}"],
-            "retry_count": retry_count
+            "retry_count": 1
         }

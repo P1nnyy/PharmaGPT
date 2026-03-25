@@ -58,8 +58,8 @@ async def get_review_queue(user_email: str = Depends(get_current_user_email)):
     MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct)
     WHERE gp.needs_review = true
     
-    // Fetch latest line item to show "Incoming" name and HSN
-    OPTIONAL MATCH (l:Line_Item)-[:IS_VARIANT_OF]->(gp)
+    // Fetch line items (Requirement ensures ghost items with no history are excluded)
+    MATCH (l:Line_Item)-[:IS_VARIANT_OF]->(gp)
     WITH gp, l ORDER BY l.created_at DESC
     
     // Get Supplier Name, Date, and Saved By from the Invoice containing this line item
