@@ -4,6 +4,7 @@ os.environ["GRPC_DNS_RESOLVER"] = "native"
 
 import uuid
 import uvicorn
+from prometheus_client import Counter, Gauge
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse

@@ -122,6 +122,8 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     final_json["Stated_Grand_Total"] = stated_total
     
     # Signify if we inferred a missing discount
+    from src.api.server import invoice_healer_triggered_total, invoice_unreconciled_value
+
     if mode == "GLOBAL" and initial_stats.get("sub_total", 0) > stated_total and parse_float(headers.get("global_discount")) == 0:
          implied_disc = round(initial_stats.get("sub_total", 0) - stated_total, 2)
          if implied_disc > 1.0:

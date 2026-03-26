@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from typing_extensions import Annotated
 import operator
 
@@ -49,3 +49,8 @@ class InvoiceState(TypedDict):
     # reconciliation_stats: Stores mathematical variances for Prometheus
     error_metadata: Annotated[Dict[str, Any], operator.ior]
     reconciliation_stats: Annotated[Dict[str, Any], operator.ior]
+    # New tracking pockets for Grafana
+    errorMetadata: dict
+    reconciliation_stats: dict
+    retry_counters: Annotated[dict, operator.ior]
+    error_history: Annotated[list, operator.add]

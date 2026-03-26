@@ -12,11 +12,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
           cpus: '0.25'
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
       redis:
@@ -26,7 +26,7 @@ services:
     env_file:
       - .env
     environment:
-      - NODE_OPTIONS=--max-old-space-size=1024
+      - NODE_OPTIONS=--max-old-space-size=768
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
       - NEXTAUTH_SECRET=554850ce1900cbdde4c628e2cd1fafc0b918fb4c310187912dc7d221c858b222
@@ -57,7 +57,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 1G
           cpus: '0.25'
     depends_on:
       db:
@@ -71,7 +71,7 @@ services:
     env_file:
       - .env
     environment:
-      - NODE_OPTIONS=--max-old-space-size=1024
+      - NODE_OPTIONS=--max-old-space-size=768
       - SKIP_MIGRATIONS=true
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
