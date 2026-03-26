@@ -186,10 +186,11 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
     If is_admin=True, bypasses ownership checks.
     """
     if wipe:
-        # Cascading Deep Wipe
+        # 1. Deep Wipe (Deletes everything - Cascading)
         if is_admin:
             query = """
-            MATCH (i:Invoice {invoice_id: $invoice_id})
+            MATCH (i:Invoice)
+            WHERE i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL)
             OPTIONAL MATCH (i)-[:CONTAINS]->(li:Line_Item)
             OPTIONAL MATCH (i)-[:HAS_CORRECTION]->(cs:CorrectionSet)
             OPTIONAL MATCH (cs)-[:INCLUDES]->(diff:Diff)
@@ -205,8 +206,9 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
             OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
             WITH u, s
             
-            MATCH (i:Invoice {invoice_id: $invoice_id})
-            WHERE (
+            MATCH (i:Invoice)
+            WHERE (i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL))
+              AND (
                 (u)-[:OWNS]->(i) OR
                 (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s))
             )
@@ -220,12 +222,13 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
             UNWIND (lis + css + diffs) as x
             DETACH DELETE x
             """
-        logger.info(f"PERFORMING {'ADMIN ' if is_admin else ''}DEEP WIPE for Invoice {invoice_id}")
+        logger.info(f"PERFORMING {'ADMIN ' if is_admin else ''}DEEP WIPE for Invoice {invoice_id or invoice_no}")
     else:
         # Standard Shallow Delete
         if is_admin:
             query = """
-            MATCH (i:Invoice {invoice_id: $invoice_id})
+            MATCH (i:Invoice)
+            WHERE i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL)
             DETACH DELETE i
             """
         else:
@@ -234,17 +237,38 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
             OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
             WITH u, s
             
-            MATCH (i:Invoice {invoice_id: $invoice_id})
-            WHERE (
+            MATCH (i:Invoice)
+            WHERE (i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL))
+              AND (
                 (u)-[:OWNS]->(i) OR
                 (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s))
             )
             DETACH DELETE i
             """
-        logger.info(f"Performing {'admin ' if is_admin else ''}shallow delete for Invoice {invoice_id}")
+        logger.info(f"Performing {'admin ' if is_admin else ''}shallow delete for Invoice {invoice_id or invoice_no}")
+
+    # For safety, if invoice_id is null/empty but we have a number string, use that.
+    # Note: frontend usually passes both or the backend route handles it.
+    # We'll allow invoice_id to be the primary key.
 
     with driver.session() as session:
-        session.execute_write(lambda tx: tx.run(query, user_email=user_email, invoice_id=invoice_id))
+        def _delete_tx(tx):
+            # Attempt to extract invoice number from ID if ID is actually a number or if we want extra safety
+            # But the best is to just pass invoice_no if available.
+            # For now, we'll try to find the node and get its number if id is missing.
+            
+            # Simple check: if invoice_id is not a UUID but looks like a number, treat it as such.
+            invoice_no = None
+            if invoice_id and len(invoice_id) < 10: # Likely a number, not a hex UUID
+                invoice_no = invoice_id
+            
+            result = tx.run(query, user_email=user_email, invoice_id=invoice_id, invoice_no=invoice_no)
+            summary = result.consume()
+            nodes_deleted = summary.counters.nodes_deleted
+            logger.info(f"Deletion for Invoice {invoice_id} completed. Nodes deleted: {nodes_deleted}")
+            return nodes_deleted
+
+        session.execute_write(_delete_tx)
 
 def delete_redundant_draft(driver, invoice_id: str, user_email: str):
     """

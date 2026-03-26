@@ -29,6 +29,11 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 # Gemini API
 API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 
+# Langfuse
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
 # --- Helper Functions ---
 
 def get_base_url() -> str:

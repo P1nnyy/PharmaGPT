@@ -3,9 +3,12 @@ import logging
 from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 from src.api.metrics import invoice_healer_triggered_total, invoice_unreconciled_value
+from langfuse import observe
+from src.services.langfuse_client import langfuse_manager
 
 logger = get_logger("solver")
 
+@observe(name="math_solver")
 async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     Solver Node.
@@ -45,6 +48,9 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
         # PROMETHEUS: Track the financial gap of this "broken" invoice
         invoice_unreconciled_value.set(gap)
         recon_stats["tolerance_breached"] = True
+        
+        # NOTE: Scoring from within nodes in v3 requires OTel context. 
+        # Skipping scoring for now to ensure backend starts successfully.
     else:
         logger.info(f"Solver: Gap {gap:.2f} explained by {mode} logic. No correction factor needed.")
         # PROMETHEUS: If we are in GLOBAL mode and the gap was explained, the "Healer" worked

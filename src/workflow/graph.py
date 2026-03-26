@@ -126,7 +126,11 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
     
     # Initialize Langfuse Callback
     try:
-        langfuse_handler = CallbackHandler()
+        langfuse_handler = CallbackHandler(
+            user_id=user_email,
+            session_id=user_email,
+            tags=["production", "invoice-extraction"]
+        )
         callbacks = [langfuse_handler]
     except Exception as e:
         logger.warning(f"Failed to initialize Langfuse Callback: {e}")
