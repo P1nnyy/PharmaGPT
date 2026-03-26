@@ -72,12 +72,26 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         normalized_items = recon_result.get("line_items", [])
         calc_stats = recon_result.get("calculated_stats", {})
         
+        # HEAL: Update extracted_data with Reconciled Values for the Frontend UI
+        # This ensures the summary box shows the same numbers as our internal math
+        extracted_data["sub_total"] = calc_stats.get("sub_total", 0.0)
+        extracted_data["taxable_value"] = calc_stats.get("taxable_value", 0.0)
+        extracted_data["total_sgst"] = calc_stats.get("total_sgst", 0.0)
+        extracted_data["total_cgst"] = calc_stats.get("total_cgst", 0.0)
+        extracted_data["round_off"] = calc_stats.get("round_off", 0.0)
+        # Match UI to Reconciled Reality (Override Stated Total if it was rounded)
+        extracted_data["grand_total"] = calc_stats.get("grand_total", 0.0)
+        extracted_data["Stated_Grand_Total"] = calc_stats.get("grand_total", 0.0)
+        # Compatibility with CamelCase fields in schema
+        extracted_data["SGST_Amount"] = calc_stats.get("total_sgst", 0.0)
+        extracted_data["CGST_Amount"] = calc_stats.get("total_cgst", 0.0)
+        extracted_data["Round_Off"] = calc_stats.get("round_off", 0.0)
+        
         # Validation checks
         validation_flags = []
-        calculated_total = calc_stats.get("grand_total") or sum(item.get("Net_Line_Amount", 0.0) for item in normalized_items)
-        if grand_total:
-             if abs(calculated_total - grand_total) > 5.0:
-                 validation_flags.append(f"Calculation Audit: Total is ₹{calculated_total:.2f} but invoice states ₹{grand_total:.2f}. Please verify line amounts.")
+        calculated_total = calc_stats.get("grand_total") or 0.0
+        if grand_total and abs(calculated_total - grand_total) > 1.0:
+             validation_flags.append(f"Calculation Audit: Reconciled Total ₹{calculated_total:.2f} differs from Stated ₹{grand_total:.2f}. Please verify.")
 
         # Construct Final Result State
         result_state = {

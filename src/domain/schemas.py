@@ -1,4 +1,4 @@
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Union, Literal, Any, Dict
 from pydantic import BaseModel, Field, model_validator
 
 class DiscountModel(BaseModel):
@@ -71,18 +71,18 @@ class RawLineItem(BaseModel):
     Represents a single line item extracted from an invoice in its raw form.
     BLIND EXTRACTION SCHEMA: Captures only what is seen, no math.
     """
-    Product: str = Field(..., description="The product description exactly as it appears on the invoice.")
-    Qty: Optional[Union[str, float]] = Field(None, description="Quantity extracted.")
-    Free: Optional[Union[str, float]] = Field(None, description="Free/Bonus Quantity.")
-    Batch: Optional[str] = Field(None, description="Batch number.")
-    Category: Optional[str] = Field(None, description="Extracted Category (Tablet, Syrup, Injection, etc).")
+    Product: Union[str, List[str]] = Field(..., description="The product description exactly as it appears on the invoice.")
+    Qty: Optional[Union[str, float, List[Any]]] = Field(None, description="Quantity extracted.")
+    Free: Optional[Union[str, float, List[Any]]] = Field(None, description="Free/Bonus Quantity.")
+    Batch: Optional[Union[str, List[str]]] = Field(None, description="Batch number.")
+    Category: Optional[Union[str, List[str]]] = Field(None, description="Extracted Category (Tablet, Syrup, Injection, etc).")
     
     # New Blind Fields
-    Amount: Optional[Union[str, float]] = Field(None, description="The neutral column value (Amount/Total) found on the invoice.")
-    Rate: Optional[float] = Field(None, description="Unit Price.")
-    MRP: Optional[float] = Field(None, description="MRP if available.")
-    Expiry: Optional[str] = Field(None, description="Expiry date content.")
-    HSN: Optional[str] = Field(None, description="HSN/SAC code.")
+    Amount: Optional[Union[str, float, List[Any]]] = Field(None, description="The neutral column value (Amount/Total) found on the invoice.")
+    Rate: Optional[Union[float, str, List[Any]]] = Field(None, description="Unit Price.")
+    MRP: Optional[Union[float, str, List[Any]]] = Field(None, description="MRP if available.")
+    Expiry: Optional[Union[str, List[str]]] = Field(None, description="Expiry date content.")
+    HSN: Optional[Union[str, List[str]]] = Field(None, description="HSN/SAC code.")
     
     # Transport Field (Filled by Solver)
     Net_Line_Amount: Optional[float] = Field(None, description="Calculated Net Amount (Reconciled) from Solver.")
@@ -93,8 +93,28 @@ class RawLineItem(BaseModel):
     Raw_GST_Percentage: Optional[float] = Field(None, description="Extracted GST Percentage (Sum of SGST+CGST or IGST).")
 
     # New Field for Manufacturer Extraction
-    Manufacturer: Optional[str] = Field(None, description="The manufacturer or company name extracted from the line item.")
+    Manufacturer: Optional[Union[str, List[str]]] = Field(None, description="The manufacturer or company name extracted from the line item.")
     effective_landing_cost: float = Field(0.0, description="The true cost of the item after tax and global discounts.")
+
+    @model_validator(mode='before')
+    @classmethod
+    def ensure_strings(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+            
+        # Text fields that should be joined if they are lists
+        text_fields = ['Product', 'Batch', 'Manufacturer', 'HSN', 'Expiry', 'Category']
+        for field in text_fields:
+            if field in data and isinstance(data[field], list):
+                data[field] = " ".join(str(x) for x in data[field])
+        
+        # Numeric fields that might come as lists (pick first)
+        num_fields = ['Qty', 'Free', 'Amount', 'Rate', 'MRP']
+        for field in num_fields:
+            if field in data and isinstance(data[field], list) and len(data[field]) > 0:
+                data[field] = data[field][0]
+                
+        return data
 
 class InvoiceExtraction(BaseModel):
     """
@@ -125,6 +145,7 @@ class InvoiceExtraction(BaseModel):
     total_sgst: Union[float, None] = Field(0.0, description="Total SGST from the footer.")
     total_cgst: Union[float, None] = Field(0.0, description="Total CGST from the footer.")
     round_off: Union[float, None] = Field(0.0, description="Rounding adjustment.")
+    grand_total: Union[float, None] = Field(0.0, description="Final reconciled total amount.")
 
 class NormalizedLineItem(BaseModel):
     """

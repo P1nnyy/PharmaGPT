@@ -15,14 +15,8 @@ def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, nor
     Also merges detailed Supplier information if available.
     """
     
-    # Calculate Grand Total from line items to ensure consistency
-    grand_total = 0.0
-    for item in normalized_items:
-        try:
-            val = float(item.get("Net_Line_Amount", 0.0))
-        except (ValueError, TypeError):
-            val = 0.0
-        grand_total += val
+    # Use the finalized grand total from the extraction object (includes taxes/discounts/rounding)
+    grand_total = getattr(invoice_data, 'grand_total', 0.0)
     
     def _full_ingestion_tx(tx):
         # 1. Update/Merge Invoice (Scoped to User and ID)
@@ -54,6 +48,13 @@ def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, gra
     MATCH (u:User {email: $user_email})
     OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
     MATCH (i:Invoice {invoice_id: $invoice_id})
+    
+    // Ensure this user owns it, and remove other owners during confirmation 
+    // to avoid UI duplication in history views.
+    OPTIONAL MATCH (other:User)-[r:OWNS]->(i)
+    WHERE other <> u
+    DELETE r
+    
     MERGE (u)-[:OWNS]->(i)
     
     FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |

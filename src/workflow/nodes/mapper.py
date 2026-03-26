@@ -227,16 +227,17 @@ async def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
                     
                     if rate_extracted == 0 and clean_hsn != "0000":
                         enriched = enrich_hsn_details(clean_hsn)
-                        if enriched.get("tax", 0) > 0:
-                            item["Raw_GST_Percentage"] = enriched["tax"]
+                        tax_rate = float(enriched.get("tax") or 0.0)
+                        if tax_rate > 0:
+                            item["Raw_GST_Percentage"] = tax_rate
                             item["is_tax_inferred"] = True
                             item["hsn_description"] = enriched.get("desc", "")
                             
-                            current_rate = item.get("Rate", 0.0)
+                            current_rate = float(item.get("Rate") or 0.0)
                             if current_rate > 0:
-                                tax_rate = enriched["tax"]
-                                qty = float(item.get("Qty", 1) or 1)
-                                amount = float(item.get("Amount", 0) or 0)
+                                # tax_rate is already defined above
+                                qty = float(item.get("Qty") or 1.0)
+                                amount = float(item.get("Amount") or 0.0)
                                 
                                 is_already_base = False
                                 if amount > 0:

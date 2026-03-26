@@ -6,6 +6,7 @@ import { useQueue } from '../../context/QueueContext';
 
 const InvoiceViewer = ({
     isMobile,
+    invoiceData,
     previewUrl: directPreviewUrl // Accept optional direct URL
 }) => {
     const { 
@@ -31,6 +32,7 @@ const InvoiceViewer = ({
 
     const [menuOpenId, setMenuOpenId] = useState(null);
     const [isListOpen, setIsListOpen] = useState(false);
+    const [isQueueCollapsed, setIsQueueCollapsed] = useState(false);
     const menuRef = useRef(null);
 
     // Close menu when clicking outside
@@ -50,13 +52,14 @@ const InvoiceViewer = ({
     };
 
     return (
-        <div className="flex flex-row h-full bg-gray-950 border-r border-gray-800 relative">
+        <div className="flex flex-row h-full bg-gray-950 border-r border-gray-800 relative w-full overflow-hidden">
 
             {/* LEFT SIDEBAR: BATCH LIST */}
             {fileQueue.length > 0 && (
                 <div className={`
-                    border-r border-gray-800 flex flex-col bg-gray-900/95 backdrop-blur-sm overflow-y-auto transition-all z-20
-                    ${isMobile ? 'absolute inset-0 w-full' : 'w-16 md:w-64 relative'}
+                    border-r border-gray-800 flex flex-col bg-gray-900/95 backdrop-blur-sm overflow-y-auto transition-all duration-300 z-20
+                    ${isMobile ? 'absolute inset-0 w-full' : 'relative'}
+                    ${!isMobile && isQueueCollapsed ? 'w-0 opacity-0 -translate-x-full pointer-events-none' : 'w-16 md:w-64 opacity-100 translate-x-0'}
                     ${isMobile && !isListOpen ? 'hidden' : 'flex'}
                 `}>
                     <div className="p-3 text-xs font-bold text-gray-500 uppercase tracking-widest sticky top-0 bg-gray-950/90 backdrop-blur-sm z-10 flex justify-between items-center">
@@ -188,9 +191,20 @@ const InvoiceViewer = ({
                                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 rounded-full text-[9px] flex items-center justify-center text-white font-bold">{fileQueue.length}</span>
                             </button>
                         )}
+                        {!isMobile && fileQueue.length > 0 && (
+                            <button
+                                onClick={() => setIsQueueCollapsed(!isQueueCollapsed)}
+                                className="p-2 bg-gray-800/50 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-all border border-gray-700/50 group"
+                                title={isQueueCollapsed ? "Show Queue" : "Hide Queue"}
+                            >
+                                <svg className={`w-5 h-5 transition-transform duration-300 ${isQueueCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                                </svg>
+                            </button>
+                        )}
                         <h2 className="text-sm md:text-xl font-bold flex items-center gap-2 text-indigo-400">
                             <FileText className="w-4 h-4 md:w-6 md:h-6" />
-                            {!isMobile && <span>Source Invoice</span>}
+                            {(!isMobile || !invoiceData) && <span>Source Invoice</span>}
                         </h2>
                     </div>
 

@@ -51,7 +51,7 @@ export const InvoiceProvider = ({ children }) => {
             const placeholders = await uploadBatchInvoicesFormData(formData);
 
             setFileQueue(prev => {
-                return prev.map(item => {
+                const nextQueue = prev.map(item => {
                     const placeholder = placeholders.find(p => p.temp_id === item.id);
                     if (placeholder) {
                         return {
@@ -63,6 +63,14 @@ export const InvoiceProvider = ({ children }) => {
                     }
                     return item;
                 });
+
+                // Sync selectedQueueId if it was pointing to a temp_id
+                const currentSelected = placeholders.find(p => p.temp_id === selectedQueueId);
+                if (currentSelected) {
+                    setSelectedQueueId(currentSelected.id);
+                }
+
+                return nextQueue;
             });
         } catch (err) {
             console.error("Upload Failed", err);
@@ -84,6 +92,7 @@ export const InvoiceProvider = ({ children }) => {
         }));
 
         setFileQueue(prev => [...prev, ...tempQueue]);
+        setSelectedQueueId(tempQueue[0].id); // Auto-select first of batch
         await runAnalysis(tempQueue);
     }, [runAnalysis, setFileQueue]);
 
@@ -264,7 +273,15 @@ export const InvoiceProvider = ({ children }) => {
                                 return !recentlySavedIdsRef.current.has(d.id.toString());
                             })
                             .map(d => {
-                                const localItem = localMap.get(d.id.toString());
+                                // Try to find local item by ID OR by filename (for newly uploaded items whose IDs we don't know yet)
+                                let localItem = localMap.get(d.id.toString());
+                                if (!localItem) {
+                                    localItem = prevQueue.find(item => 
+                                        item.id.toString().startsWith('temp-') && 
+                                        item.filename === d.filename
+                                    );
+                                }
+
                                 return {
                                     id: d.id,
                                     status: d.status === 'draft' ? (d.is_duplicate ? 'duplicate' : 'completed') : d.status,

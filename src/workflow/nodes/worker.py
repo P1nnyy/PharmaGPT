@@ -92,7 +92,7 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             
             Fields to Extract:
             - **sub_total**: The total of all line items BEFORE tax and discount.
-            - **global_discount**: Total discount applied at the bottom (Cash Discount, CD, Scheme, etc).
+            - **global_discount**: Total discount applied at the bottom. NOTE: If you see "Disc %" with a large decimal value (e.g. 215.03), it is an AMOUNT, not a percentage. Extract it. Ignore leading minus signs.
             - **taxable_value**: Sub-total minus global_discount.
             - **total_sgst**: Total SGST amount.
             - **total_cgst**: Total CGST amount.

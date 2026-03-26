@@ -33,7 +33,16 @@ async def get_report(request: Request, invoice_no: str, user_email: str = Depend
          return templates.TemplateResponse("error.html", {"request": request, "message": "Database unavailable"})
 
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
+    MATCH (u:User {email: $user_email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    WITH u, s
+    
+    MATCH (i:Invoice {invoice_number: $invoice_no})
+    WHERE (
+        (u)-[:OWNS]->(i) OR
+        (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s))
+    )
+    
     OPTIONAL MATCH (i)-[:CONTAINS]->(l:Line_Item)
     OPTIONAL MATCH (l)-[:REFERENCES]->(p:Product)
     RETURN i, collect({line: l, product: p, raw_desc: l.raw_description, stated_net: l.stated_net_amount, batch_no: l.batch_no, hsn_code: l.hsn_code}) as items

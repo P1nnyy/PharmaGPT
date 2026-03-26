@@ -78,20 +78,37 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # CORS Middleware
+# We allow dev.pharmagpt.co for the tunnel and localhost:3000 for local development.
+# Also added 127.0.0.1:3000 and 5173 for completeness.
+ALLOWED_ORIGINS = [
+    "https://dev.pharmagpt.co",
+    "https://pharmagpt.co",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://dev.pharmagpt.co", "http://localhost:5174", "http://127.0.0.1:5174"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Session Middleware
+# Session Middleware (Dynamic Security for Tunnel vs Local)
+# For mobile stability over HTTPS, we need Lax or None + Secure.
+# But for local dev over HTTP, we cannot use Secure=True.
+IS_HTTPS = get_base_url().startswith("https")
+
 app.add_middleware(
     SessionMiddleware, 
     secret_key=SECRET_KEY, 
     same_site="lax", 
-    https_only=False
+    https_only=IS_HTTPS # Only enforce Secure cookies if we are on HTTPS
 )
 
 # Proxy Headers (Must be last added to be outermost)

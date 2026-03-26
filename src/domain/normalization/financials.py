@@ -132,44 +132,65 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     if not line_items:
         return {"line_items": line_items, "calculated_stats": {}}
 
-    # 1. Calculate Base Sum from Line Items
-    # Robust: Check for Net_Line_Amount (Normalized) or Amount (Raw)
-    line_sum = sum(float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0) for item in line_items)
+    # 1. Calculate Base Sums from Line Items
+    # net_sum: Sum of final row totals (Post-tax, post-line-discount)
+    # gross_sum: Sum of raw row totals (Pre-tax, pre-global-discount)
+    net_sum = sum(float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0) for item in line_items)
+    gross_sum = sum(float(item.get("Amount") or item.get("Gross_Amount") or 0.0) for item in line_items)
     
-    # 2. Extract Modifier values (Robust casing for schema compatibility)
-    # Strategy: Use absolute values to ensure subtraction logic works regardless of OCR sign (-)
+    # If Gross Sum was never extracted or matches Net Sum perfectly,
+    # assume Line Items only gave one total column.
+    if gross_sum == 0:
+        # Fallback: If we only have one total sum, use it for both equations
+        gross_sum = net_sum
+
+    # 2. Extract Modifier values
     global_discount = abs(parse_float(global_modifiers.get("global_discount") or global_modifiers.get("Global_Discount_Amount") or 0.0))
     total_sgst = abs(parse_float(global_modifiers.get("total_sgst") or global_modifiers.get("SGST_Amount") or 0.0))
     total_cgst = abs(parse_float(global_modifiers.get("total_cgst") or global_modifiers.get("CGST_Amount") or 0.0))
     round_off = parse_float(global_modifiers.get("round_off") or global_modifiers.get("Round_Off") or 0.0)
     
     # 3. Mode Detection (Disambiguation)
-    # Equation A: LineSum + RoundOff == GrandTotal -> PER_ITEM
-    # Equation B: LineSum - Discount + Tax + RoundOff == GrandTotal -> GLOBAL
+    # Equation A: net_sum + RoundOff == GrandTotal -> PER_ITEM (Items are final)
+    # Equation B: gross_sum - Discount + Tax + RoundOff == GrandTotal -> GLOBAL (Footer calculates total)
     
-    eq_a_result = line_sum + round_off
-    eq_b_result = line_sum - global_discount + total_sgst + total_cgst + round_off
+    eq_a_result = net_sum + round_off
+    eq_b_result = gross_sum - global_discount + total_sgst + total_cgst + round_off
     
     # 3. Mode Detection (Smallest Gap Wins)
     gap_a = abs(eq_a_result - grand_total)
     gap_b = abs(eq_b_result - grand_total)
     
-    # Threshold check: If both are huge (>50), we might have a data failure, 
-    # but we still pick the closer one.
-    if gap_a <= gap_b:
-        mode = "PER_ITEM"
-        logger.info(f"Financials: Detected PER_ITEM mode (Gap: {gap_a:.2f} is smaller than Gap B: {gap_b:.2f})")
-    else:
-        mode = "GLOBAL"
-        logger.info(f"Financials: Detected GLOBAL mode (Gap: {gap_b:.2f} is smaller than Gap A: {gap_a:.2f})")
+    # BIAS RULE: If taxes are present in the headers, favor GLOBAL mode.
+    if total_sgst > 0 or total_cgst > 0:
+        gap_a += 2.0 
+        logger.info(f"Financials: Bias applied (Taxes found). Gap A(PER_ITEM):{gap_a-2.0:.2f}, Gap B(GLOBAL):{gap_b:.2f}")
 
-    # 4. Automated Rounding Discovery (The "Paise" Fix)
-    # If the gap is small (< 1.0), absorb it into round_off to ensure a perfect match
+    if gap_b <= gap_a: # Favor GLOBAL on tie or better match
+        mode = "GLOBAL"
+        line_sum = gross_sum
+        logger.info(f"Financials: Detected GLOBAL mode")
+    else:
+        mode = "PER_ITEM"
+        line_sum = net_sum
+        # In PER_ITEM mode, we force global modifiers to 0 for the UI equation
+        global_discount = 0.0
+        total_sgst = 0.0
+        total_cgst = 0.0
+        logger.info(f"Financials: Detected PER_ITEM mode")
+
+    # 4. Rounding Discovery (STRICT)
+    # User Request: "we dont want to round off if it is not present in invoice"
+    # We only apply a round-off if the gap is extremely tiny (precision error < 0.01)
+    # or if the round_off was explicitly extracted from the text.
     calculated_pre_round = eq_a_result - round_off if mode == "PER_ITEM" else eq_b_result - round_off
     discovered_gap = grand_total - calculated_pre_round
-    if abs(discovered_gap) < 2.0:
+    
+    if abs(discovered_gap) < 0.01:
         round_off = round(discovered_gap, 2)
-        logger.info(f"Financials: Discovered Round-Off: {round_off:.2f}")
+        logger.info(f"Financials: Applied precision fix: {round_off:.2f}")
+    # Else: We keep the AI-extracted round_off (or 0.0) even if it leads to a mismatch.
+    # This respects the user's wish to see the 'original price' 3197.66.
 
     # 4b. Tax Inference (CM Associates Recovery)
     # If SGST/CGST in footer are 0 but Grand Total still doesn't match, infer them from line items
@@ -234,6 +255,8 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         "calculated_stats": {
             "sub_total": round(line_sum, 2),
             "taxable_value": round(taxable_value, 2),
+            "total_sgst": round(total_sgst, 2),
+            "total_cgst": round(total_cgst, 2),
             "round_off": round(round_off, 2),
             "grand_total": round(calculated_grand_total, 2)
         }

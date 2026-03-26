@@ -22,8 +22,9 @@ def get_activity_log(driver, user_email: str):
     
     OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
     
-    // Get the User who OWNS this invoice
+    // Get the User who OWNS this invoice (Deduplicate)
     OPTIONAL MATCH (owner:User)-[:OWNS]->(inv)
+    WITH inv, supp, u, s, collect(owner)[0] as first_owner
     
     RETURN inv.invoice_id as id,
            inv.invoice_number as invoice_number, 
@@ -36,7 +37,7 @@ def get_activity_log(driver, user_email: str):
            supp.phone as supplier_phone,
            supp.dl_no as supplier_dl,
            supp.address as supplier_address,
-           coalesce(owner.name, 'User') as saved_by
+           coalesce(first_owner.name, 'User') as saved_by
     ORDER BY inv.updated_at DESC LIMIT 20
     """
     with driver.session() as session:
@@ -148,13 +149,14 @@ def get_grouped_invoice_history(driver, user_email: str):
     // Group by Supplier Name
     WITH coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, inv
     
-    // Get the User who OWNS this invoice
+    // Get the User who OWNS this invoice (Deduplicate)
     OPTIONAL MATCH (owner:User)-[:OWNS]->(inv)
+    WITH supplier_name, inv, collect(owner)[0] as first_owner
     
     WITH supplier_name, 
          inv, 
-         coalesce(owner.name, 'Unknown') as uploader_name,
-         coalesce(owner.email, '') as uploader_email
+         coalesce(first_owner.name, 'Unknown') as uploader_name,
+         coalesce(first_owner.email, '') as uploader_email
     
     WITH supplier_name, 
          collect({

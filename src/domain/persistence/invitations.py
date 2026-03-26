@@ -29,17 +29,6 @@ def create_invitation(inviter_email: str, invitee_email: str, role_name: str) ->
 def get_pending_invitations(user_email: str) -> list:
     """Gets all pending invitations for a specific user."""
     query = """
-    MATCH (inviter:User)-[rel:INVITED_USER {email: $email, status: 'PENDING'}]->(u:User {email: $email})
-    RETURN { 
-        id: rel.id, 
-        inviter_name: inviter.name, 
-        inviter_email: inviter.email, 
-        role: rel.role, 
-        created_at: rel.created_at 
-    } as invitation
-    """
-    # Wait, the relationship is (inviter)-[:INVITED_USER]->(invitee)
-    query = """
     MATCH (inviter:User)-[rel:INVITED_USER]->(u:User {email: $email})
     WHERE rel.status = 'PENDING'
     RETURN { 

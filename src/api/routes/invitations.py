@@ -10,6 +10,10 @@ from src.domain.persistence.invitations import (
     accept_invitation
 )
 
+from src.utils.logging_config import get_logger
+
+logger = get_logger("invitations")
+
 router = APIRouter(prefix="/invitations", tags=["Invitations"])
 
 class InvitationCreate(BaseModel):
@@ -34,6 +38,7 @@ async def api_create_invitation(invite: InvitationCreate, inviter_email: str = D
 @router.get("/me", response_model=List[InvitationResponse])
 async def api_get_my_invitations(user_email: str = Depends(get_current_user_email)):
     """User checks for pending invitations."""
+    logger.info(f"Fetching invitations for user: {user_email}")
     invites = get_pending_invitations(user_email)
     # Convert datetime to string for Pydantic
     for inv in invites:

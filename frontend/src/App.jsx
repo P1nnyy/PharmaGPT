@@ -70,11 +70,18 @@ function AppContent() {
           const profile = await getUserProfile();
           setUser(profile);
           
-          // Fetch invitations if user exists
-          const pending = await getInvitations();
-          setInvitations(pending);
+          // Fetch invitations if user exists - wrap in its own try/catch 
+          // to avoid logging out the user if the invitations service is flaky
+          try {
+            const pending = await getInvitations();
+            setInvitations(pending);
+          } catch (invErr) {
+            console.warn("Could not fetch invitations:", invErr);
+            setInvitations([]);
+          }
         }
       } catch (err) {
+        console.error("Auth initialization failed:", err);
         setAuthToken(null);
         setUser(null);
       } finally {
@@ -140,7 +147,7 @@ function AppContent() {
                     ${isMobile && activeTab !== 'scan' ? 'hidden' : 'flex'}
                     ${isMobile && invoiceData ? 'h-[35%]' : 'h-full'} 
                 `}>
-            <InvoiceViewer isMobile={isMobile} />
+            <InvoiceViewer isMobile={isMobile} invoiceData={invoiceData} />
           </div>
 
           <div className={`w-full md:w-1/2 flex flex-col bg-slate-900/50 border-l border-slate-800 overflow-y-auto

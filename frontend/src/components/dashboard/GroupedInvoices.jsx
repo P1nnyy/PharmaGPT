@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Folder, FileText, Image, X, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, FileText, Image, X, Trash2, AlertTriangle, Loader2, ExternalLink } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { getInvoiceHistory, discardInvoice } from '../../services/api';
 import { getImageUrl } from '../../utils/urlHelper';
@@ -214,9 +214,18 @@ const GroupedInvoices = () => {
                                                                 onClick={(e) => { e.stopPropagation(); setViewingImage(inv.image_path); }}
                                                                 className="flex items-center gap-1.5 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-blue-400 transition-colors"
                                                             >
-                                                                <Image className="w-3 h-3" /> View Source
+                                                                <Image className="w-3 h-3" /> Source
                                                             </button>
                                                         )}
+                                                        <a
+                                                            href={`/report/${inv.invoice_number}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="flex items-center gap-1.5 px-2 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 rounded text-xs text-indigo-400 transition-colors border border-indigo-500/30"
+                                                        >
+                                                            <ExternalLink className="w-3 h-3" /> Details
+                                                        </a>
                                                         {isAdmin && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: inv.id, number: inv.invoice_number, supplier: supplier.name }); }}
@@ -281,6 +290,16 @@ const GroupedInvoices = () => {
                                                                 <Image className="w-4 h-4" />
                                                             </button>
                                                         )}
+                                                        <a
+                                                            href={`/report/${inv.invoice_number}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all"
+                                                            title="View Detailed Report"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4" />
+                                                        </a>
                                                         {isAdmin && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: inv.id, number: inv.invoice_number, supplier: supplier.name }); }}

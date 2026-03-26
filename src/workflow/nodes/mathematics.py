@@ -115,14 +115,26 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     
     final_json["sub_total"] = final_stats.get("sub_total", 0.0)
     final_json["taxable_value"] = final_stats.get("taxable_value", 0.0)
-    final_json["round_off"] = final_stats.get("round_off", 0.0) # Correctly capture discovered round_off
-    final_json["total_sgst"] = headers.get("total_sgst") or headers.get("SGST_Amount")
-    final_json["total_cgst"] = headers.get("total_cgst") or headers.get("CGST_Amount")
+    final_json["round_off"] = final_stats.get("round_off", 0.0)
+    final_json["total_sgst"] = final_stats.get("total_sgst", 0.0)
+    final_json["total_cgst"] = final_stats.get("total_cgst", 0.0)
     final_json["grand_total"] = final_stats.get("grand_total", 0.0)
     final_json["Stated_Grand_Total"] = stated_total
     
+    # 6. Final Discount Recovery: If we have a large gap in GLOBAL mode, it's likely a missing discount
+    if mode == "GLOBAL" and parse_float(final_json.get("global_discount")) == 0:
+        # Expected Total if discount was 0: SubTotal + Tax + RoundOff
+        # If this is HIGHER than GrandTotal, the gap is likely the missing discount.
+        expected_if_no_disc = final_json["sub_total"] + final_json["total_sgst"] + final_json["total_cgst"] + final_json["round_off"]
+        gap_to_grand = expected_if_no_disc - stated_total
+        
+        if gap_to_grand > 2.0:
+            logger.info(f"Solver: Inferred missing discount of {gap_to_grand:.2f}")
+            final_json["global_discount"] = round(gap_to_grand, 2)
+            final_json["taxable_value"] = round(final_json["sub_total"] - gap_to_grand, 2)
+            final_json["Logic_Note"] = final_json.get("Logic_Note", "") + f" [Inferred Discount: {gap_to_grand:.2f}]"
+    
     # Signify if we inferred a missing discount
-    from src.api.server import invoice_healer_triggered_total, invoice_unreconciled_value
 
     if mode == "GLOBAL" and initial_stats.get("sub_total", 0) > stated_total and parse_float(headers.get("global_discount")) == 0:
          implied_disc = round(initial_stats.get("sub_total", 0) - stated_total, 2)

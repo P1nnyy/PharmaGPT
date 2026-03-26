@@ -28,7 +28,7 @@ def enrich_hsn_details(hsn_code: str) -> Dict[str, any]:
             with driver.session() as session:
                 result = session.execute_read(lambda tx: tx.run(query, code=clean_code).single())
                 if result:
-                    return {"desc": result["desc"], "tax": result["tax"]}
+                    return {"desc": result["desc"], "tax": float(result["tax"] or 0.0)}
         except Exception:
             pass # Fallback to None
 
