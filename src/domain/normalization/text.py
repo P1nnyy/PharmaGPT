@@ -248,14 +248,20 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
         
     # Rule 2: Tablet/Capsule/Strip Detection
     # Pattern A: '15s', '10`s', '10 s', '15 TAB', '15 CAP', '15 STRIPS', '10 T', '15 C'
+    # Pattern A.2: 'STRIP OF 15', 'BOX OF 10', 'PACK OF 30'
     match_strip = re.search(r'^(\d+)\s*(?:[\'`]?S\b|TAB|T\b|CAP|C\b|STRIP|V\b|A\b|B\b)', s)
+    if not match_strip:
+        # Try 'STRIP OF 15' style
+        match_strip = re.search(r'(?:STRIP|BOX|PACK|UNIT|TAB|CAP|TABLET|CAPSULE)\s+(?:OF\s+)?(\d+)', s)
+        
     if match_strip:
         qty = int(match_strip.group(1))
         unit = 'Tablet'
-        if 'CAP' in s or 'C' in s.split(): unit = 'Capsule'
-        elif 'V' in s.split(): unit = 'Vial'
-        elif 'A' in s.split(): unit = 'Ampoule'
-        elif 'B' in s.split(): unit = 'Bottle'
+        if any(x in s for x in ['CAPSULE', 'CAPS', ' CAP ']): unit = 'Capsule'
+        elif any(x in s for x in ['VIAL', ' V ']): unit = 'Vial'
+        elif any(x in s for x in ['AMPOULE', ' AMP ']): unit = 'Ampoule'
+        elif any(x in s for x in ['BOTTLE', ' B ']): unit = 'Bottle'
+        elif any(x in s for x in ['TABLET', ' TABS ', ' TAB ']): unit = 'Tablet'
         
         return {
             "primary_pack_size": qty,
@@ -268,8 +274,6 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
         
     # Pattern B: '10x10', '1x6', '5x15' (NxM)
     # The standard convention: Outer x Inner (e.g. 10 strips of 15 tablets -> 10x15)
-    # The first number is the outer pack (Strips per box).
-    # The second number is the inner pack (Tabs per strip).
     match_box = re.search(r'(\d+)\s*[xX]\s*(\d+)', s)
     if match_box:
         outer = int(match_box.group(1))
@@ -281,6 +285,19 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "conversion_factor": inner * outer,
             "base_unit": 'Tablet', # Defaulting to Tablet/Capsule for NxM
             "type": "TABLET_BOX"
+        }
+
+    # Rule 3: Single Item Catch-all (e.g. '1 TAB', '1 CAP', '1')
+    match_single = re.search(r'\b(\d+)\b', s)
+    if match_single:
+        qty = int(match_single.group(1))
+        return {
+            "primary_pack_size": qty,
+            "secondary_pack_size": 1,
+            "total_base_units": qty,
+            "conversion_factor": qty,
+            "base_unit": 'Unit',
+            "type": "SINGLE_UNIT"
         }
 
     return None

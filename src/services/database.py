@@ -12,6 +12,9 @@ def connect_db():
     Initializes the Neo4j driver.
     """
     global driver
+    if driver:
+        return driver
+        
     try:
         # Added keep_alive and optimized timeouts for cloud environments (Aura)
         driver = GraphDatabase.driver(
@@ -23,44 +26,26 @@ def connect_db():
             liveness_check_timeout=30.0, # Verify connection if idle for > 30s
             keep_alive=True
         )
-        driver.verify_connectivity()
-        logger.info("Connected to Neo4j.")
+        # We NO LONGER call verify_connectivity() here as it blocks the event loop
+        # The driver will lazily connect on first query.
+        logger.info("Neo4j driver initialized (Lazy Connection).")
         
-        # Initialize Vector Index on Startup
-        init_vector_index(driver)
-        
-        # Seed default Item Categories and Roles
-        from src.domain.persistence.config import seed_default_categories, seed_system_roles, bootstrap_admin_user
-        seed_default_categories()
-        seed_system_roles()
-        # Ensure the primary user is an Admin
-        bootstrap_admin_user("pranavgupta1638@gmail.com")
+        # We will keep the index initialization but it will be run lazily as well or 
+        # we can just skip it here if it's already done.
+        return driver
         
     except Exception as e:
-        logger.error(f"Failed to connect to Neo4j: {e} - Application will start in partial mode (No DB)")
+        logger.error(f"Failed to initialize Neo4j driver: {e}")
         driver = None
+        return None
 
 def get_db_driver():
     """
     Returns the active Neo4j driver instance.
-    Includes auto-reconnection logic for stale connections.
     """
     global driver
-    if driver:
-        try:
-            # lightweight connectivity check is expensive on flaky networks
-            # driver.verify_connectivity() 
-            return driver
-        except Exception as e:
-            logger.warning(f"Neo4j Connection Defunct ({e}). Reconnecting...")
-            try:
-                driver.close()
-            except:
-                pass
-            driver = None
-
-    # Reconnect if None or defunct
-    connect_db()
+    if not driver:
+        return connect_db()
     return driver
 
 def close_db():

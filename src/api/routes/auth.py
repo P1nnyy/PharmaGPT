@@ -85,6 +85,31 @@ async def get_current_user_role(user_email: str = Depends(get_current_user_email
             return result["role"]
     return "Employee"
 
+async def resolve_user_tenant(email: str) -> str:
+    """
+    Resolves the primary tenant (Shop ID) for a given user email.
+    Used as a fallback for tokens missing the tenant_id claim.
+    """
+    driver = get_db_driver()
+    if not driver:
+        return "anonymous"
+        
+    query = """
+    MATCH (u:User {email: $email})
+    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    WITH u, s
+    ORDER BY CASE WHEN (u)-[:OWNS_SHOP]->(s) THEN 1 ELSE 2 END ASC
+    LIMIT 1
+    RETURN s.id as shop_id
+    """
+    with driver.session() as session:
+        def _get_id(tx):
+            res = tx.run(query, email=email).single()
+            return res["shop_id"] if res else None
+        
+        shop_id = session.execute_read(_get_id)
+        return shop_id or "anonymous"
+
 # --- Endpoints ---
 
 @router.get("/google/login")
@@ -131,10 +156,38 @@ async def auth_callback(request: Request):
         }
         upsert_user(driver, user_data)
         
-        # 2. Create Session Token (JWT)
+        # 1.1 Fetch/Create Shop for Tenant Context
+        shop_query = """
+        MATCH (u:User {email: $email})
+        OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+        WITH u, s
+        ORDER BY CASE WHEN (u)-[:OWNS_SHOP]->(s) THEN 1 ELSE 2 END ASC
+        LIMIT 1
+        RETURN s.id as shop_id
+        """
+        user_email = user.get("email")
+        shop_id = "personal"
+        
+        with driver.session() as session:
+            shop_res = session.run(shop_query, email=user_email).single()
+            if shop_res and shop_res["shop_id"]:
+                shop_id = shop_res["shop_id"]
+            else:
+                # Auto-create shop for new user (Legacy Support / Onboarding)
+                create_shop_query = """
+                MATCH (u:User {email: $email})
+                MERGE (u)-[:OWNS_SHOP]->(s:Shop)
+                ON CREATE SET s.name = coalesce(u.name, 'Admin') + "'s Shop", s.id = randomUUID()
+                RETURN s.id as shop_id
+                """
+                shop_res = session.run(create_shop_query, email=user_email).single()
+                if shop_res:
+                    shop_id = shop_res["shop_id"]
+
+        # 2. Create Session Token (JWT) with Tenant ID
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": user.get("email")},
+            data={"sub": user_email, "tenant_id": shop_id},
             expires_delta=access_token_expires
         )
         

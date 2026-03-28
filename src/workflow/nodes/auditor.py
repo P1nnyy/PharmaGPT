@@ -23,261 +23,108 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     if not image_path or not line_items:
         return {"error_logs": ["Auditor: Missing input data."]}
 
-    # Deduplication Logic (Prevent Value Overflow from overlapping zones)
-    unique_items_map = {}
-    deduped_line_items = []
-    
-    # Calculate Source Type Once
-    raw_sources = state.get("raw_text_rows", [])
-    is_single_source = (len(raw_sources) <= 1)
+    # --- PHASE 3: THE AGGREGATION "CLUBBING" ENGINE ---
+    # Rule: If Product and Batch match, SUM them.
+    aggregated_map = {}
     
     for item in line_items:
         try:
-            # 1. Scalable Noise Filter
-            # UPDATED: Use Amount
-            n_val = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
-            q_val = float(item.get("Qty") or 0)
-            
-            # Allow items if they have a valid Batch Number, even if value is 0
-            has_batch = item.get("Batch") and item.get("Batch") not in ["", "None", "N/A", None]
+            # 1. Noise & Blacklist Filter
+            n_val = parse_float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
+            q_val = parse_float(item.get("Qty") or 0)
+            f_val = parse_float(item.get("Free") or 0)
+            has_batch = item.get("Batch") and str(item.get("Batch")).lower() not in ["", "none", "n/a", "null"]
             
             if abs(n_val) < AUDITOR_CONFIG['NOISE_THRESHOLD'] and abs(q_val) < AUDITOR_CONFIG['NOISE_THRESHOLD'] and not has_batch:
-                continue # Skip noise
+                continue
                 
-            # 2. Keyword Blacklist (Safety Net)
-            desc_lower = str(item.get("Product", "")).lower()
-            blacklist = BLACKLIST_KEYWORDS
-            logger.info(f"Auditor Check: '{desc_lower}'") 
-            if any(bad_word in desc_lower for bad_word in blacklist):
+            desc_raw = str(item.get("Product", "") or item.get("Description", ""))
+            desc_lower = desc_raw.lower()
+            if any(bad_word in desc_lower for bad_word in BLACKLIST_KEYWORDS):
                 logger.info(f"Auditor: Dropping Blacklisted Item '{desc_lower}'")
                 continue
 
-            # 5. Outlier Sanitization (Decimal Fix)
-            # Fixes "Skyrocketing" values where 160.00 is read as 16000.
-            # Strategy: If Amount > 5000 (arbitrary high shelf), check if dividing by 100 makes it "Reasonable" (< 5000).
-            # This is a heuristic for pharma prices which rarely exceed 5k/unit.
-            # Only apply if Rate/Amount are HUGE.
-            
-            # This loop should ideally run AFTER deduped_line_items is fully populated,
-            # but the instruction places it here, so we'll apply it to the current 'item'
-            # before it's potentially added to deduped_line_items.
-            # To apply it to the current 'item' being processed, we'll modify 'item' directly.
-            
-            raw_amt = float(item.get("Amount") or 0)
-            raw_rate = float(item.get("Rate") or 0)
-            
-            # Check Amount
-            if raw_amt > 10000:
-                # Sanity: Is Qty huge?
-                q = float(item.get("Qty") or 1)
-                if q < 100: 
-                    # Small Qty, Huge Amount. Likely decimal error.
-                    logger.warning(f"Auditor: Detected Huge Amount {raw_amt}. Auto-correcting to {raw_amt/100:.2f}")
-                    item["Amount"] = raw_amt / 100
-                    item["Logic_Note"] = item.get("Logic_Note", "") + " [Decimal Fix]"
-            
-            # Check Rate
-            if raw_rate > 5000:
-                 logger.warning(f"Auditor: Detected Huge Rate {raw_rate}. Auto-correcting to {raw_rate/100:.2f}")
-                 item["Rate"] = raw_rate / 100
-            
-            # 6. Strict Safety Net Deduplication
-            # 3. Fuzzy Deduplication (SequenceMatcher)
-            # Strategy: Compare against ALL existing uniques for >0.9 similarity
-            # If match found, Merge (Keep Max). If not, Append.
-            desc_norm = str(item.get("Product", "")).strip().lower()
-            
-            # 2b. Batch Scavenger & Scheme Filter
-            # "One man's trash is another man's treasure."
-            # If this is a Scheme/Offer row (e.g. "Buy 1 Get 1"), it might contain the Batch No for the Previous Item.
-            is_scheme_row = (
-                any(pattern in desc_norm for pattern in SCHEME_PATTERNS) or
-                (n_val == 0 and "free" in desc_norm)
-            )
+            # 1b. HEURISTIC UN-CLUBBING (Batch from Description)
+            # If batch is missing but description contains "B.No", "Batch", "Lot" or uppercase code
+            if not has_batch:
+                # Look for common batch patterns at the end of description
+                # Pattern: " ... B.No: A123" or " ... (Batch: A123)" or " ... A123" (where A123 is uppercase alphanumeric)
+                import re
+                batch_match = re.search(r'(?:batch|b\.?no|lot)[:\s\-]+([A-Z0-9]{4,15})', desc_raw, re.IGNORECASE)
+                if not batch_match:
+                     # Fallback: Check for trailing uppercase alphanumeric block if it's distinct
+                     tokens = desc_raw.split()
+                     if len(tokens) > 1:
+                          last_token = tokens[-1]
+                          if len(last_token) >= 4 and last_token.isupper() and any(c.isdigit() for c in last_token):
+                               item["Batch"] = last_token
+                               item["Product"] = " ".join(tokens[:-1])
+                               logger.info(f"Auditor: Un-clubbed Batch '{last_token}' from Product name.")
+                else:
+                    batch_val = batch_match.group(1)
+                    item["Batch"] = batch_val
+                    # Clean the product name
+                    item["Product"] = desc_raw.replace(batch_match.group(0), "").strip()
+                    logger.info(f"Auditor: Un-clubbed Batch '{batch_val}' from Product (via keyword).")
+                
+                # Update has_batch after attempt
+                has_batch = item.get("Batch") and str(item.get("Batch")).lower() not in ["", "none", "n/a", "null"]
 
-            if is_scheme_row:
-                 # Check if we can "Scavenge" a batch number for the previous item
-                 if deduped_line_items:
-                     last_item = deduped_line_items[-1]
-                     current_batch = last_item.get("Batch")
-                     
-                     # Only scavenge if previous item is missing batch or has a weak batch
-                     if not current_batch or current_batch in ["", "None", "null"]:
-                         import re
-                         # Look for long alphanumeric strings (e.g., LTR251IN000041)
-                         # Pattern: Starts with letter, alphanumeric, length 6-20
-                         batch_match = re.search(r'\b([A-Z]{1,3}[A-Z0-9-]{5,20})\b', item.get("Product", ""))
-                         if batch_match:
-                             scavenged_batch = batch_match.group(1)
-                             # Avoid false positives like "OFFER", "FREE", "BUY", "GET", "APPLY"
-                             if scavenged_batch.upper() not in ["OFFER", "FREE", "BUY", "GET", "APPLY"]:
-                                 logger.info(f"Auditor: Scavenged Batch '{scavenged_batch}' from Scheme Row for '{last_item.get('Product')}'")
-                                 last_item["Batch"] = scavenged_batch
-                                 last_item["Expiry"] = item.get("Expiry") # Also grab Expiry if possible
+            # 2. Decimal Fix (Self-Healing)
+            if n_val > 10000 and q_val < 100:
+                logger.warning(f"Auditor: Decimal Error in Amount {n_val}. Correcting.")
+                n_val /= 100
+                item["Amount"] = n_val
+                item["Logic_Note"] = item.get("Logic_Note", "") + " [Decimal Fix]"
 
-                 # 2c. Scheme Filter Strategy
-                 # Standard: Drop the row if it's purely a textual description of an offer (Qty=0)
-                 if q_val == 0 or "initiative name" in desc_norm:
-                     logger.info(f"Auditor: Dropping Scheme/Info Row -> {desc_lower}")
-                     continue
-                 else:
-                     # If it has Qty > 0, it might be a "Free Good" line item that we need to keep.
-                     logger.info(f"Auditor: RETAINING Scheme Row (Has Qty) -> {desc_lower}")
-
-            desc_norm = " ".join(desc_norm.split())
-
-            # Skip comparison for extremely short strings to avoid false positives
-            if len(desc_norm) < 3: 
-                deduped_line_items.append(item)
-                continue
-
-            merged = False
-            for existing_item in deduped_line_items:
-                ex_desc = str(existing_item.get("Product", "")).strip().lower()
-                ex_desc = " ".join(ex_desc.split())
-                
-                # Check Similarity
-                from difflib import SequenceMatcher
-                ratio = SequenceMatcher(None, desc_norm, ex_desc).ratio()
-                
-                # Normalization for Strict Deduplication
-                p_slug = str(item.get("Product", "")).strip().lower().replace(" ", "")
-                
-                # Intelligent Batch Normalization
-                raw_batch = str(item.get("Batch", "")).strip().lower()
-                # Remove common prefixes to match "Batch 123" with "123" or "B.No 123" with "123"
-                for prefix in ["batch", "no", "lot", "b.no", "bno", ".", ":", "-"]:
-                    raw_batch = raw_batch.replace(prefix, "")
-                b_slug = raw_batch.replace(" ", "")
-                
-                # Treat "N/A", "None" as same bucket
-                if not b_slug or b_slug in ["none", "null", "n/a", "unknown"]:
-                    b_slug = "unknown_batch"
-                
-                key = (p_slug, b_slug)
-                # Check Batch Collision (Only merge if Batches compatible: Same or One is Generic)
-                batch_curr = str(item.get("Batch", "N/A")).strip().lower()
-                batch_ex = str(existing_item.get("Batch", "N/A")).strip().lower()
-                
-                batch_match = (batch_curr == batch_ex) or (batch_curr in ["n/a", "unknown", "none", ""]) or (batch_ex in ["n/a", "unknown", "none", ""])
-                
-                if batch_match and batch_curr not in ["n/a", "unknown", "none", "", "unknown_batch"]:
-                     # AGGRESSIVE DEDUPE: If Batch Matches perfectly...
-                     # CHECK IF VALUES ARE IDENTICAL (OCR Redundancy)
-                     q_curr = float(item.get("Qty") or 0)
-                     q_ex = float(existing_item.get("Qty") or 0)
-                     val_curr = float(item.get("Amount") or item.get("Stated_Net_Amount") or 0)
-                     val_ex = float(existing_item.get("Amount") or existing_item.get("Stated_Net_Amount") or 0)
-                     
-                     if q_curr == q_ex and abs(val_curr - val_ex) < 1.0:
-                         # Identical Item Found
-                         
-                         if is_single_source:
-                             # SINGLE SOURCE -> Duplicate implies intentional split (e.g. 10+2 scheme) -> KEEP SEPARATE
-                             # User Request: "remove that qty adding logic... model listed all those items thrice in the correct order, but inflated the first item price"
-                             logger.info(f"Auditor: Single Source Duplicate '{desc_norm}' -> KEEPING SEPARATE (User Preference)")
-                             merged = False # Do NOT merge. Keep as distinct row.
-                             
-                         else:
-                             # MULTI SOURCE -> Duplicate implies OCR Overlap (Redundant) -> DROP
-                             merged = True
-                             logger.info(f"Auditor: Dropping Exact Duplicate '{desc_norm}' (Redundant OCR from overlapping zones)")
-                     elif q_curr == q_ex:
-                         # Same Batch, Same Qty, Different Values.
-                         # This implies we read the same item twice (maybe once from Scheme table with Amount=0 or Rate vs Amount).
-                         # Strategy: Prefer the one with Higher Amount (assuming real line item has value > scheme listing).
-                         
-                         merged = True
-                         if val_curr > val_ex:
-                             # Current is better. Replace Existing with Current.
-                             # But we are iterating, so we can't easily replace "existing_item" in place effectively using 'merged=True' logic which usually drops current.
-                             # So we must COPY current into existing.
-                             existing_item.update(item)
-                             logger.info(f"Auditor: Same Batch+Qty but Different Values ({val_curr} vs {val_ex}) -> Keeping Current (Higher Value)")
-                         else:
-                             logger.info(f"Auditor: Same Batch+Qty but Different Values ({val_curr} vs {val_ex}) -> Keeping Existing (Higher/Equal Value)")
-                     else:
-                         # Same Batch, Different Qty -> Real Split Entry? -> KEEP BOTH
-                         merged = False 
-                         logger.info(f"Auditor: Same Batch but Different Qty ({q_curr} vs {q_ex}) -> KEEPING BOTH")
-                
-                elif ratio > AUDITOR_CONFIG['DEDUP_THRESHOLD'] and batch_match: 
-                    # Fuzzy match + Batch match (N/A)
-                    if is_single_source:
-                        # SINGLE SOURCE -> Don't trust fuzzy dedupe if the OCR gave us two lines.
-                        merged = False
-                        logger.info(f"Auditor: Fuzzy Match '{desc_norm}' (Ratio {ratio:.2f}) -> KEEPING SEPARATE (Single Source)")
-                    else:
-                        # If Quantities identical, Drop. Else Keep.
-                         q_curr = float(item.get("Qty") or 0)
-                         q_ex = float(existing_item.get("Qty") or 0)
-                         if q_curr == q_ex:
-                             merged = True
-                             logger.info(f"Auditor: Fuzzy Duplicate '{desc_norm}' -> Dropping")
-                         else:
-                             merged = False
-
-                if merged:
-                    # Enrich Empty Fields (Batch, Expiry) if dropping the duplicate
-                    # But DO NOT SUM VALUES.
-                    if not existing_item.get("Batch") and item.get("Batch"):
-                        existing_item["Batch"] = item["Batch"]
-                        
-                    if item.get("Expiry") and item.get("Expiry") not in ["", "None", "N/A", None]:
-                         if not existing_item.get("Expiry"):
-                             existing_item["Expiry"] = item["Expiry"]
+            # 3. Create Aggregation Key (Product + Batch)
+            # Use raw description but standardized tokens
+            p_key = " ".join(str(item.get("Product", "")).strip().lower().split())
             
-            # 4. Self-Healing: Check Description for missing Batch No
-            # e.g. "OB CRISSCROSS GUM CARE B202 SFT" -> Batch: B202
-            if not item.get("Batch") or item.get("Batch") in ["", "None", "null"]:
-                 import re
-                 # Relaxed Pattern: 1-3 Letters + Number + 2+ Alphanumeric (Total 4+)
-                 self_match = re.search(r'\b([A-Z]{1,3}[0-9][A-Z0-9-]{2,15})\b', desc_norm.upper())
-                 if self_match:
-                     extracted_batch = self_match.group(1)
-                     # Safety: Avoid extracting "10GM", "5ML", "STD"
-                     if "GM" not in extracted_batch and "ML" not in extracted_batch and "PC" not in extracted_batch:
-                         logger.info(f"Auditor: Self-Healed Batch '{extracted_batch}' from Description '{desc_norm}'")
-                         item["Batch"] = extracted_batch
-
-            if not merged:
-                # 4. Quantity Sanity Check & Fix
-                # Problem: Sometimes Qty column is missed and Rate/MRP (e.g. 200, 300) is extracted as Qty.
-                # Heuristic 1: If Qty is exactly equal to MRP or Rate, it's a shifted column error.
-                # Heuristic 2: If Qty > 100 on a pharmacy invoice, it's highly suspicious (unless it's 'strips' vs 'tabs').
+            # Batch Normalization
+            raw_batch = str(item.get("Batch") or "N/A").strip().lower()
+            for prefix in ["batch", "no", "lot", "b.no", "bno", ".", ":", "-"]:
+                raw_batch = raw_batch.replace(prefix, "")
+            b_key = raw_batch.replace(" ", "")
+            if b_key in ["", "none", "null", "n/a", "unknown"]:
+                b_key = "unknown_batch"
+            
+            agg_key = f"{p_key}|{b_key}"
+            
+            if agg_key in aggregated_map:
+                existing = aggregated_map[agg_key]
+                logger.info(f"Auditor: Clubbing duplicate item '{p_key}' Batch '{b_key}'")
                 
-                check_mrp = parse_float(item.get("MRP", 0))
-                check_rate = parse_float(item.get("Rate", 0))
-                if q_val > AUDITOR_CONFIG['MAX_QUANTITY']:
-                     # Check for Swap with MRP/Rate
-                     if (check_mrp > 0 and abs(q_val - check_mrp) < 1.0) or (check_rate > 0 and abs(q_val - check_rate) < 1.0):
-                         logger.warning(f"Auditor: Qty {q_val} matches Price/MRP. Suspected column swap. Correcting Qty to 1.")
-                         q_val = 1.0
-                         item["Qty"] = 1.0
-                     
-                     # Check for "Year" confusion (e.g. Qty 2024, 2025)
-                     elif q_val > 1900 and q_val < 2100:
-                         logger.warning(f"Auditor: Qty {q_val} looks like a Year. Correcting to 1.")
-                         q_val = 1.0
-                         item["Qty"] = 1.0
-                         
-                     # General High Value Warning (User likely needs to review this)
-                     else:
-                         logger.warning(f"Auditor: High Quantity Detected ({q_val}). Flagging for review.")
-                         # We can't auto-correct arbitrary high numbers safely without more context, 
-                         # but we can try to look for a small integer in the 'Amount' / 'Rate' math?
-                         
+                # Sum Quantities and Amounts
+                existing_qty = parse_float(existing.get("Qty", 0))
+                existing_free = parse_float(existing.get("Free", 0))
+                existing_amt = parse_float(existing.get("Amount", 0))
+                
+                existing["Qty"] = existing_qty + q_val
+                existing["Free"] = existing_free + f_val
+                existing["Amount"] = existing_amt + n_val
+                
+                # Logic Note
+                existing["Logic_Note"] = (existing.get("Logic_Note", "") + f" [Clubbed Qty +{q_val}]").strip()
+                
+                # Preserve largest Rate/MRP if they differ (rare)
+                existing["Rate"] = max(parse_float(existing.get("Rate", 0)), parse_float(item.get("Rate", 0)))
+                existing["MRP"] = max(parse_float(existing.get("MRP", 0)), parse_float(item.get("MRP", 0)))
+            else:
+                # Add new entry
                 item["Qty"] = q_val
-                
-                # --- END SANITY CHECKS ---
-
-                deduped_line_items.append(item)
+                item["Free"] = f_val
+                item["Amount"] = n_val
+                aggregated_map[agg_key] = item
 
         except Exception as e:
-            logger.warning(f"Auditor Deduplication Error: {e}")
-            deduped_line_items.append(item)
-    
-    logger.info(f"Auditor: Deduplication: Reduced {len(line_items)} items to {len(deduped_line_items)} unique items.")
+            logger.warning(f"Auditor Aggregation Error: {e}")
+            # Fallback: append if failed to parse
+            aggregated_map[f"error_{len(aggregated_map)}"] = item
+
+    deduped_line_items = list(aggregated_map.values())
+    logger.info(f"Auditor: Clubbing: Reduced {len(line_items)} items to {len(deduped_line_items)} unique entries.")
+    # ---------------------------------------------------
     
     # 7. Robust Quantity Reconstruction (Math as Source of Truth)
     # Replaces specific "Swap Fixes" with a general rule: Qty = Amount / Rate

@@ -10,8 +10,8 @@ import asyncio
 import json
 from src.services.storage import upload_to_r2
 from src.services.tasks import process_invoice_background, enrich_invoice_items_background
-from src.api.routes.auth import get_current_user_email
-from src.utils.logging_config import get_logger
+from src.api.routes.auth import get_current_user_email, get_current_user_role
+from src.utils.logging_config import get_logger, tenant_id_ctx
 from src.services.task_manager import manager as task_manager
 from src.domain.schemas import InvoiceExtraction
 from src.domain.persistence import (
@@ -26,6 +26,7 @@ from src.domain.persistence import (
     log_correction,
     index_invoice_for_rag
 )
+from src.workflow.graph import run_supply_chain_intelligence
 from pydantic import BaseModel
 
 logger = get_logger(__name__)
@@ -36,11 +37,15 @@ class ConfirmInvoiceRequest(BaseModel):
     normalized_items: List[Dict[str, Any]]
 
 @router.get("/drafts", response_model=List[Dict[str, Any]])
-async def get_drafts(user_email: str = Depends(get_current_user_email)):
+async def get_drafts(
+    user_email: str = Depends(get_current_user_email),
+    role: str = Depends(get_current_user_role)
+):
     driver = get_db_driver()
     if not driver:
         return []
-    return get_draft_invoices(driver, user_email)
+    tenant_id = tenant_id_ctx.get()
+    return get_draft_invoices(driver, user_email, tenant_id, role=role)
 
 @router.delete("/drafts")
 async def clear_drafts(user_email: str = Depends(get_current_user_email)):
@@ -52,11 +57,9 @@ async def clear_drafts(user_email: str = Depends(get_current_user_email)):
     task_manager.cancel_all(user_email)
     
     # 2. Cleanup Database
-    delete_draft_invoices(driver, user_email)
+    tenant_id = tenant_id_ctx.get()
+    delete_draft_invoices(driver, user_email, tenant_id)
     return {"status": "success", "message": "Drafts cleared and active scans cancelled"}
-
-from src.api.routes.auth import get_current_user_email, get_current_user_role
-...
 @router.delete("/{invoice_id}")
 async def discard_invoice(invoice_id: str, wipe: bool = False, user_email: str = Depends(get_current_user_email), role: str = Depends(get_current_user_role)):
     driver = get_db_driver()
@@ -68,7 +71,8 @@ async def discard_invoice(invoice_id: str, wipe: bool = False, user_email: str =
     
     # 2. Delete from DB
     is_admin = (role == "Admin")
-    delete_invoice_by_id(driver, invoice_id, user_email, wipe=wipe, is_admin=is_admin)
+    tenant_id = tenant_id_ctx.get()
+    delete_invoice_by_id(driver, invoice_id, user_email, tenant_id, wipe=wipe, is_admin=is_admin)
     return {"status": "success", "message": f"Invoice {invoice_id} {'wiped' if wipe else 'discarded'} and scan cancelled"}
 
 @router.get("/stream-status")
@@ -94,21 +98,34 @@ async def stream_status(
         
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        tenant_id: str = payload.get("tenant_id")
         if not email:
             logger.error(f"SSE Auth: Token decoded but 'sub' missing. Payload keys: {list(payload.keys())}")
             raise HTTPException(status_code=401, detail="Invalid token")
+        
         user_email = email
-        logger.info(f"SSE Auth Successful for user: {user_email}")
+        
+        # Fallback for missing tenant_id in token
+        if not tenant_id or tenant_id == "anonymous":
+            from src.api.routes.auth import resolve_user_tenant
+            tenant_id = await resolve_user_tenant(user_email)
+            logger.info(f"SSE Auth: Resolved missing tenant_id from DB for user: {user_email} -> {tenant_id}")
+
+        logger.info(f"SSE Auth Successful for user: {user_email}, tenant: {tenant_id}")
     except JWTError as e:
         logger.error(f"SSE JWT Validation Failed: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+
+    # Fetch role for SSE context
+    from src.api.routes.auth import get_current_user_role
+    role = await get_current_user_role(user_email)
 
     async def event_generator():
         last_state_hash = None
         heartbeat_count = 0
         while True:
             try:
-                drafts = get_draft_invoices(db, user_email)
+                drafts = get_draft_invoices(db, user_email, tenant_id, role=role)
                 # Create a simple hash of IDs and statuses to detect changes
                 current_state = [(d['id'], d.get('status')) for d in drafts]
                 current_hash = hash(tuple(current_state))
@@ -141,13 +158,18 @@ async def stream_status(
     )
 
 @router.get("/{invoice_number}/items")
-async def read_invoice_items(invoice_number: str, user_email: str = Depends(get_current_user_email)):
+async def read_invoice_items(
+    invoice_number: str, 
+    user_email: str = Depends(get_current_user_email),
+    role: str = Depends(get_current_user_role)
+):
     driver = get_db_driver()
     if not driver:
         raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
-        data = get_invoice_details(driver, invoice_number, user_email=user_email)
+        tenant_id = tenant_id_ctx.get()
+        data = get_invoice_details(driver, invoice_number, user_email=user_email, tenant_id=tenant_id, role=role)
         if not data:
             raise HTTPException(status_code=404, detail="Invoice not found")
         return data
@@ -173,15 +195,17 @@ async def upload_batch(
         invoice_id = uuid.uuid4().hex
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
-            shutil.copyfileobj(file.file, tmp)
+            # Offload blocking IO to a thread
+            await asyncio.to_thread(shutil.copyfileobj, file.file, tmp)
             processing_path = tmp.name
         
-        # Create DB entry first
-        create_processing_invoice(driver, invoice_id, file.filename, None, user_email)
+        # Create DB entry first with tenant context
+        tenant_id = tenant_id_ctx.get()
+        create_processing_invoice(driver, invoice_id, file.filename, None, user_email, tenant_id)
         
         # Use background_tasks for safer execution and proper context management
         background_tasks.add_task(
-            process_invoice_background, invoice_id, processing_path, None, user_email, file.filename
+            process_invoice_background, invoice_id, processing_path, None, user_email, tenant_id, file.filename
         )
         # Registration now happens INSIDE the background task for synchronization
         
@@ -235,18 +259,15 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
             OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
             WITH u, s
             
-            MATCH (i:Invoice)
+            MATCH (i:Invoice {tenant_id: $tenant_id})
             WHERE i.status IN ['DRAFT', 'PROCESSING', 'ERROR'] 
               AND i.invoice_number = $invoice_no
-              AND (
-                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
-                (s IS NULL AND (u)-[:OWNS]->(i))
-              )
             RETURN i.invoice_id as id, i.raw_state as state LIMIT 1
             """
             with driver.session() as session:
                 def _find_draft(tx):
-                    rec = tx.run(find_draft_query, user_email=user_email, invoice_no=invoice_no).single()
+                    tenant_id = tenant_id_ctx.get()
+                    rec = tx.run(find_draft_query, user_email=user_email, tenant_id=tenant_id, invoice_no=invoice_no).single()
                     if rec:
                         return rec["id"], json.loads(rec["state"]) if rec["state"] else None
                     return None, None
@@ -260,16 +281,13 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
             OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
             WITH u, s
             
-            MATCH (i:Invoice {invoice_id: $id})
-            WHERE (
-                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s)) OR
-                (s IS NULL AND (u)-[:OWNS]->(i))
-            )
+            MATCH (i:Invoice {invoice_id: $id, tenant_id: $tenant_id})
             RETURN i.raw_state as state
             """
             with driver.session() as session:
                 def _fetch_state(tx):
-                    res = tx.run(fetch_query, user_email=user_email, id=invoice_id_lookup).single()
+                    tenant_id = tenant_id_ctx.get()
+                    res = tx.run(fetch_query, user_email=user_email, id=invoice_id_lookup, tenant_id=tenant_id).single()
                     return res["state"] if res else None
                 state_str = session.execute_read(_fetch_state)
                 if state_str:
@@ -292,7 +310,8 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
         supplier_details = request.invoice_data.get("supplier_details")
         
         # Use invoice_id_lookup to update the EXACT node that was previously in draft/processing status
-        ingest_invoice(driver, invoice_id_lookup, invoice_obj, request.normalized_items, user_email=user_email, supplier_details=supplier_details)
+        tenant_id = tenant_id_ctx.get()
+        ingest_invoice(driver, invoice_id_lookup, invoice_obj, request.normalized_items, user_email=user_email, tenant_id=tenant_id, supplier_details=supplier_details)
         
         logger.info(f"Confirmed Invoice {invoice_obj.Invoice_No}. ID: {invoice_id_lookup}")
         
@@ -301,8 +320,10 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
         
         
         # Trigger Automated Enrichment and RAG Indexing in background
-        background_tasks.add_task(enrich_invoice_items_background, request.normalized_items, user_email)
+        tenant_id = tenant_id_ctx.get()
+        background_tasks.add_task(enrich_invoice_items_background, request.normalized_items, user_email, tenant_id)
         background_tasks.add_task(index_invoice_for_rag, driver, invoice_obj)
+        background_tasks.add_task(run_supply_chain_intelligence, tenant_id, user_email)
 
         return {
             "status": "success",

@@ -27,7 +27,8 @@ AUDITOR_CONFIG = {
 BLACKLIST_KEYWORDS = [
     "total", "subtotal", "grand total", "amount", "output", "input",
     "gst", "freight", "discount", "round off", "net amount",
-    "taxable value", "output cgst", "output sgst"
+    "taxable value", "output cgst", "output sgst", "item description",
+    "pcode", "hsn", "pe price", "gross amt", "net amt", "net payable"
 ]
 
 # Common unit measurements

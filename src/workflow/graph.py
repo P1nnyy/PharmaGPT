@@ -1,8 +1,9 @@
-from typing import Dict, Any
+from typing import Dict, Any, Callable
+import asyncio
 from langgraph.graph import StateGraph, START, END
 from langfuse.langchain import CallbackHandler
-from src.workflow.state import InvoiceState
-from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics, supplier_extractor, researcher
+from src.workflow.state import InvoiceState, SupplyChainState
+from src.workflow.nodes import surveyor, worker, mapper, auditor, detective, critic, mathematics, supplier_extractor, researcher, inventory_agent, forecasting_agent
 from src.utils.logging_config import get_logger
 
 # Setup Logging
@@ -102,13 +103,26 @@ def build_graph():
 # Global Compilation (Compile once on startup)
 APP = build_graph()
 
-async def run_extraction_pipeline(image_path: str, user_email: str, public_url: str = None):
+async def run_extraction_pipeline(image_path: str, user_email: str, public_url: str = None, on_update: Callable = None):
     """
     Entry point to run the new graph-based pipeline.
     Initializes state and invokes the graph.
     """
     logger.info(f"Starting Extraction Graph for {image_path} (User: {user_email})")
     
+    # User-friendly messages for AG-UI
+    NODE_MESSAGES = {
+        "surveyor": "Surveyor: Planning extraction zones...",
+        "worker": "Worker: Extracting line items and table data...",
+        "mapper": "Mapper: Identifying products in master catalog...",
+        "auditor": "Auditor: Reconciling ledger and validating math...",
+        "detective": "Detective: Investigating anomalies and tax gaps...",
+        "researcher": "Researcher: Enriching items with web data...",
+        "critic": "Critic: Finalizing verification and audit trail...",
+        "solver": "Solver: Applying mathematical corrections...",
+        "supplier_extractor": "Agent: Extracting supplier metadata..."
+    }
+
     # APP is already compiled globally
     
     initial_state = {
@@ -137,8 +151,23 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
         logger.warning(f"Failed to initialize Langfuse Callback: {e}")
         callbacks = []
     
-    # Invoke Graph
-    result_state = await APP.ainvoke(initial_state, config={"callbacks": callbacks})
+    # Invoke Graph with Streaming
+    result_state = initial_state
+    async for event in APP.astream(initial_state, config={"callbacks": callbacks}, stream_mode="updates"):
+        # The event is a dict: {node_name: {delta_state}}
+        node_name = list(event.keys())[0]
+        logger.info(f"Graph Update from {node_name}")
+        
+        # Trigger Callback for AG-UI
+        if on_update:
+            msg = NODE_MESSAGES.get(node_name, f"Executing {node_name}...")
+            if asyncio.iscoroutinefunction(on_update):
+                await on_update(node_name, msg)
+            else:
+                on_update(node_name, msg)
+
+        # Merge delta into result_state
+        result_state.update(event[node_name])
     
     # Extract final output
     final_output = result_state.get("final_output")
@@ -168,7 +197,7 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
         except Exception as e:
             logger.warning(f"Failed to extract Trace ID: {e}")
     
-    # Fallback: If pipeline ended without explicit Final Output (e.g. Retry Exhausted), construct it now
+    # FALLBACK: If pipeline ended without explicit Final Output (e.g. Retry Exhausted), construct it now
     if not final_output:
         logger.warning("Pipeline ended without Final Output. Constructing from State (Best Effort).")
         headers = result_state.get("global_modifiers", {})
@@ -177,46 +206,26 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
         final_output = headers.copy()
         final_output["Line_Items"] = lines
     
-    # Inject Trace ID if it was stashed in result_state (fallback case)
-    if "trace_id" in result_state and "trace_id" not in final_output:
-        final_output["trace_id"] = result_state["trace_id"]
-        
-    # MERGE Raw Text for Vector Storage (RAG)
-    raw_rows = result_state.get("raw_text_rows", [])
-    if raw_rows:
-        # Deduplicate/Join (Worker might produce duplicates if retried, but add operator handles it)
-        # Just simple join is enough for embeddings
-        # Deduplicate/Join (Worker might produce duplicates if retried, but add operator handles it)
-        # Just simple join is enough for embeddings
-        final_output["raw_text"] = "\n".join(raw_rows)
-    
-    # DEBUG TRACE ID
-    if "trace_id" in final_output:
-        logger.info(f"FINAL OUTPUT HAS TRACE ID: {final_output['trace_id']}")
-    else:
-        logger.warning("FINAL OUTPUT MISSING TRACE ID")
-        
-    # MERGE Supplier Details into Final Output
+    # ENSURE Standard_Item_Name mapping is present in final output
+    if "Line_Items" in final_output:
+        for item in final_output["Line_Items"]:
+            if not item.get("Standard_Item_Name") and item.get("Product"):
+                item["Standard_Item_Name"] = item["Product"]
+
+    # MERGE Supplier Details into Final Output (HIGH PRIORITY)
     supplier_details = result_state.get("supplier_details")
     if supplier_details:
         logger.info(f"Merging Supplier Details into Output: {supplier_details}")
         final_output["supplier_details"] = supplier_details
         
-        # FALLBACK FIX: If the main worker failed to extract the header, use the highly accurate supplier extractor's data
-        if not final_output.get("Supplier_Name") or final_output.get("Supplier_Name") == "Unknown":
-            if supplier_details.get("Supplier_Name"):
-                logger.info(f"Fallback: Applying Supplier_Name '{supplier_details['Supplier_Name']}' from specialized node.")
-                final_output["Supplier_Name"] = supplier_details["Supplier_Name"]
-                
-        if not final_output.get("Invoice_No"):
-            if supplier_details.get("Invoice_No"):
-                logger.info(f"Fallback: Applying Invoice_No '{supplier_details['Invoice_No']}' from specialized node.")
-                final_output["Invoice_No"] = supplier_details["Invoice_No"]
-                
-        if not final_output.get("Invoice_Date"):
-            if supplier_details.get("Invoice_Date"):
-                logger.info(f"Fallback: Applying Invoice_Date '{supplier_details['Invoice_Date']}' from specialized node.")
-                final_output["Invoice_Date"] = supplier_details["Invoice_Date"]
+        # Priority mapping for common header fields
+        for field in ["Supplier_Name", "Invoice_No", "Invoice_Date", "GSTIN", "Address", "DL_No"]:
+            if supplier_details.get(field):
+                # Always prioritize the specialized agent's result if the main one is missing or default
+                current_val = str(final_output.get(field, "")).strip().lower()
+                if not current_val or current_val in ["unknown", "n/a", "none"]:
+                    final_output[field] = supplier_details[field]
+                    logger.info(f"Fallback Header Fix: Set {field} = {supplier_details[field]}")
         
     error_logs = result_state.get("error_logs", [])
     
@@ -235,3 +244,44 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
             logger.error(f"Smart Mapper Failed: {e}")
         
     return final_output
+
+def build_supply_chain_graph():
+    """
+    Constructs the Supply Chain Intelligence Graph.
+    Flow: START -> Inventory Agent -> Forecasting Agent -> END
+    """
+    workflow = StateGraph(SupplyChainState)
+    
+    workflow.add_node("inventory_agent", inventory_agent.analyze_inventory)
+    workflow.add_node("forecasting_agent", forecasting_agent.forecast_demand)
+    
+    workflow.add_edge(START, "inventory_agent")
+    workflow.add_edge("inventory_agent", "forecasting_agent")
+    workflow.add_edge("forecasting_agent", END)
+    
+    return workflow.compile()
+
+# Global Compilation
+SUPPLY_CHAIN_APP = build_supply_chain_graph()
+
+async def run_supply_chain_intelligence(tenant_id: str, user_email: str):
+    """
+    Asynchronous entry point for supply chain analysis.
+    Usually triggered after an invoice is confirmed.
+    """
+    logger.info(f"Triggering Supply Chain Intelligence for Tenant: {tenant_id}")
+    
+    initial_state = {
+        "tenant_id": tenant_id,
+        "user_email": user_email,
+        "inventory_alerts": [],
+        "demand_forecasts": []
+    }
+    
+    try:
+        result = await SUPPLY_CHAIN_APP.ainvoke(initial_state)
+        logger.info(f"Supply Chain Intelligence Complete. Alerts: {len(result['inventory_alerts'])}, Forecasts: {len(result['demand_forecasts'])}")
+        return result
+    except Exception as e:
+        logger.error(f"Supply Chain Intelligence failed: {e}")
+        return None

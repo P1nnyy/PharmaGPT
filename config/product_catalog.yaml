@@ -101,3 +101,9 @@ products:
     standard_pack: "10 tabs"
     synonyms:
       - "Glycomet 500"
+
+  - known_name: "Ondero Met 2.5/500mg Tablet"
+    standard_pack: "10 tabs"
+    synonyms:
+      - "Ondero Met"
+      - "Ondero Met 2.5/500"

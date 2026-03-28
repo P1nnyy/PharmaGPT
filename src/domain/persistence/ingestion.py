@@ -9,30 +9,29 @@ from neo4j.exceptions import ClientError
 
 logger = get_logger(__name__)
 
-def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]], user_email: str, supplier_details: Dict[str, Any] = None):
+def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]], user_email: str, tenant_id: str, supplier_details: Dict[str, Any] = None):
     """
-    Ingests invoice and line item data into Neo4j, scoped to a specific User and Invoice ID.
-    Also merges detailed Supplier information if available.
+    Ingests invoice and line item data into Neo4j, scoped to a specific User, Tenant, and Invoice ID.
     """
     
-    # Use the finalized grand total from the extraction object (includes taxes/discounts/rounding)
+    # Use the finalized grand total from the extraction object
     grand_total = getattr(invoice_data, 'grand_total', 0.0)
     
     def _full_ingestion_tx(tx):
-        # 1. Update/Merge Invoice (Scoped to User and ID)
-        _create_invoice_tx(tx, invoice_id, invoice_data, grand_total, user_email)
+        # 1. Update/Merge Invoice (Scoped to User, Tenant, and ID)
+        _create_invoice_tx(tx, invoice_id, invoice_data, grand_total, user_email, tenant_id)
         
         # 2. Merge Separate Supplier Node
         if supplier_details:
             supplier_name = invoice_data.Supplier_Name
-            _merge_supplier_tx(tx, supplier_name, supplier_details, user_email)
+            _merge_supplier_tx(tx, supplier_name, supplier_details, user_email, tenant_id)
         
         # 3. Clean up existing line items for this specific invoice
-        tx.run("MATCH (i:Invoice {invoice_id: $invoice_id})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", 
-               invoice_id=invoice_id)
+        tx.run("MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", 
+               invoice_id=invoice_id, tenant_id=tenant_id)
 
         # 4. Process all items in a single batch transaction
-        _ingest_line_items_batch_tx(tx, invoice_data.Invoice_No, normalized_items, user_email, invoice_id=invoice_id)
+        _ingest_line_items_batch_tx(tx, invoice_data.Invoice_No, normalized_items, user_email, tenant_id, invoice_id=invoice_id)
 
     try:
         with driver.session() as session:
@@ -43,18 +42,13 @@ def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, nor
         logger.error(f"Detailed Ingestion Error for Invoice {invoice_data.Invoice_No}: {e}")
         raise e
 
-def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, grand_total: float, user_email: str):
+def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, grand_total: float, user_email: str, tenant_id: str):
     query = """
     MATCH (u:User {email: $user_email})
     OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-    MATCH (i:Invoice {invoice_id: $invoice_id})
+    MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     
-    // Ensure this user owns it, and remove other owners during confirmation 
-    // to avoid UI duplication in history views.
-    OPTIONAL MATCH (other:User)-[r:OWNS]->(i)
-    WHERE other <> u
-    DELETE r
-    
+    // Ensure this user owns it
     MERGE (u)-[:OWNS]->(i)
     
     FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
@@ -67,34 +61,37 @@ def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, gra
         i.invoice_date = $invoice_date,
         i.grand_total = $grand_total,
         i.image_path = $image_path,
+        i.tenant_id = $tenant_id,
         i.updated_at = timestamp()
     """
     tx.run(query, 
            user_email=user_email,
            invoice_id=invoice_id,
+           tenant_id=tenant_id,
            invoice_no=invoice_data.Invoice_No, 
            supplier_name=invoice_data.Supplier_Name,
            invoice_date=invoice_data.Invoice_Date,
            grand_total=grand_total,
            image_path=invoice_data.image_path)
 
-def create_processing_invoice(driver, invoice_id: str, filename: str, image_path: str, user_email: str):
+def create_processing_invoice(driver, invoice_id: str, filename: str, image_path: str, user_email: str, tenant_id: str):
     """
     Creates an initial Invoice node with status 'PROCESSING'.
     Used for immediate feedback before analysis completes.
     """
     with driver.session() as session:
-        session.execute_write(_create_processing_tx, invoice_id, filename, image_path, user_email)
+        session.execute_write(_create_processing_tx, invoice_id, filename, image_path, user_email, tenant_id)
 
-def _create_processing_tx(tx, invoice_id, filename, image_path, user_email):
+def _create_processing_tx(tx, invoice_id, filename, image_path, user_email, tenant_id):
     query = """
     MATCH (u:User {email: $user_email})
     OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-    MERGE (i:Invoice {invoice_id: $invoice_id})
+    MERGE (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     ON CREATE SET 
         i.status = 'PROCESSING',
         i.filename = $filename,
         i.image_path = $image_path,
+        i.tenant_id = $tenant_id,
         i.created_at = timestamp(),
         i.updated_at = timestamp()
         
@@ -107,28 +104,27 @@ def _create_processing_tx(tx, invoice_id, filename, image_path, user_email):
     tx.run(query, 
            user_email=user_email,
            invoice_id=invoice_id,
+           tenant_id=tenant_id,
            filename=filename,
            image_path=image_path)
 
-def update_invoice_status(driver, invoice_id: str, status: str, result_state: Dict[str, Any] = None, error: str = None):
+def update_invoice_status(driver, invoice_id: str, status: str, tenant_id: str, result_state: Dict[str, Any] = None, error: str = None, status_message: str = None):
     """
-    Updates the status of an existing Invoice node.
+    Updates the status of an existing Invoice node, scoped to a tenant.
     """
     try:
         with driver.session() as session:
-            session.execute_write(_update_status_tx, invoice_id, status, result_state, error)
+            session.execute_write(_update_status_tx, invoice_id, status, tenant_id, result_state, error, status_message)
             
     except ClientError as e:
         if "ConstraintValidationFailed" in str(e) and "invoice_number" in str(e):
-             # Detected Duplicate Constraint Violation!
-             # Fallback: Update status to DRAFT (Success) but mark as Duplicate
              logger.warning(f"Constraint Violation for Invoice {invoice_id}. Marking as Duplicate.")
              with driver.session() as session:
-                 session.execute_write(_mark_duplicate_tx, invoice_id, result_state)
+                 session.execute_write(_mark_duplicate_tx, invoice_id, tenant_id, result_state)
         else:
              raise e
 
-def _update_status_tx(tx, invoice_id, status, result_state, error):
+def _update_status_tx(tx, invoice_id, status, tenant_id, result_state, error, status_message):
     # Serialize state
     import json
     state_json = json.dumps(result_state, default=str) if result_state else None
@@ -140,18 +136,18 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
     supplier = result_state.get("supplier_name") or result_state.get("invoice_data", {}).get("Supplier_Name") if result_state else None
     grand_total = result_state.get("grand_total") or result_state.get("invoice_data", {}).get("Stated_Grand_Total") if result_state else None
     
-    # Check for duplicate Invoice Number
+    # Check for duplicate Invoice Number (Scoped to Tenant)
     if invoice_no:
         check_query = """
-        MATCH (other:Invoice {invoice_number: $invoice_no})
+        MATCH (other:Invoice {invoice_number: $invoice_no, tenant_id: $tenant_id})
         WHERE other.invoice_id <> $invoice_id
         RETURN count(other) as cnt
         """
-        dup_result = tx.run(check_query, invoice_no=invoice_no, invoice_id=invoice_id).single()
+        dup_result = tx.run(check_query, invoice_no=invoice_no, invoice_id=invoice_id, tenant_id=tenant_id).single()
         if dup_result and dup_result["cnt"] > 0:
             # Duplicate found!
             query = """
-            MATCH (i:Invoice {invoice_id: $invoice_id})
+            MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
             SET i.status = 'DRAFT',
                 i.updated_at = timestamp(),
                 i.is_duplicate = true,
@@ -166,6 +162,7 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
             """
             tx.run(query,
                    invoice_id=invoice_id,
+                   tenant_id=tenant_id,
                    invoice_no=invoice_no,
                    supplier=supplier,
                    grand_total=grand_total,
@@ -174,7 +171,7 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
             return
 
     query = """
-    MATCH (i:Invoice {invoice_id: $invoice_id})
+    MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     SET i.status = $status,
         i.updated_at = timestamp(),
         i.is_duplicate = false 
@@ -190,12 +187,18 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
     FOREACH (_ IN CASE WHEN $error IS NOT NULL THEN [1] ELSE [] END |
         SET i.error_message = $error
     )
+    
+    FOREACH (_ IN CASE WHEN $status_message IS NOT NULL THEN [1] ELSE [] END |
+        SET i.status_message = $status_message
+    )
     """
     result = tx.run(query,
                    invoice_id=invoice_id,
+                   tenant_id=tenant_id,
                    status=status,
                    state_json=state_json,
                    error=error,
+                   status_message=status_message,
                    invoice_no=invoice_no,
                    supplier=supplier,
                    grand_total=grand_total,
@@ -203,7 +206,7 @@ def _update_status_tx(tx, invoice_id, status, result_state, error):
     summary = result.consume()
     logger.info(f"Updated status for {invoice_id} to {status}. Nodes updated: {summary.counters.properties_set}")
 
-def _mark_duplicate_tx(tx, invoice_id, result_state):
+def _mark_duplicate_tx(tx, invoice_id, tenant_id, result_state):
     import json
     state_json = json.dumps(result_state, default=str) if result_state else None
     invoice_no = result_state.get("invoice_data", {}).get("Invoice_No") if result_state else "Unknown"
@@ -213,7 +216,7 @@ def _mark_duplicate_tx(tx, invoice_id, result_state):
     image_path = result_state.get("image_path") or result_state.get("invoice_data", {}).get("image_path") if result_state else None
     
     query = """
-    MATCH (i:Invoice {invoice_id: $invoice_id})
+    MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     SET i.status = 'DRAFT',
         i.updated_at = timestamp(),
         i.is_duplicate = true,
@@ -228,6 +231,7 @@ def _mark_duplicate_tx(tx, invoice_id, result_state):
     """
     tx.run(query, 
            invoice_id=invoice_id,
+           tenant_id=tenant_id,
            invoice_no=invoice_no,
            state_json=state_json, 
            supplier=supplier,

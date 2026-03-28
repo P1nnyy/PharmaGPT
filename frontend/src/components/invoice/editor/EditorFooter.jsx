@@ -7,6 +7,8 @@ const EditorFooter = ({ lineItems, invoiceData, isSaving, onExport, onConfirm, r
     const globalDiscount = Number(invoiceData?.global_discount) || 0;
     const sgst = Number(invoiceData?.total_sgst) || 0;
     const cgst = Number(invoiceData?.total_cgst) || 0;
+    const creditNote = Number(invoiceData?.credit_note_amount) || 0;
+    const extraCharges = Number(invoiceData?.extra_charges) || 0;
     const roundOff = Number(invoiceData?.round_off) || 0;
     const grandTotal = Number(invoiceData?.Stated_Grand_Total) || Number(invoiceData?.grand_total) || 0;
 
@@ -61,6 +63,20 @@ const EditorFooter = ({ lineItems, invoiceData, isSaving, onExport, onConfirm, r
                         <span>CGST</span>
                         <span className="font-mono">+₹{cgst.toFixed(2)}</span>
                     </div>
+
+                    {Math.abs(creditNote) > 0.001 && (
+                        <div className="flex justify-between items-center text-rose-400 text-xs font-medium">
+                            <span>Credit Note</span>
+                            <span className="font-mono">-₹{creditNote.toFixed(2)}</span>
+                        </div>
+                    )}
+
+                    {Math.abs(extraCharges) > 0.001 && (
+                        <div className="flex justify-between items-center text-blue-400 text-xs font-medium">
+                            <span>Extra Charges</span>
+                            <span className="font-mono">+₹{extraCharges.toFixed(2)}</span>
+                        </div>
+                    )}
 
                     {Math.abs(roundOff) > 0.001 && (
                         <div className="flex justify-between items-center text-slate-500 text-xs">

@@ -33,14 +33,22 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     correction_factor = 1.0
     
     # 2. DECISION: Do we need a correction factor?
-    # If gap is > 2.0 across both modes, we calculate a correction factor to force match.
     recon_stats = {
         "initial_gap": round(gap, 2),
         "mode": mode,
         "healer_active": False
     }
-
-    if gap > 2.0 and stated_total > 0 and initial_calc_total > 0:
+    
+    # Adjust stated_total if it seems to be missing the Credit Note adjustment
+    # (i.e. if the gap to the stated total is exactly the credit note)
+    cn_amount = initial_stats.get("credit_note_amount", 0.0)
+    gap_if_pre_cn = abs(initial_calc_total + cn_amount - stated_total)
+    
+    if gap_if_pre_cn < 2.0 and cn_amount > 0:
+        logger.info(f"Solver: Gap {gap:.2f} explained by Stated Total being Pre-Credit Note. No correction factor needed.")
+        correction_factor = 1.0
+        gap = gap_if_pre_cn
+    elif gap > 2.0 and stated_total > 0 and initial_calc_total > 0:
         # Formula: (Stated / Initial_Calc) - Apply to all line items proportionally
         correction_factor = stated_total / initial_calc_total
         logger.info(f"Solver: Unexplained gap {gap:.2f} (Mode: {mode}). Calculated correction factor {correction_factor:.4f}")
@@ -64,18 +72,34 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     # Use the items from the initial_recon as they already have effective_landing_cost
     for item in initial_recon.get("line_items", []):
         try:
-            qty = float(item.get("Qty") or 1)
+            # --- PRE-MAPPING (Always show text even if math fails) ---
+            item["Standard_Item_Name"] = item.get("Standard_Item_Name") or item.get("Product") or "Unknown Item"
+            item["Batch_No"] = item.get("Batch_No") or item.get("Batch") or "N/A"
+            item["Expiry_Date"] = item.get("Expiry_Date") or item.get("Expiry") or "N/A"
+            item["Pack_Size_Description"] = item.get("Pack_Size_Description") or item.get("Pack") or "Unit"
             
-            # Apply correction factor if verified needed
-            if correction_factor != 1.0:
+            # Use robust quantity parser (handles "10+2", "10 Pcs", etc.)
+            from src.domain.normalization.financials import parse_quantity
+            qty = parse_quantity(item.get("Qty"), item.get("Free") or 0)
+            item["Standard_Quantity"] = qty
+            
+            # Apply correction factor ONLY if it's within a reasonable tolerance (5%)
+            # This prevents "squashing" items when a large credit note/discount is missed.
+            diag_str = f" [Gap:{gap:.2f}/CF:{correction_factor:.4f}]"
+            if 0.95 <= correction_factor <= 1.05:
                  raw_net = float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0)
                  item["Net_Line_Amount"] = round(raw_net * correction_factor, 2)
                  # Re-calculate landing cost with factor
                  item["effective_landing_cost"] = round(item["effective_landing_cost"] * correction_factor, 2)
-                 item["Logic_Note"] = (item.get("Logic_Note", "") + f" [Auto-Adjusted {correction_factor:.4f}]").strip()
+                 item["Logic_Note"] = (item.get("Logic_Note", "") + f" [Auto-Adjusted {correction_factor:.4f}]{diag_str}").strip()
+            else:
+                 # If gap is huge, preserve the STATED line amount for the UI table
+                 # But calculate effective_landing_cost to match the money (for the shop's ledger)
+                 item["effective_landing_cost"] = round(item["effective_landing_cost"] * correction_factor, 2)
+                 item["Logic_Note"] = (item.get("Logic_Note", "") + f" [Landed Scaled {correction_factor:.2f}]{diag_str}").strip()
 
             cost_price = item.get("Final_Unit_Cost", 0.0)
-            if correction_factor != 1.0 and qty > 0:
+            if qty > 0:
                  cost_price = round(item["effective_landing_cost"] / qty, 2)
                  item["Final_Unit_Cost"] = cost_price
 
@@ -96,6 +120,9 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
                 item["Sales_Rate_C"] = round(cost_price * 1.20, 2)
                 item["Logic_Note"] += " [Rates: Cost+Margin]"
 
+            # Ensure Net Amount and unit cost are correctly set
+            item["Net_Line_Amount"] = item.get("Net_Line_Amount") or item.get("Amount") or 0.0
+            
             updated_lines.append(item)
         except Exception as e:
             logger.error(f"Solver Line Error: {e}")
@@ -104,10 +131,20 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     # 5. FINAL HEALING
     final_json = headers.copy()
     final_json["Line_Items"] = updated_lines
+    
     # Merge specialized supplier details if available
-    supplier_details = state.get("supplier_details")
+    supplier_details = state.get("supplier_details", {})
     if supplier_details:
         final_json["supplier_details"] = supplier_details
+        
+        # Priority mapping for common header fields
+        for field in ["Supplier_Name", "Invoice_No", "Invoice_Date", "GSTIN", "Address", "DL_No"]:
+            if supplier_details.get(field):
+                # Always prioritize the specialized agent's result if the main one is missing or default
+                current_val = str(final_json.get(field, "")).strip().lower()
+                if not current_val or current_val in ["unknown", "n/a", "none"]:
+                    final_json[field] = supplier_details[field]
+                    logger.info(f"Solver Header Fix: Set {field} = {supplier_details[field]}")
     
     # Run one final reconciliation pass to ensure footer stats match the corrected items
     final_recon = reconcile_financials(updated_lines, headers, stated_total)
@@ -118,6 +155,8 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     final_json["round_off"] = final_stats.get("round_off", 0.0)
     final_json["total_sgst"] = final_stats.get("total_sgst", 0.0)
     final_json["total_cgst"] = final_stats.get("total_cgst", 0.0)
+    final_json["credit_note_amount"] = final_stats.get("credit_note_amount", 0.0)
+    final_json["extra_charges"] = final_stats.get("extra_charges", 0.0)
     final_json["grand_total"] = final_stats.get("grand_total", 0.0)
     final_json["Stated_Grand_Total"] = stated_total
     
@@ -140,6 +179,20 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
          implied_disc = round(initial_stats.get("sub_total", 0) - stated_total, 2)
          if implied_disc > 1.0:
               final_json["Logic_Note"] = final_json.get("Logic_Note", "") + f" [Inferred Disc {implied_disc}]"
+
+    # 7. FINAL AUDIT FLAG (The "Verification Layer" for the User)
+    final_json["Extraction_Warnings"] = []
+    gap_percent = (gap / stated_total) * 100 if stated_total > 0 else 100
+    
+    if gap > 2.0:
+        warning = f"Calculation Audit: Reconciled Total ₹{final_stats.get('grand_total'):.2f} differs from Stated ₹{stated_total:.2f}. Please verify."
+        final_json["audit_status"] = "WARNING"
+        final_json["Extraction_Warnings"].append(warning)
+        if gap_percent > 10:
+            final_json["audit_status"] = "CRITICAL_FAILURE"
+            final_json["Extraction_Warnings"].append("CRITICAL: Major financial mismatch detected. Table extraction may be corrupt.")
+    else:
+        final_json["audit_status"] = "VERIFIED"
 
     return {
         "line_items": updated_lines, 

@@ -79,6 +79,23 @@ class EnrichmentAgent:
             logger.error(f"Scraping failed for {url}: {e}")
             return None
 
+    def _parse_float_safe(self, value: Any) -> float:
+        """
+        Extracts the first numeric/decimal value from a string (e.g. '₹16.0/Tablet' -> 16.0).
+        """
+        if value is None: return 0.0
+        if isinstance(value, (int, float)): return float(value)
+        
+        # Regex to find numbers like 10, 10.5, 1,000.50
+        s = str(value).replace(',', '')
+        match = re.search(r'(\d+(?:\.\d+)?)', s)
+        if match:
+            try:
+                return float(match.group(1))
+            except:
+                return 0.0
+        return 0.0
+
     async def extract_details(self, text: str) -> Dict[str, Any]:
         """
         Uses Gemini to parse raw text into structured JSON.
@@ -91,7 +108,10 @@ class EnrichmentAgent:
         - salt_composition (string): The COMPLETE list of active ingredients/salts with their strengths. 
         - pack_size (string): The packaging information (e.g., "Strip of 15 tablets", "1 Vial").
         - category (string): The PHYSICAL FORM (Tablet, Capsule, Injection, etc). 
-
+        - mrp (float): The Maximum Retail Price (MRP) for THIS EXACT pack size. Use ONLY raw numeric values (e.g., 16.0, 415.0).
+        
+        IMPORTANT: For 'mrp', do NOT include currency symbols, units, or slashes. Just the number.
+        
         If a field is not found, use null.
         Return raw JSON only.
         
@@ -236,7 +256,11 @@ class EnrichmentAgent:
         You are a pharmaceutical data expert. I will provide text extracted from MULTIPLE different sources for the same product.
         Your job is to SYNTHESIZE the information and extract the most accurate details into a valid JSON object.
         Target Product from Invoice: "{product_name}"
-        Fields: manufacturer, salt_composition, pack_size, category.
+        Fields: manufacturer, salt_composition, pack_size, category, mrp.
+        
+        Note: mrp should be the price for the specific pack_size found. 
+        IMPORTANT: For 'mrp', return ONLY the raw numeric value (e.g. 150.0). No symbols.
+        
         Return ONLY valid JSON.
         """
         
@@ -251,12 +275,29 @@ class EnrichmentAgent:
             logger.error(f"Multi-source extraction failed: {e}")
             return {}
 
-    async def enrich_product(self, product_name: str, local_pack_size: str = None) -> Dict[str, Any]:
+    async def enrich_product(self, product_name: str, local_pack_size: str = None, local_mrp: float = None) -> Dict[str, Any]:
         """
         Orchestrates the enrichment process using Multi-Search and Verification.
         """
-        logger.info(f"Enriching product (Multi-Source): {product_name} (Local Pack: {local_pack_size})")
+        logger.info(f"Enriching product (Multi-Source): {product_name} (Local Pack: {local_pack_size}, Local MRP: {local_mrp})")
         
+        # --- LOCAL-FIRST CACHING ---
+        from src.services.product_catalog import ProductCatalog
+        catalog = ProductCatalog()
+        match = catalog.find_match(product_name)
+        
+        if match:
+            logger.info(f"EnrichmentAgent: Local Match found for '{product_name}' -> '{match['known_name']}'. Skipping 1mg search.")
+            return {
+                "manufacturer": "Local Catalog",
+                "salt_composition": "Known Item",
+                "pack_size": match.get("standard_pack"),
+                "category": "Known",
+                "source_url": "product_catalog.yaml",
+                "needs_review": False
+            }
+        # ---------------------------
+
         urls = self.search_product_multi(product_name)
         if not urls: return {"error": "Product not found"}
         
@@ -270,7 +311,34 @@ class EnrichmentAgent:
         details = await self.extract_details_multi(texts, product_name=product_name)
         details['source_url'] = urls[0] 
         
-        if local_pack_size and details.get('pack_size'):
+        # --- PHASE 2: MRP ANCHOR VALIDATION ---
+        raw_web_mrp = details.get('mrp')
+        if raw_web_mrp and local_mrp:
+            try:
+                web_mrp = self._parse_float_safe(raw_web_mrp)
+                local_mrp_f = float(local_mrp)
+                
+                # Check for "wild mismatch" (e.g. > 15% difference or > 5 (fixed) for low value items)
+                difference = abs(web_mrp - local_mrp_f)
+                threshold = local_mrp_f * 0.15 # 15% margin
+                
+                if web_mrp > 0 and (difference > threshold and difference > 5): 
+                    logger.warning(f"MRP Anchor Mismatch! Web MRP: {web_mrp} vs Local MRP: {local_mrp_f}. Flagging for Review.")
+                    details['needs_review'] = True
+                    details['pack_size'] = "Review Required (MRP Mismatch)"
+                    details['pack_size_primary'] = 1
+                else:
+                    details['needs_review'] = False
+                    # Update mrp to the cleaned numeric version
+                    details['mrp'] = web_mrp
+            except Exception as e:
+                logger.error(f"MRP Validation failed to parse: {e}")
+                details['needs_review'] = True
+        else:
+            details['needs_review'] = False
+        # --------------------------------------
+
+        if local_pack_size and details.get('pack_size') and not details.get('needs_review'):
             is_match = await self.verify_pack_match(details['pack_size'], local_pack_size)
             if not is_match:
                 logger.warning(f"Pack Mismatch! Web: {details['pack_size']} vs Local: {local_pack_size}")

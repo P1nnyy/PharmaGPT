@@ -53,14 +53,16 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             - **Split "Qty + Free"**: If you see a column "Qty+Free" like "10+2", SPLIT IT into two columns "Qty" and "Free" or capture as "10+2" in one cell. DO NOT shift data left/right.
             - **Prices are NOT Quantities**: "MRP" (e.g. 200.00) and "Rate" (e.g. 150.00) are typically larger than "Qty" (e.g. 1, 10). Do not mix them up.
             - **IGNORE UFC/FACTOR**: Do not extract "UFC", "Factor", "Case" columns as "MRP". Identify them as "Pack" or "Unit" if needed, but NEVER as a price column.
+            - **SPLIT BATCH/DESCRIPTION**: If the "Batch No" is printed inside or right next to the "Item Description", you MUST SPLIT THEM. Return the Batch in the 'Batch' column and the Item Name in the 'Description' column. **DO NOT CLUB THEM**.
             
             IMPORTANT:
             - **DENSITY**: If a cell has multiple lines (e.g. "Batch\n123"), capture BOTH lines in the markdown cell (use <br> or space).
             - **DUPLICATES**: If the Exact Same Item appears on multiple lines (e.g. "Dolo 650" twice), LIST IT TWICE. Do not combine them.
             - **NO SKIPPING**: Include "Offer", "Scheme", "Free", "Total" rows.
             - **NO MERGING**: Do not merge distinct visual rows.
-            - **COLUMNS**: Aggressively look for "Amount", "Value", "Total". 
-            - **AMOUNT RULE**: The "Amount" column is the PRE-TAX, PRE-GLOBAL-DISCOUNT value (Rate * Qty).
+            - **COLUMNS**: Aggressively look for "Batch", "Expiry", "Amount", "Value", "Total", "Net Amount", "Net Amt", "SGST Amt", "CGST Amt", "Disc Amt", "SCH Amt".
+            - **AMOUNT RULE**: The "Amount" column is the PRE-TAX value. If there is a "Net Amount" or "Net Value" column, extract it too.
+            - **BREAKDOWN**: Extract "SGST Amt", "CGST Amt", "Disc Amt", "SCH Amt" if they exist as separate columns.
             - **MANUFACTURER**: Aggressively look for "Mfr", "CMPNY", "Co", "Make" columns. extract them!
             
             NEGATIVE CONSTRAINTS (CRITICAL):
@@ -96,8 +98,10 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             - **taxable_value**: Sub-total minus global_discount.
             - **total_sgst**: Total SGST amount.
             - **total_cgst**: Total CGST amount.
-            - **round_off**: Rounding adjustment.
-            - **Stated_Grand_Total**: The final 'Net Payable' amount.
+            - **credit_note_amount**: Post-tax reductions. Look for "Credit Note", "CN Amt", "Less", "Adjustments", "Returns". NOTE: If there is a separate table of Credit Notes/Return items, sum their amounts!
+            - **extra_charges**: Additional fees. Look for "Freight", "Coolie", "Postage", "Extra", "Plus".
+            - **round_off**: Rounding adjustment. Look for "Round Off", "R/off", "Rounding", "Adjust".
+            - **Stated_Grand_Total**: The absolute FINAL amount to be paid by the customer. Look for "Net Payable", "Balance", "Balance Amount", "Final Total", "Payable Amt". If a Credit Note is present, this is the amount AFTER subtraction.
             
             CRITICAL:
             - The 'Stated_Grand_Total' is the absolute anchor.
@@ -110,6 +114,8 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
                 "taxable_value": float,
                 "total_sgst": float,
                 "total_cgst": float,
+                "credit_note_amount": float,
+                "extra_charges": float,
                 "round_off": float,
                 "Stated_Grand_Total": float
             }}
@@ -177,7 +183,13 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             {{
                 "Supplier_Name": "string",
                 "Invoice_No": "string",
-                "Invoice_Date": "string"
+                "Invoice_Date": "string",
+                "supplier_details": {{
+                    "gstin": "Supplier GSTIN",
+                    "phone": "Supplier Phone/Mobile",
+                    "address": "Supplier Full Address",
+                    "dl_no": "Drug License if visible (e.g. 20B/21B)"
+                }}
             }}
             """
             response = await manager.generate_content_async(
@@ -311,6 +323,10 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 elif res.get("type") == "modifiers":
                     mods = res.get("data", {})
                     global_modifiers.update(mods)
+                    
+                    # Capture raw text for context pool
+                    if res.get("raw_text"):
+                        raw_text_rows.append(res.get("raw_text"))
                     
                     # Capture Anchor for Critic
                     if "Stated_Grand_Total" in mods and mods["Stated_Grand_Total"]:

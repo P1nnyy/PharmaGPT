@@ -288,6 +288,7 @@ export const InvoiceProvider = ({ children }) => {
                                     previewUrl: d.previewUrl || localItem?.previewUrl,
                                     result: d.result,
                                     error: d.error,
+                                    status_message: d.status_message,
                                     warning: d.duplicate_warning,
                                     filename: d.filename || d.file?.name || localItem?.filename,
                                     file: d.file || localItem?.file

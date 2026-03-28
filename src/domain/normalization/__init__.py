@@ -17,7 +17,8 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
     raw_item = refine_extracted_fields(raw_item)
 
     # 1. Standardize Name
-    raw_desc = raw_item.get("Product", "")
+    # Support both raw "Product" and already-mapped "Standard_Item_Name"
+    raw_desc = raw_item.get("Product") or raw_item.get("Standard_Item_Name") or ""
     std_name, pack_size = standardize_product(raw_desc)
     
     # If Regex extracted a pack size, prioritize it over catalog default
@@ -59,12 +60,21 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
     billed_qty_val = parse_quantity(raw_item.get("Qty"), 0)
     free_qty_val = parse_quantity(raw_item.get("Free"), 0)
     
-    # If "10+2" style was in Qty, parse_quantity might have handled it if passed single string?
+    # SPECIAL CASE: C M ASSOCIATES
+    # In these invoices, "Pcs" is billed and "UPC" is free.
+    # And sometimes "UPC" is mapped to "Free" by the AI.
+    if "c m associates" in supplier_name.lower():
+        # Look for "UPC" or "Pcs" in the raw_item if they were extracted but not mapped
+        upc_val = parse_float(raw_item.get("UPC") or 0.0)
+        if upc_val > 0 and free_qty_val == 0:
+            free_qty_val = upc_val
+            
+    # Let's rely on standard_qty which sums them up.
     # Let's rely on parse_quantity implementation in financials.py which sums them if "+" exists.
     # But here we want separate fields.
     
     # Let's rely on standard_qty which sums them up.
-    std_qty = parse_quantity(raw_item.get("Qty"), raw_item.get("Free"))
+    std_qty = parse_quantity(raw_item.get("Qty"), free_qty_val)
     
     # Heuristic: If std_qty > billed (and free is 0 in raw), try to deduce free?
     # Actually, mapper handles separation now.
@@ -85,8 +95,12 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
         base_amount = net_line_amount / (1 + (raw_gst / 100))
         calc_tax_amt = round(net_line_amount - base_amount, 2)
 
-    return {
-        "Standard_Item_Name": std_name,
+    # --- NON-DESTRUCTIVE RECONCILIATION ---
+    # Merge the normalized fields into the original item to preserve 
+    # Solver outputs (effective_landing_cost, Sales Rates, etc.)
+    result = raw_item.copy()
+    result.update({
+        "Standard_Item_Name": std_name or raw_item.get("Standard_Item_Name") or raw_desc or "Unknown Item",
         "Pack_Size_Description": pack_size,
         "Batch_No": batch_no,
         "HSN_Code": final_hsn,
@@ -112,12 +126,18 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
         "Rate": (net_line_amount / (std_qty or 1.0)) if std_qty > 0 else raw_item.get("Rate"),
         
         # Tax Fields
+        # Tax Fields
         "Raw_GST_Percentage": raw_gst,
         # Unit Base Rate (Pre-Tax)
         "Unit_Base_Rate": (base_amount / (std_qty or 1.0)) if std_qty > 0 else 0.0,
         # For compatibility, we map this to standard fields if useful
-        "SGST_Percent": raw_gst / 2 if raw_gst > 0 else 0, # Rough heuristic if not specified
-        "CGST_Percent": raw_gst / 2 if raw_gst > 0 else 0,
+        "SGST_Percent": parse_float(raw_item.get("SGST_Percent")) if raw_item.get("SGST_Percent") else (raw_gst / 2 if raw_gst > 0 else 0),
+        "CGST_Percent": parse_float(raw_item.get("CGST_Percent")) if raw_item.get("CGST_Percent") else (raw_gst / 2 if raw_gst > 0 else 0),
+        "SGST_Amount": raw_item.get("SGST_Amount"),
+        "CGST_Amount": raw_item.get("CGST_Amount"),
+        "Discount_Amount": raw_item.get("Discount_Amount"),
+        "SCH_Amt": raw_item.get("SCH_Amt"),
+        "Discount_Percent": raw_item.get("Discount_Percent"),
         "Calculated_Tax_Amount": calc_tax_amt,
         
         # Validate Expiry: If it looks like an HSN (6-8 digits, no separators), clear it.
@@ -125,6 +145,7 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
             raw_item.get("Expiry") 
             if raw_item.get("Expiry") and re.search(r'[/\-.]', str(raw_item.get("Expiry"))) # Must have separator
             and not re.match(r'^\d{6,8}$', str(raw_item.get("Expiry")).replace(" ", "")) # Must not be pure 8-digit HSN
-            else None
+            else result.get("Expiry_Date")
         )
-    }
+    })
+    return result

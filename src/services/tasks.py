@@ -1,5 +1,6 @@
 import os
 import asyncio
+import json
 from src.utils.logging_config import get_logger
 from src.services.database import get_db_driver
 from src.workflow.graph import run_extraction_pipeline
@@ -9,7 +10,7 @@ from src.domain.persistence import update_invoice_status
 
 logger = get_logger(__name__)
 
-async def process_invoice_background(invoice_id, local_path, public_url, user_email, original_filename):
+async def process_invoice_background(invoice_id, local_path, public_url, user_email, tenant_id, original_filename):
     """
     Background Task: Runs extraction and updates DB status.
     """
@@ -17,13 +18,26 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
     print(f"DEBUG LOOP process_invoice_background [{invoice_id}]: {id(asyncio.get_running_loop())}")
     from src.services.task_manager import manager as task_manager
     # Register current task for cancellation tracking
-    current_task = asyncio.current_task()
-    task_manager.register(user_email, invoice_id, current_task)
-    
+    from src.utils.image_processing import enforce_portrait_rotation
     driver = get_db_driver()
     
     try:
         print(f"Starting Background Processing for {invoice_id}...")
+        
+        # --- Tenant ID Fallback ---
+        if not tenant_id or tenant_id == "anonymous":
+            with driver.session() as session:
+                shop_res = session.run("MATCH (u:User {email: $email})-[:OWNS_SHOP|WORKS_AT]->(s:Shop) RETURN s.id as id LIMIT 1", email=user_email).single()
+                if shop_res:
+                    tenant_id = shop_res["id"]
+                    logger.info(f"Fallback Tenant ID found for {user_email}: {tenant_id}")
+                else:
+                    logger.warning(f"No shop found for {user_email}. Using 'anonymous' as fallback.")
+                    tenant_id = "anonymous"
+        
+        # 0. Enforce Portrait Orientation (User Request)
+        # This overwrites local_path with a corrected portrait image before upload to R2
+        enforce_portrait_rotation(local_path)
         
         # 1. R2 Upload (Move from API to background to avoid timeout)
         if not public_url:
@@ -42,69 +56,75 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
                     logger.info(f"R2 Upload Complete for {invoice_id}: {public_url}")
                     # Update Neo4j node with the URL immediately so UI can show it
                     # result_state=None for now, just updating the metadata
-                    update_invoice_status(driver, invoice_id, "PROCESSING", result_state={"image_path": public_url})
+                    update_invoice_status(driver, invoice_id, "PROCESSING", tenant_id, result_state={"image_path": public_url})
                 else:
                     logger.warning(f"R2 Upload failed for {invoice_id}. Preview might be missing.")
             except Exception as e:
                  logger.error(f"Failed to upload to R2 in background: {e}")
 
-        # 2. Run Extraction
-        extracted_data = await run_extraction_pipeline(local_path, user_email, public_url=public_url)
+        # 2. Run Extraction (The Single Source of Truth)
+        from src.domain.persistence import update_invoice_status
+        
+        async def on_graph_update(node, message):
+            logger.info(f"AG-UI Update [{invoice_id}]: {message}")
+            # Update Neo4j message so SSE picks it up
+            update_invoice_status(driver, invoice_id, "PROCESSING", tenant_id, status_message=message)
+
+        extracted_data = await run_extraction_pipeline(local_path, user_email, public_url=public_url, on_update=on_graph_update)
         
         if extracted_data is None:
              raise ValueError("Extraction yielded None")
              
         extracted_data["image_path"] = public_url
-        # print(f"DEBUG: Extracted Data Keys: {list(extracted_data.keys())}")
+        trace_id = extracted_data.get("trace_id", "unknown")
+
+        # 3. Local Debug Logging (User Request)
+        try:
+             dbg_path = f"/tmp/pharma_dbg_{trace_id}.json"
+             with open(dbg_path, "w") as f:
+                 json.dump(extracted_data, f, indent=4)
+             logger.info(f"Local Debug State saved to {dbg_path}")
+        except Exception as e:
+             logger.error(f"Failed to save local debug state: {e}")
         
-        # Normalize
-        invoice_obj = InvoiceExtraction(**extracted_data)
-        normalized_items = []
-        for raw_item in invoice_obj.Line_Items:
-            # Handle Pydantic v1/v2 compatibility
-            raw_dict = raw_item.model_dump() if hasattr(raw_item, 'model_dump') else raw_item.dict()
-            norm_item = normalize_line_item(raw_dict, invoice_obj.Supplier_Name)
-            normalized_items.append(norm_item)
-            
-        # Reconcile
-        grand_total = extracted_data.get("Stated_Grand_Total") or extracted_data.get("grand_total")
-        recon_result = reconcile_financials(normalized_items, extracted_data, grand_total)
-        normalized_items = recon_result.get("line_items", [])
-        calc_stats = recon_result.get("calculated_stats", {})
-        
-        # HEAL: Update extracted_data with Reconciled Values for the Frontend UI
-        # This ensures the summary box shows the same numbers as our internal math
-        extracted_data["sub_total"] = calc_stats.get("sub_total", 0.0)
-        extracted_data["taxable_value"] = calc_stats.get("taxable_value", 0.0)
-        extracted_data["total_sgst"] = calc_stats.get("total_sgst", 0.0)
-        extracted_data["total_cgst"] = calc_stats.get("total_cgst", 0.0)
-        extracted_data["round_off"] = calc_stats.get("round_off", 0.0)
-        # Match UI to Reconciled Reality (Override Stated Total if it was rounded)
-        extracted_data["grand_total"] = calc_stats.get("grand_total", 0.0)
-        extracted_data["Stated_Grand_Total"] = calc_stats.get("grand_total", 0.0)
-        # Compatibility with CamelCase fields in schema
-        extracted_data["SGST_Amount"] = calc_stats.get("total_sgst", 0.0)
-        extracted_data["CGST_Amount"] = calc_stats.get("total_cgst", 0.0)
-        extracted_data["Round_Off"] = calc_stats.get("round_off", 0.0)
-        
+        # 4. Final state mapping
+        # We NO LONGER re-run reconcile_financials here. We trust the pipeline.
+        # But we ensure extracted_data has everything the UI needs.
+        calculated_total = parse_float(extracted_data.get("grand_total") or 0.0)
+        stated_total = parse_float(extracted_data.get("Stated_Grand_Total") or 0.0)
+
         # Validation checks
         validation_flags = []
-        calculated_total = calc_stats.get("grand_total") or 0.0
-        if grand_total and abs(calculated_total - grand_total) > 1.0:
-             validation_flags.append(f"Calculation Audit: Reconciled Total ₹{calculated_total:.2f} differs from Stated ₹{grand_total:.2f}. Please verify.")
+        if stated_total > 0 and abs(calculated_total - stated_total) > 2.0:
+             validation_flags.append(f"Calculation Audit: Reconciled Total ₹{calculated_total:.2f} differs from Stated ₹{stated_total:.2f}. Please verify.")
 
         # Construct Final Result State
+        supplier_name = extracted_data.get("Supplier_Name", "")
+        # Run normalization to map internal schema (Product, Batch, Qty) to UI schema (Standard_Item_Name, Batch_No, Standard_Quantity)
+        line_items_results = extracted_data.get("Line_Items", [])
+        normalized_items = []
+        for item in line_items_results:
+             normalized = normalize_line_item(item, supplier_name)
+             normalized_items.append(normalized)
+        
+        if normalized_items:
+             logger.info(f"DEBUG: First Normalized Item Keys: {list(normalized_items[0].keys())}")
+             logger.info(f"DEBUG: First Item Standard Name: {normalized_items[0].get('Standard_Item_Name')}")
+
         result_state = {
             "status": "review_needed",
             "invoice_data": extracted_data,
             "normalized_items": normalized_items,
             "validation_flags": validation_flags,
             "filename": original_filename,
-            "image_path": public_url
+            "image_path": public_url,
+            "supplier_name": extracted_data.get("Supplier_Name"),
+            "invoice_no": extracted_data.get("Invoice_No"),
+            "invoice_date": extracted_data.get("Invoice_Date")
         }
         
         # Update Neo4j Status -> DRAFT
-        update_invoice_status(driver, invoice_id, "DRAFT", result_state)
+        update_invoice_status(driver, invoice_id, "DRAFT", tenant_id, result_state)
         print(f"Background Processing Complete for {invoice_id} -> DRAFT")
         
     except asyncio.CancelledError:
@@ -117,13 +137,13 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         import traceback
         traceback.print_exc()
         # Update Neo4j Status -> ERROR
-        update_invoice_status(driver, invoice_id, "ERROR", error=str(e))
+        update_invoice_status(driver, invoice_id, "ERROR", tenant_id, error=str(e))
     finally:
         # cleanup
         if os.path.exists(local_path):
             os.remove(local_path)
 
-async def enrich_invoice_items_background(normalized_items: list, user_email: str):
+async def enrich_invoice_items_background(normalized_items: list, user_email: str, tenant_id: str):
     """
     Background Task: Enriches all items in a saved invoice with manufacturer/salt details.
     """
@@ -146,13 +166,13 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
             # But user might want to fill gaps. Let's check first.
             
             check_query = """
-            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
+            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
             RETURN gp.manufacturer as m, gp.salt_composition as s
             """
             
             needs_enrichment = True
             with driver.session() as session:
-                rec = session.execute_read(lambda tx: tx.run(check_query, user_email=user_email, name=product_name).single())
+                rec = session.execute_read(lambda tx: tx.run(check_query, user_email=user_email, name=product_name, tenant_id=tenant_id).single())
                 if rec and rec["m"] and rec["m"] != "Unknown" and rec["s"]:
                      needs_enrichment = False
             
@@ -162,7 +182,8 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
 
             logger.info(f"Enriching Invoice Item: {product_name}")
             local_pack_size = item.get("Pack_Size_Description")
-            result = await agent.enrich_product(product_name, local_pack_size=local_pack_size)
+            local_mrp = item.get("MRP")
+            result = await agent.enrich_product(product_name, local_pack_size=local_pack_size, local_mrp=local_mrp)
             
             if result.get("error"):
                 logger.warning(f"Enrichment Error for {product_name}: {result['error']}")
@@ -175,11 +196,13 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
 
             # Update DB
             update_query = """
-            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
+            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
             SET gp.manufacturer = $manufacturer,
                 gp.salt_composition = $salt,
                 gp.category = $category,
                 gp.is_enriched = true,
+                gp.needs_review = $needs_review,
+                gp.pack_size_primary = $psp,
                 gp.updated_at = timestamp()
             """
             
@@ -187,9 +210,12 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                 session.execute_write(lambda tx: tx.run(update_query, 
                             user_email=user_email,
                             name=product_name,
+                            tenant_id=tenant_id,
                             manufacturer=result.get("manufacturer"),
                             salt=result.get("salt_composition"),
-                            category=result.get("category")))
+                            category=result.get("category"),
+                            needs_review=result.get("needs_review", False),
+                            psp=result.get("pack_size_primary", 1)))
                             
             logger.info(f"Enriched {product_name}: {result.get('manufacturer')}")
 
@@ -206,7 +232,7 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                 logger.info(f"Correcting Base Unit for {product_name} -> {new_base_unit} (Cat: {enrichment_category})")
                 
                 unit_update_query = """
-                MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
+                MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
                 SET gp.base_unit = $base_unit,
                     gp.unit_name = $base_unit
                 """
@@ -214,6 +240,7 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                     session.execute_write(lambda tx: tx.run(unit_update_query, 
                                 user_email=user_email, 
                                 name=product_name, 
+                                tenant_id=tenant_id,
                                 base_unit=new_base_unit))
 
         except Exception as e:

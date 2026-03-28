@@ -4,21 +4,15 @@ from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-def get_draft_invoices(driver, user_email: str):
+def get_draft_invoices(driver, user_email: str, tenant_id: str, role: str = "Employee"):
     """
-    Fetches invoices in PROCESSING, DRAFT, or ERROR state for the user.
+    Fetches invoices in PROCESSING, DRAFT, or ERROR state for the user/role and tenant.
     """
     query = """
     MATCH (u:User {email: $user_email})
-    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-    WITH u, s
-    
-    MATCH (i:Invoice)
+    MATCH (i:Invoice {tenant_id: $tenant_id})
     WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
-      AND (
-        (u)-[:OWNS]->(i) OR
-        (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s))
-      )
+      AND ($role = 'Admin' OR (u)-[:OWNS]->(i))
     
     RETURN i.invoice_id as id,
            i.filename as filename,
@@ -26,13 +20,14 @@ def get_draft_invoices(driver, user_email: str):
            i.image_path as image_path,
            i.raw_state as result,
            i.error_message as error,
+           i.status_message as status_message,
            i.is_duplicate as is_duplicate,
            i.duplicate_warning as duplicate_warning,
            i.created_at as created_at
     ORDER BY i.created_at DESC
     """
     def _read_drafts(tx):
-        result = tx.run(query, user_email=user_email)
+        result = tx.run(query, user_email=user_email, tenant_id=tenant_id, role=role)
         invoices = []
         for record in result:
              res_json = record["result"]
@@ -46,6 +41,7 @@ def get_draft_invoices(driver, user_email: str):
                  "previewUrl": record["image_path"],
                  "result": res_data,
                  "error": record["error"],
+                 "status_message": record["status_message"],
                  "is_duplicate": record["is_duplicate"], 
                  "duplicate_warning": record["duplicate_warning"],
                  "created_at": record["created_at"]
@@ -55,21 +51,15 @@ def get_draft_invoices(driver, user_email: str):
     with driver.session() as session:
         return session.execute_read(_read_drafts)
 
-def delete_draft_invoices(driver, user_email: str):
+def delete_draft_invoices(driver, user_email: str, tenant_id: str):
     """
-    Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user.
+    Deletes all invoices in PROCESSING, DRAFT, or ERROR state for the user and tenant.
     """
     query = """
     MATCH (u:User {email: $user_email})
-    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-    WITH u, s
-    
-    MATCH (i:Invoice)
+    MATCH (i:Invoice {tenant_id: $tenant_id})
     WHERE i.status IN ['PROCESSING', 'DRAFT', 'ERROR']
-      AND (
-        (u)-[:OWNS]->(i) OR
-        (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s))
-      )
+      AND (u)-[:OWNS]->(i)
     
     WITH i, count(i) as cnt
     DETACH DELETE i
@@ -77,7 +67,7 @@ def delete_draft_invoices(driver, user_email: str):
     """
     try:
         def _delete_tx(tx):
-            result = tx.run(query, user_email=user_email).single()
+            result = tx.run(query, user_email=user_email, tenant_id=tenant_id).single()
             return result["cnt"] if result else 0
 
         with driver.session() as session:
@@ -87,16 +77,16 @@ def delete_draft_invoices(driver, user_email: str):
         logger.error(f"Failed to delete drafts for {user_email}: {e}")
         raise e
 
-def get_invoice_draft(driver, invoice_id: str):
+def get_invoice_draft(driver, invoice_id: str, tenant_id: str):
     """
-    Fetches the raw draft state of an invoice by ID.
+    Fetches the raw draft state of an invoice by ID and tenant.
     """
     query = """
-    MATCH (i:Invoice {invoice_id: $invoice_id})
+    MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     RETURN i.raw_state as result
     """
     def _read_tx(tx):
-        record = tx.run(query, invoice_id=invoice_id).single()
+        record = tx.run(query, invoice_id=invoice_id, tenant_id=tenant_id).single()
         if record and record["result"]:
             return json.loads(record["result"])
         return None
@@ -143,12 +133,17 @@ def log_correction(driver, invoice_id: str, original: Dict[str, Any], final: Dic
         return
 
     # 3. Store Corrections in Graph
+    tenant_id = final.get("tenant_id") # Should be there if confirmed
+    if not tenant_id:
+        from src.utils.logging_config import tenant_id_ctx
+        tenant_id = tenant_id_ctx.get()
+        
     with driver.session() as session:
-        session.execute_write(_create_correction_nodes_tx, invoice_id, changes, user_email)
+        session.execute_write(_create_correction_nodes_tx, invoice_id, changes, user_email, tenant_id)
 
-def _create_correction_nodes_tx(tx, invoice_id, changes, user_email):
+def _create_correction_nodes_tx(tx, invoice_id, changes, user_email, tenant_id):
     query = """
-    MATCH (i:Invoice {invoice_id: $invoice_id})
+    MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     MATCH (u:User {email: $user_email})
     
     MERGE (c:CorrectionSet {id: $change_id})
@@ -171,7 +166,7 @@ def _create_correction_nodes_tx(tx, invoice_id, changes, user_email):
     """
     import uuid
     change_id = uuid.uuid4().hex
-    tx.run(query, invoice_id=invoice_id, changes=changes, user_email=user_email, change_id=change_id)
+    tx.run(query, invoice_id=invoice_id, changes=changes, user_email=user_email, tenant_id=tenant_id, change_id=change_id)
 
 def create_invoice_draft(driver, state: Dict[str, Any], user_email: str):
     pass
@@ -179,7 +174,7 @@ def create_invoice_draft(driver, state: Dict[str, Any], user_email: str):
 def _create_draft_tx(tx, invoice_no, supplier, state, user_email):
     pass
 
-def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = False, is_admin: bool = False):
+def delete_invoice_by_id(driver, invoice_id: str, user_email: str, tenant_id: str, wipe: bool = False, is_admin: bool = False):
     """
     Deletes a specific invoice by ID.
     If wipe=True, performs a cascading delete of all associated line items and correction history.
@@ -189,7 +184,7 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
         # 1. Deep Wipe (Deletes everything - Cascading)
         if is_admin:
             query = """
-            MATCH (i:Invoice)
+            MATCH (i:Invoice {tenant_id: $tenant_id})
             WHERE i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL)
             OPTIONAL MATCH (i)-[:CONTAINS]->(li:Line_Item)
             OPTIONAL MATCH (i)-[:HAS_CORRECTION]->(cs:CorrectionSet)
@@ -203,15 +198,9 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
         else:
             query = """
             MATCH (u:User {email: $user_email})
-            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-            WITH u, s
-            
-            MATCH (i:Invoice)
+            MATCH (i:Invoice {tenant_id: $tenant_id})
             WHERE (i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL))
-              AND (
-                (u)-[:OWNS]->(i) OR
-                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s))
-            )
+              AND (u)-[:OWNS]->(i)
             
             OPTIONAL MATCH (i)-[:CONTAINS]->(li:Line_Item)
             OPTIONAL MATCH (i)-[:HAS_CORRECTION]->(cs:CorrectionSet)
@@ -227,22 +216,16 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
         # Standard Shallow Delete
         if is_admin:
             query = """
-            MATCH (i:Invoice)
+            MATCH (i:Invoice {tenant_id: $tenant_id})
             WHERE i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL)
             DETACH DELETE i
             """
         else:
             query = """
             MATCH (u:User {email: $user_email})
-            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-            WITH u, s
-            
-            MATCH (i:Invoice)
+            MATCH (i:Invoice {tenant_id: $tenant_id})
             WHERE (i.invoice_id = $invoice_id OR (i.invoice_number = $invoice_no AND $invoice_no IS NOT NULL))
-              AND (
-                (u)-[:OWNS]->(i) OR
-                (s IS NOT NULL AND (i)-[:BELONGS_TO]->(s))
-            )
+              AND (u)-[:OWNS]->(i)
             DETACH DELETE i
             """
         logger.info(f"Performing {'admin ' if is_admin else ''}shallow delete for Invoice {invoice_id or invoice_no}")
@@ -262,7 +245,7 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
             if invoice_id and len(invoice_id) < 10: # Likely a number, not a hex UUID
                 invoice_no = invoice_id
             
-            result = tx.run(query, user_email=user_email, invoice_id=invoice_id, invoice_no=invoice_no)
+            result = tx.run(query, user_email=user_email, tenant_id=tenant_id, invoice_id=invoice_id, invoice_no=invoice_no)
             summary = result.consume()
             nodes_deleted = summary.counters.nodes_deleted
             logger.info(f"Deletion for Invoice {invoice_id} completed. Nodes deleted: {nodes_deleted}")
@@ -270,21 +253,19 @@ def delete_invoice_by_id(driver, invoice_id: str, user_email: str, wipe: bool = 
 
         session.execute_write(_delete_tx)
 
-def delete_redundant_draft(driver, invoice_id: str, user_email: str):
+def delete_redundant_draft(driver, invoice_id: str, user_email: str, tenant_id: str):
     """
-    Safely deletes a draft invoice ONLY if it has not been confirmed.
-    This handles cases where the draft remains after a new node was created for the confirmed invoice.
-    If the draft node itself was updated to CONFIRMED, it will be skipped (preserved).
+    Safely deletes a draft invoice ONLY if it has not been confirmed, scoped to tenant.
     """
     query = """
-    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_id: $invoice_id})
+    MATCH (u:User {email: $user_email})-[:OWNS]->(i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     WHERE i.status <> 'CONFIRMED'
     DETACH DELETE i
     RETURN count(i) as deleted_count
     """
     try:
         def _delete_tx(tx):
-            result = tx.run(query, user_email=user_email, invoice_id=invoice_id).single()
+            result = tx.run(query, user_email=user_email, invoice_id=invoice_id, tenant_id=tenant_id).single()
             return result["deleted_count"] if result else 0
 
         with driver.session() as session:

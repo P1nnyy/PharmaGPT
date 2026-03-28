@@ -49,13 +49,14 @@ def _generate_sku(tx, product_name: str) -> str:
     # 3. Format SKU
     return f"{prefix}-{count:03d}"
 
-def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, Any]], user_email: str, invoice_id: str = None):
+def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, Any]], user_email: str, tenant_id: str, invoice_id: str = None):
     """
     Creates multiple line items in a single transaction using UNWIND.
     Fastest way to ingest batch data into Neo4j.
+    Now enforced with tenant_id for RLS.
     """
     # Use invoice_id for precise matching if available, otherwise fallback to number (legacy)
-    match_clause = "MATCH (u)-[:OWNS]->(i:Invoice {invoice_id: $invoice_id})" if invoice_id else "MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})"
+    match_clause = "MATCH (u)-[:OWNS]->(i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})" if invoice_id else "MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no, tenant_id: $tenant_id})"
     
     batch_query = f"""
     MATCH (u:User {{email: $user_email}})
@@ -63,36 +64,36 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     
     UNWIND $items as item
     
-    // 1. Alias Lookup & Product Resolution
-    OPTIONAL MATCH (alias:ProductAlias {{raw_name: item.standard_item_name}})-[:MAPS_TO]->(master:GlobalProduct)
+    // 1. Alias Lookup & Product Resolution (Scoped to Tenant)
+    OPTIONAL MATCH (alias:ProductAlias {{raw_name: item.standard_item_name, tenant_id: $tenant_id}})-[:MAPS_TO]->(master:GlobalProduct {{tenant_id: $tenant_id}})
     WITH u, i, item, coalesce(master.name, item.standard_item_name) as final_product_name
     
-    // 2. Merge Global Product
-    MERGE (gp:GlobalProduct {{name: final_product_name}})
+    // 2. Merge Global Product (Enforced with tenant_id)
+    MERGE (gp:GlobalProduct {{name: final_product_name, tenant_id: $tenant_id}})
     MERGE (u)-[:MANAGES]->(gp)
     ON CREATE SET 
         gp.is_verified = false,
         gp.needs_review = true,
         gp.created_at = timestamp()
         
-    // 3. Create Line Item (Specific Instance)
-    CREATE (l:Line_Item)
-    SET l = item.properties
+    // 3. Create Line Item (Specific Instance with tenant_id)
+    CREATE (l:Line_Item {{tenant_id: $tenant_id}})
+    SET l += item.properties
     SET l.created_at = timestamp()
     
     // 4. Connect Graph
     MERGE (i)-[:CONTAINS]->(l)
     MERGE (l)-[:IS_VARIANT_OF]->(gp)
     
-    // 5. Merge HSN
+    // 5. Merge HSN (HSN is global, but relation is specific)
     WITH gp, l, item
     WHERE item.hsn_code IS NOT NULL
     MERGE (h:HSN {{code: item.hsn_code}})
     MERGE (l)-[:BELONGS_TO_HSN]->(h)
     
-    // 6. Packaging Variant tracking
+    // 6. Packaging Variant tracking (Enforced with tenant_id)
     WITH gp, l, item
-    MERGE (pv:PackagingVariant {{pack_size: item.pack_size, product_name: gp.name}})
+    MERGE (pv:PackagingVariant {{pack_size: item.pack_size, product_name: gp.name, tenant_id: $tenant_id}})
     MERGE (gp)-[:HAS_VARIANT]->(pv)
     MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
     ON CREATE SET
@@ -115,7 +116,7 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     
     // 8. Rebuild Hierarchy JSON (APOC)
     WITH gp
-    MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant)
+    MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant {{tenant_id: $tenant_id}})
     WITH gp, collect({{unit: all_v.unit_name, pack: all_v.pack_size, mrp: all_v.mrp}}) as hierarchy
     SET gp.packaging_hierarchy = apoc.convert.toJson(hierarchy)
     
@@ -169,6 +170,7 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     # Execute Batch
     result = tx.run(batch_query, 
                     user_email=user_email, 
+                    tenant_id=tenant_id,
                     invoice_no=invoice_no, 
                     invoice_id=invoice_id,
                     items=prepared_items)
@@ -178,86 +180,86 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     for rec in records:
         if not rec.get("code"):
             new_sku = _generate_sku(tx, rec["name"])
-            tx.run(QUERY_UPDATE_SKU, name=rec["name"], sku=new_sku)
+            tx.run(QUERY_UPDATE_SKU, name=rec["name"], sku=new_sku, tenant_id=tenant_id)
 
-def link_product_alias(driver, user_email: str, master_product_name: str, raw_alias: str):
+def link_product_alias(driver, user_email: str, tenant_id: str, master_product_name: str, raw_alias: str):
     """
     Links a raw product name (alias) to a Master GlobalProduct.
     """
     with driver.session() as session:
-        session.execute_write(_link_alias_tx, user_email, master_product_name, raw_alias)
+        session.execute_write(_link_alias_tx, user_email, tenant_id, master_product_name, raw_alias)
 
-def _link_alias_tx(tx, user_email, master_product_name, raw_alias):
+def _link_alias_tx(tx, user_email, tenant_id, master_product_name, raw_alias):
     query = """
     MATCH (u:User {email: $user_email})
     
     // Find Master Product (must exist and be managed by user or globally available)
-    MATCH (gp:GlobalProduct {name: $master_name})
+    MATCH (gp:GlobalProduct {name: $master_name, tenant_id: $tenant_id})
     
-    // Create Alias Node
-    MERGE (alias:ProductAlias {raw_name: $raw_alias})
+    // Create Alias Node (Scoped to Tenant)
+    MERGE (alias:ProductAlias {raw_name: $raw_alias, tenant_id: $tenant_id})
     
     // Link Alias to Master
     MERGE (alias)-[:MAPS_TO]->(gp)
     """
-    tx.run(query, user_email=user_email, master_name=master_product_name, raw_alias=raw_alias)
+    tx.run(query, user_email=user_email, tenant_id=tenant_id, master_name=master_product_name, raw_alias=raw_alias)
 
-def rename_product_with_alias(driver, user_email: str, old_name: str, new_name: str):
+def rename_product_with_alias(driver, user_email: str, tenant_id: str, old_name: str, new_name: str):
     """
     Renames a GlobalProduct or Merges it if the new name already exists.
     In both cases, creates a ProductAlias for the old name pointing to the new name.
     """
     with driver.session() as session:
-        session.execute_write(_rename_product_tx, user_email, old_name, new_name)
+        session.execute_write(_rename_product_tx, user_email, tenant_id, old_name, new_name)
 
-def _rename_product_tx(tx, user_email, old_name, new_name):
+def _rename_product_tx(tx, user_email, tenant_id, old_name, new_name):
     # Check if target exists (Merge Case vs Rename Case)
-    check_q = "MATCH (gp:GlobalProduct {name: $new_name}) RETURN count(gp) as cnt"
-    target_exists = tx.run(check_q, new_name=new_name).single()["cnt"] > 0
+    check_q = "MATCH (gp:GlobalProduct {name: $new_name, tenant_id: $tenant_id}) RETURN count(gp) as cnt"
+    target_exists = tx.run(check_q, new_name=new_name, tenant_id=tenant_id).single()["cnt"] > 0
     
     if target_exists:
         # MERGE CASE: Repoint & Delete Old
         logger.info(f"Merging '{old_name}' into existing '{new_name}'")
         query = """
         MATCH (u:User {email: $user_email})
-        MATCH (old:GlobalProduct {name: $old_name})
-        MATCH (new:GlobalProduct {name: $new_name})
+        MATCH (old:GlobalProduct {name: $old_name, tenant_id: $tenant_id})
+        MATCH (new:GlobalProduct {name: $new_name, tenant_id: $tenant_id})
         
         // 1. Repoint Alias links (Aliases pointing to Old now point to New)
-        OPTIONAL MATCH (alias:ProductAlias)-[r1:MAPS_TO]->(old)
+        OPTIONAL MATCH (alias:ProductAlias {tenant_id: $tenant_id})-[r1:MAPS_TO]->(old)
         DELETE r1
         MERGE (alias)-[:MAPS_TO]->(new)
         
         // 2. Repoint Line Items (History)
-        OPTIONAL MATCH (li:Line_Item)-[r2:IS_VARIANT_OF]->(old)
+        OPTIONAL MATCH (li:Line_Item {tenant_id: $tenant_id})-[r2:IS_VARIANT_OF]->(old)
         DELETE r2
         MERGE (li)-[:IS_VARIANT_OF]->(new)
         
         // 3. Repoint Packaging Variants
-        OPTIONAL MATCH (old)-[r3:HAS_VARIANT]->(v:PackagingVariant)
+        OPTIONAL MATCH (old)-[r3:HAS_VARIANT]->(v:PackagingVariant {tenant_id: $tenant_id})
         DELETE r3
         MERGE (new)-[:HAS_VARIANT]->(v)
         // Update variant product_name property
         SET v.product_name = $new_name
         
         // 4. Create Alias for the Old Name itself
-        MERGE (self_alias:ProductAlias {raw_name: $old_name})
+        MERGE (self_alias:ProductAlias {raw_name: $old_name, tenant_id: $tenant_id})
         MERGE (self_alias)-[:MAPS_TO]->(new)
         
         // 5. Delete Old Node
         DETACH DELETE old
         """
-        tx.run(query, user_email=user_email, old_name=old_name, new_name=new_name)
+        tx.run(query, user_email=user_email, tenant_id=tenant_id, old_name=old_name, new_name=new_name)
         
     else:
         # RENAME CASE: Just update name and create alias
         logger.info(f"Renaming '{old_name}' to new '{new_name}'")
         query = """
         MATCH (u:User {email: $user_email})
-        MATCH (gp:GlobalProduct {name: $old_name})
+        MATCH (gp:GlobalProduct {name: $old_name, tenant_id: $tenant_id})
         
-        // 1. Create Alias for Old Name
-        MERGE (alias:ProductAlias {raw_name: $old_name})
+        // 1. Create Alias for Old Name (Scoped to Tenant)
+        MERGE (alias:ProductAlias {raw_name: $old_name, tenant_id: $tenant_id})
         MERGE (alias)-[:MAPS_TO]->(gp)
         
         // 2. Update Product Name
@@ -266,7 +268,7 @@ def _rename_product_tx(tx, user_email, old_name, new_name):
             
         // 3. Update related PackagingVariants' product_name property
         WITH gp
-        OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant)
+        OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant {tenant_id: $tenant_id})
         SET pv.product_name = $new_name
         """
-        tx.run(query, user_email=user_email, old_name=old_name, new_name=new_name)
+        tx.run(query, user_email=user_email, tenant_id=tenant_id, old_name=old_name, new_name=new_name)

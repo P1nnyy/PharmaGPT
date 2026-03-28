@@ -60,6 +60,8 @@ class InvoiceSummaryModel(BaseModel):
     taxable_value: float = Field(0.0, description="Subtotal - Trade Discounts.")
     total_tax: float = Field(0.0, description="Sum of all tax components.")
     round_off: float = Field(0.0, description="Paise-level rounding adjustment.")
+    credit_note_amount: float = Field(0.0, description="Post-tax deductions (Credit Notes).")
+    extra_charges: float = Field(0.0, description="Additional fees (Freight, Coolie, etc).")
     grand_total: float = Field(..., description="Final amount payable (The Truth).")
     
     # Traceability
@@ -89,8 +91,25 @@ class RawLineItem(BaseModel):
     Calculated_Cost_Price_Per_Unit: Optional[float] = Field(None, description="Calculated Cost Price Per Unit (Reconciled).")
     Logic_Note: Optional[str] = Field(None, description="Explanation of Solver logic.")
     
-    # Tax Field
+    # Tax Fields
     Raw_GST_Percentage: Optional[float] = Field(None, description="Extracted GST Percentage (Sum of SGST+CGST or IGST).")
+    SGST_Amount: Optional[Union[float, str]] = Field(None, description="Line-level SGST Amount.")
+    CGST_Amount: Optional[Union[float, str]] = Field(None, description="Line-level CGST Amount.")
+    SGST_Percent: Optional[Union[float, str]] = Field(None, description="Line-level SGST %.")
+    CGST_Percent: Optional[Union[float, str]] = Field(None, description="Line-level CGST %.")
+    
+    # Discount Fields
+    Discount_Amount: Optional[Union[float, str]] = Field(None, description="Line-level Discount Amount.")
+    SCH_Amt: Optional[Union[float, str]] = Field(None, description="Scheme Amount (Pharmacy specific discount).")
+    Discount_Percent: Optional[Union[float, str]] = Field(None, description="Line-level Discount %.")
+    
+    # --- Enterprise TCO Fields ---
+    capital_cost: float = Field(0.0, description="Opportunity cost of capital.")
+    service_cost: float = Field(0.0, description="Administrative and handling costs.")
+    storage_cost: float = Field(0.0, description="Warehousing and specialized storage premium.")
+    risk_cost: float = Field(0.0, description="Expiry and damage risk premium.")
+    logistics_cost: float = Field(0.0, description="Inbound logistics share.")
+    tco: float = Field(0.0, description="Total Cost of Ownership (TCO).")
 
     # New Field for Manufacturer Extraction
     Manufacturer: Optional[Union[str, List[str]]] = Field(None, description="The manufacturer or company name extracted from the line item.")
@@ -144,6 +163,8 @@ class InvoiceExtraction(BaseModel):
     taxable_value: Union[float, None] = Field(0.0, description="Sub-total minus global discount.")
     total_sgst: Union[float, None] = Field(0.0, description="Total SGST from the footer.")
     total_cgst: Union[float, None] = Field(0.0, description="Total CGST from the footer.")
+    credit_note_amount: Union[float, None] = Field(0.0, description="Adjusted Credit Note amount.")
+    extra_charges: Union[float, None] = Field(0.0, description="Additional charges.")
     round_off: Union[float, None] = Field(0.0, description="Rounding adjustment.")
     grand_total: Union[float, None] = Field(0.0, description="Final reconciled total amount.")
 
@@ -176,6 +197,8 @@ class NormalizedLineItem(BaseModel):
 
     # --- New Ops/Pharma Fields ---
     is_enriched: bool = Field(False, description="True if data was fetched from the internet.")
+    needs_review: bool = Field(False, description="True if automated check failed (e.g. MRP mismatch).")
+    pack_size_primary: int = Field(1, description="Primary unit multiplier in a single pack.")
     salt_composition: Optional[str] = Field(None, description="Detailed salt composition from web.")
     manufacturer: Optional[str] = Field(None, description="Manufacturer from web.")
     
@@ -196,6 +219,14 @@ class NormalizedLineItem(BaseModel):
     SGST_Percent: Optional[float] = Field(None, description="SGST Percentage.")
     CGST_Percent: Optional[float] = Field(None, description="CGST Percentage.")
     IGST_Percent: Optional[float] = Field(None, description="IGST Percentage.")
+
+    # --- Enterprise TCO Fields ---
+    capital_cost: float = Field(0.0, description="Opportunity cost of capital.")
+    service_cost: float = Field(0.0, description="Administrative and handling costs.")
+    storage_cost: float = Field(0.0, description="Warehousing and specialized storage premium.")
+    risk_cost: float = Field(0.0, description="Expiry and damage risk premium.")
+    logistics_cost: float = Field(0.0, description="Inbound logistics share.")
+    tco: float = Field(0.0, description="Total Cost of Ownership (TCO).")
 
 class SupplierExtraction(BaseModel):
     """
@@ -264,5 +295,6 @@ class EnrichedProductResponse(BaseModel):
     salt_composition: Optional[str] = Field(None, description="Enriched Salt Composition")
     pack_size: Optional[str] = Field(None, description="Enriched Pack Size")
     category: Optional[str] = Field(None, description="Enriched Category")
+    mrp: Optional[float] = Field(None, description="Enriched MRP from web source")
     source_url: Optional[str] = Field(None, description="Source URL of the data")
     error: Optional[str] = Field(None, description="Error message if any")

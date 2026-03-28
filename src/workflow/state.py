@@ -54,3 +54,13 @@ class InvoiceState(TypedDict):
     reconciliation_stats: dict
     retry_counters: Annotated[dict, operator.ior]
     error_history: Annotated[list, operator.add]
+
+class SupplyChainState(TypedDict):
+    """
+    State for the post-processing Supply Chain Intelligence workflow.
+    """
+    tenant_id: str
+    user_email: str
+    inventory_alerts: List[Dict[str, Any]]
+    demand_forecasts: List[Dict[str, Any]]
+    trace_id: Optional[str]

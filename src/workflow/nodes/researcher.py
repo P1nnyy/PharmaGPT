@@ -46,6 +46,21 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
     if product_name.lower() == "unknown product":
         return item
         
+    # --- LOCAL-FIRST CACHING ---
+    from src.services.product_catalog import ProductCatalog
+    catalog = ProductCatalog()
+    match = catalog.find_match(product_name)
+    
+    if match:
+        logger.info(f"Researcher: Local Match found for '{product_name}' -> '{match['known_name']}'. Skipping web search.")
+        item["Standard_Item_Name"] = match.get("known_name")
+        item["Pack_Size_Description"] = match.get("standard_pack")
+        item["pack_size_description"] = match.get("standard_pack")
+        item["is_enriched"] = True
+        item["Logic_Note"] = (item.get("Logic_Note", "") + " [Enriched via Local Catalog]").strip()
+        return item
+    # ---------------------------
+
     try:
         # 1. Broaden Search Strategy
         search_results = "No results found."
@@ -91,17 +106,20 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
         OUTPUT FIELDS:
         1. manufacturer: Company Name (e.g. Colgate Palmolive, Sun Pharma)
         2. salt_composition: Leading active ingredients or salts.
-        3. packaging_size: Best guess for pack size (e.g. 70g, 10 tablets).
+        3. packaging_size: Best guess for pack size (e.g. Strip of 15 tablets, 70g tube).
+        4. mrp: The Maximum Retail Price (MRP) for THIS EXACT pack size. Use ONLY raw numeric values (e.g. 150.0).
         
         RULES:
         - Use the most credible source.
+        - IMPORTANT: For 'mrp', do NOT include currency symbols or units. Just the number.
         - Return strictly valid JSON.
         
         OUTPUT FORMAT:
         {{
             "manufacturer": "string or null",
             "salt_composition": "string or null",
-            "packaging_size": "string or null"
+            "packaging_size": "string or null",
+            "mrp": "float or null"
         }}
         """
         
@@ -115,6 +133,33 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
         found_mfr = data.get("manufacturer")
         found_salt = data.get("salt_composition")
         found_pack = data.get("packaging_size")
+        web_mrp = data.get("mrp")
+        
+        # --- PHASE 2: MRP ANCHOR VALIDATION ---
+        local_mrp = item.get("MRP")
+        needs_review = False
+        
+        if web_mrp and local_mrp:
+            try:
+                # Sanitize web_mrp (it might be a string due to LLM variance)
+                s_web = str(web_mrp).replace(',', '')
+                match = re.search(r'(\d+(?:\.\d+)?)', s_web)
+                web_mrp_f = float(match.group(1)) if match else 0.0
+                
+                local_mrp_f = float(local_mrp)
+                difference = abs(web_mrp_f - local_mrp_f)
+                threshold = local_mrp_f * 0.15 
+                
+                if web_mrp_f > 0 and (difference > threshold and difference > 5):
+                    logger.warning(f"Researcher MRP Mismatch! Web: {web_mrp_f} vs Local: {local_mrp_f}")
+                    needs_review = True
+                    found_pack = "Review Required (MRP Mismatch)"
+                    item["pack_size_primary"] = 1
+            except:
+                pass
+        
+        item["needs_review"] = needs_review
+        # --------------------------------------
         
         # 3. Update Item
         if found_mfr:
@@ -129,9 +174,12 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
              item["Pack_Size_Description"] = found_pack
              item["pack_size_description"] = found_pack
             
-        if found_mfr or found_salt or found_pack:
+        if found_mfr or found_salt or (found_pack and not needs_review):
             item["is_enriched"] = True
             item["Logic_Note"] = (item.get("Logic_Note", "") + " [Enriched via Web]").strip()
+        elif needs_review:
+            item["is_enriched"] = True
+            item["Logic_Note"] = (item.get("Logic_Note", "") + " [Enriched - Mismatch Detected]").strip()
             
     except Exception as e:
         logger.error(f"Researcher Error for {product_name}: {e}")

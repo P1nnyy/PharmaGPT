@@ -29,12 +29,15 @@ def preprocess_image_for_ocr(image_path: str) -> bytes:
         if img is None:
             raise ValueError(f"Failed to load image: {image_path}")
             
-        # Convert to Grayscale (Simple & Safe)
-        # Gemini 2.0 is multimodal and handles skew well. Warping is too brittle.
+        # 1. Automatic Rotation Correction
+        img = correct_rotation(img)
+            
+        # 2. Convert to Grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # Optional: Mild Denoising
-        # gray = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        # 3. Apply Subtle Sharpening for OCR
+        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        gray = cv2.filter2D(gray, -1, kernel)
         
         # Encode to bytes
         success, encoded_img = cv2.imencode('.jpg', gray)
@@ -47,6 +50,109 @@ def preprocess_image_for_ocr(image_path: str) -> bytes:
         logger.error(f"Image preprocessing failed: {e}")
         with open(image_path, "rb") as f:
             return f.read()
+
+def correct_rotation(image):
+    """
+    Detects and corrects the orientation of the image (0, 90, 180, 270).
+    Uses a grid-resistant heuristic and Heading-Up priority.
+    """
+    try:
+        def get_orientation_score(img):
+            # Convert to gray
+            if len(img.shape) == 3:
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = img
+            
+            # 1. Main Text Line Scoring (Grid-Resistant)
+            # Thresholding
+            thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+            
+            # Use a TALLER kernel to detect "Text Blobs" and ignore "Hairline Grid Lines"
+            # Text rows are typically 10-30px tall, grid lines are 1-2px.
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 5))
+            dilated = cv2.dilate(thresh, kernel, iterations=1)
+            
+            contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            text_score = 0
+            for cnt in contours:
+                x, y, w, h = cv2.boundingRect(cnt)
+                # Filter: Text lines are Wide but not too thin (ignore grid lines)
+                if w > h * 2.5 and h > 4 and w > 30:
+                    text_score += w * h # Area-based scoring for text blocks
+            
+            # 2. Heading Detection (Top 25% Priority)
+            # Invoices almost ALWAYS have a large heading (Supplier Name) at the top.
+            h_img, w_img = img.shape[:2]
+            top_zone = dilated[0:int(h_img * 0.25), :]
+            top_contours, _ = cv2.findContours(top_zone, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            heading_score = 0
+            for cnt in top_contours:
+                x, y, w, h = cv2.boundingRect(cnt)
+                # Headings are LARGE blocks of text
+                if w > 100 and h > 15:
+                    heading_score += w * h
+            
+            return text_score + (heading_score * 2.0) # Double-weight the heading
+
+        # Test 4 orientations
+        orientations = [
+            (0, image),
+            (90, cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)),
+            (180, cv2.rotate(image, cv2.ROTATE_180)),
+            (270, cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE))
+        ]
+        
+        best_score = -1
+        best_img = image
+        best_angle = 0
+        
+        for angle, img in orientations:
+            score = get_orientation_score(img)
+            # Minor bias for Portrait aspect ratio
+            h, w = img.shape[:2]
+            if h > w:
+                score *= 1.1
+                
+            if score > best_score:
+                best_score = score
+                best_img = img
+                best_angle = angle
+        
+        logger.info(f"ImageProcessing: Auto-Rotation determined {best_angle}° is best (Score: {best_score:.0f})")
+        return best_img
+
+    except Exception as e:
+        logger.warning(f"Rotation correction failed: {e}")
+        return image
+
+    except Exception as e:
+        logger.warning(f"Rotation correction failed: {e}")
+        return image
+
+def enforce_portrait_rotation(image_path: str):
+    """
+    Standalone utility to fix a stored image file's orientation.
+    Used during upload to ensure the UI shows a portrait view.
+    """
+    try:
+        if not os.path.exists(image_path):
+            return
+            
+        img = cv2.imread(image_path)
+        if img is None:
+            return
+            
+        fixed_img = correct_rotation(img)
+        
+        # Overwrite the original file
+        cv2.imwrite(image_path, fixed_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        logger.info(f"ImageProcessing: Successfully enforced portrait orientation for {image_path}")
+        
+    except Exception as e:
+        logger.error(f"Failed to enforce portrait orientation for {image_path}: {e}")
 
 def _flatten_document(img, gray):
     """

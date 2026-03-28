@@ -14,10 +14,11 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 # Removed imports to avoid circular deps. Metrics moved to src/api/metrics.py
 
-from src.core.config import SECRET_KEY, get_base_url
+from src.core.config import SECRET_KEY, ALGORITHM, get_base_url
 from src.services.database import connect_db, close_db
 from src.services.storage import init_storage_client
-from src.utils.logging_config import setup_logging, get_logger, request_id_ctx
+from src.utils.logging_config import setup_logging, get_logger, request_id_ctx, tenant_id_ctx
+from jose import jwt, JWTError
 
 # Import Routers
 from src.api.routes.auth import router as auth_router
@@ -36,6 +37,38 @@ logger = get_logger("api")
 app = FastAPI(title="Invoice Extractor API")
 
 # --- Middleware ---
+@app.middleware("http")
+async def tenant_middleware(request: Request, call_next):
+    """
+    Extracts tenant_id (shop_id) from JWT and sets it in context.
+    If missing in token, attempts to resolve from DB using sub (email).
+    """
+    auth_header = request.headers.get("Authorization")
+    tenant_id = "anonymous"
+    user_email = None
+    
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_email = payload.get("sub")
+            tenant_id = payload.get("tenant_id")
+        except JWTError:
+            tenant_id = "invalid"
+
+    # Fallback: Resolve from DB if token has email but no tenant_id
+    if (not tenant_id or tenant_id == "anonymous") and user_email:
+        from src.api.routes.auth import resolve_user_tenant
+        tenant_id = await resolve_user_tenant(user_email)
+        # Note: We don't log a warning here to keep logs clean for known migration states,
+        # but we ensure the context is correct.
+
+    token = tenant_id_ctx.set(tenant_id or "anonymous")
+    try:
+        return await call_next(request)
+    finally:
+        tenant_id_ctx.reset(token)
+
 @app.middleware("http")
 async def diagnostic_middleware(request: Request, call_next):
     """

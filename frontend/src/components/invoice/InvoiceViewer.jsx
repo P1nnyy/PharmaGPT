@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Upload, Loader2, RefreshCw, MoreVertical, Trash2 } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { useInvoice } from '../../context/InvoiceContext';
-import { useQueue } from '../../context/QueueContext';
+import { useQueue, getQueueItemDisplayName } from '../../context/QueueContext';
+import AgentTerminal from './AgentTerminal';
 
 const InvoiceViewer = ({
     isMobile,
@@ -12,7 +13,7 @@ const InvoiceViewer = ({
     const { 
         handleFileChange, 
         handleReset, 
-        handleDiscard 
+        handleDiscard
     } = useInvoice();
 
     const {
@@ -89,7 +90,7 @@ const InvoiceViewer = ({
                                 {/* Info (Desktop or Mobile List Mode) */}
                                 <div className={`${isMobile ? 'block' : 'hidden md:block'} flex-1 min-w-0`}>
                                     <div className={`text-sm font-medium truncate ${item.id === selectedQueueId ? 'text-indigo-300' : 'text-gray-300'}`}>
-                                        {item.file?.name || item.filename || 'Unnamed File'}
+                                        {getQueueItemDisplayName(item)}
                                     </div>
                                     <div className="text-[10px] text-gray-500 flex items-center gap-1">
                                         {item.status === 'processing' && <span className="text-yellow-500">Processing...</span>}
@@ -209,13 +210,15 @@ const InvoiceViewer = ({
                     </div>
 
                     {fileQueue.length > 0 && (
-                        <button
-                            onClick={handleReset}
-                            className="flex items-center gap-1 text-[10px] md:text-sm text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700 shadow-sm active:bg-gray-700"
-                        >
-                            <RefreshCw className="w-3 h-3" />
-                            <span>Clear All</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleReset}
+                                className="flex items-center gap-1 text-[10px] md:text-sm text-red-400/80 hover:text-red-400 transition-colors bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700 shadow-sm active:bg-gray-700"
+                            >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Clear All</span>
+                            </button>
+                        </div>
                     )}
                 </div>
 
@@ -224,6 +227,7 @@ const InvoiceViewer = ({
                     {previewUrl ? (
                         <div className="relative w-full h-full flex items-center justify-center p-4">
                             <TransformWrapper
+                                key={activeItem?.id || 'empty'}
                                 initialScale={1}
                                 minScale={0.5}
                                 maxScale={4}
@@ -234,7 +238,7 @@ const InvoiceViewer = ({
                                     <img
                                         src={previewUrl}
                                         alt="Invoice Preview"
-                                        className="max-w-full max-h-full object-contain shadow-2xl"
+                                        className="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300"
                                         onError={(e) => {
                                             e.target.onerror = null;
                                             e.target.src = "https://placehold.co/600x800?text=Image+Not+Found";
@@ -242,6 +246,7 @@ const InvoiceViewer = ({
                                     />
                                 </TransformComponent>
                             </TransformWrapper>
+                            <AgentTerminal status={activeItem.status} message={activeItem.status_message} />
                         </div>
                     ) : (
                         <label className="flex flex-col items-center justify-center w-full h-full border-2 border-dashed border-gray-800 rounded-xl cursor-pointer hover:bg-gray-900/50 hover:border-indigo-500/50 transition-all group m-4">

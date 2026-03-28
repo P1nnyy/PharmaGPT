@@ -3,16 +3,16 @@
 
 QUERY_MERGE_PRODUCT = """
     MATCH (u:User {email: $user_email})
-    MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
+    MATCH (u)-[:OWNS]->(i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     
-    // 1. Alias Lookup & Product Resolution
-    OPTIONAL MATCH (alias:ProductAlias {raw_name: $standard_item_name})-[:MAPS_TO]->(master:GlobalProduct)
+    // 1. Alias Lookup & Product Resolution (Scoped to Tenant)
+    OPTIONAL MATCH (alias:ProductAlias {raw_name: $standard_item_name, tenant_id: $tenant_id})-[:MAPS_TO]->(master:GlobalProduct {tenant_id: $tenant_id})
     
     // Determine final name: Use Master if alias found, else use incoming name
     WITH coalesce(master.name, $standard_item_name) as final_product_name, u, i
     
-    // 2. Merge Global Product
-    MERGE (gp:GlobalProduct {name: final_product_name})
+    // 2. Merge Global Product (Scoped to Tenant)
+    MERGE (gp:GlobalProduct {name: final_product_name, tenant_id: $tenant_id})
     
     // Ensure User manages this product
     MERGE (u)-[:MANAGES]->(gp)
@@ -26,18 +26,19 @@ QUERY_MERGE_PRODUCT = """
     RETURN gp.name as name, gp.item_code as code
 """
 
-QUERY_UPDATE_SKU = "MATCH (gp:GlobalProduct {name: $name}) SET gp.item_code = $sku"
+QUERY_UPDATE_SKU = "MATCH (p:GlobalProduct {name: $name, tenant_id: $tenant_id}) SET p.item_code = $sku"
 
 QUERY_CREATE_LINE_ITEM = """
     MATCH (u:User {email: $user_email})
-    MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no})
-    MATCH (gp:GlobalProduct {name: $final_product_name})
+    MATCH (u)-[:OWNS]->(i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
+    MATCH (gp:GlobalProduct {name: $final_product_name, tenant_id: $tenant_id})
     
-    // 2. Merge HSN Node
+    // 2. Merge HSN Node (Global - No tenant_id)
     MERGE (h:HSN {code: $hsn_code})
     
-    // 3. Create Line Item (Specific Variant / Instance)
+    // 3. Create Line Item (Specific Variant / Instance with tenant_id)
     CREATE (l:Line_Item {
+        tenant_id: $tenant_id,
         pack_size: $pack_size,
         quantity: $quantity,
         free_quantity: $free_quantity,
@@ -70,8 +71,8 @@ QUERY_CREATE_LINE_ITEM = """
     MERGE (l)-[:IS_VARIANT_OF]->(gp)
     MERGE (l)-[:BELONGS_TO_HSN]->(h)
     
-    // 5. Multi-Unit Packaging Tracking
-    MERGE (pv:PackagingVariant {pack_size: $pack_size, product_name: $final_product_name})
+    // 5. Packaging Variant Tracking (Scoped to Tenant)
+    MERGE (pv:PackagingVariant {pack_size: $pack_size, product_name: $final_product_name, tenant_id: $tenant_id})
     MERGE (gp)-[:HAS_VARIANT]->(pv)
     MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
     
@@ -102,8 +103,8 @@ QUERY_CREATE_LINE_ITEM = """
         gp.salt_composition = coalesce($salt, gp.salt_composition)
 
     // 7. DYNAMIC PACKAGING HIERARCHY UPDATE
-    WITH gp, pv
-    MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant)
+    WITH gp, pv, $tenant_id as tid
+    MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant {tenant_id: tid})
     WITH gp, collect({unit: all_v.unit_name, pack: all_v.pack_size, mrp: all_v.mrp}) as hierarchy
     SET gp.packaging_hierarchy = apoc.convert.toJson(hierarchy)
 """

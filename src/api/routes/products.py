@@ -5,6 +5,7 @@ from src.services.database import get_db_driver
 from src.api.routes.auth import get_current_user_email
 from src.domain.schemas import ProductRequest, EnrichedProductResponse
 from src.services.enrichment_agent import EnrichmentAgent
+from src.utils.logging_config import get_logger, tenant_id_ctx
 
 # Global instance of EnrichmentAgent
 enrichment_agent = EnrichmentAgent()
@@ -22,14 +23,15 @@ async def search_products(q: str = Query(..., min_length=2)):
          raise HTTPException(status_code=503, detail="Database unavailable")
 
     query = """
-    MATCH (gp:GlobalProduct)
+    MATCH (gp:GlobalProduct {tenant_id: $tenant_id})
     WHERE toLower(gp.name) CONTAINS toLower($q)
     RETURN gp.name as name, gp.hsn_code as hsn_code, gp.sale_price as sale_price
     LIMIT 20
     """
     
     with driver.session() as session:
-        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, q=q)])
+        tenant_id = tenant_id_ctx.get()
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, q=q, tenant_id=tenant_id)])
 
 @router.get("/enrich", response_model=EnrichedProductResponse)
 async def enrich_product(
@@ -55,15 +57,15 @@ async def get_review_queue(user_email: str = Depends(get_current_user_email)):
          raise HTTPException(status_code=503, detail="Database unavailable")
 
     query = """
-    MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct)
+    MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {tenant_id: $tenant_id})
     WHERE gp.needs_review = true
     
-    // Fetch line items (Requirement ensures ghost items with no history are excluded)
-    MATCH (l:Line_Item)-[:IS_VARIANT_OF]->(gp)
+    // Fetch line items (Scoped to Tenant)
+    MATCH (l:Line_Item {tenant_id: $tenant_id})-[:IS_VARIANT_OF]->(gp)
     WITH gp, l ORDER BY l.created_at DESC
     
-    // Get Supplier Name, Date, and Saved By from the Invoice containing this line item
-    OPTIONAL MATCH (i:Invoice)-[:CONTAINS]->(l)
+    // Get Supplier Name, Date, and Saved By from the Invoice (Scoped to Tenant)
+    OPTIONAL MATCH (i:Invoice {tenant_id: $tenant_id})-[:CONTAINS]->(l)
     OPTIONAL MATCH (owner:User)-[:OWNS]->(i)
     
     WITH gp, 
@@ -73,7 +75,7 @@ async def get_review_queue(user_email: str = Depends(get_current_user_email)):
          head(collect(i.invoice_date)) as last_purchase_date,
          head(collect(owner.name)) as saved_by
     
-    OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant)
+    OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant {tenant_id: $tenant_id})
     RETURN gp.name as name, 
            incoming_name,
            supplier_name,
@@ -103,7 +105,8 @@ async def get_review_queue(user_email: str = Depends(get_current_user_email)):
 
     
     with driver.session() as session:
-        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
+        tenant_id = tenant_id_ctx.get()
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email, tenant_id=tenant_id)])
 
 @router.get("/all", response_model=List[Dict[str, Any]])
 async def get_all_products(user_email: str = Depends(get_current_user_email)):
@@ -115,9 +118,9 @@ async def get_all_products(user_email: str = Depends(get_current_user_email)):
          raise HTTPException(status_code=503, detail="Database unavailable")
 
     query = """
-    MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct)
+    MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {tenant_id: $tenant_id})
     WHERE gp.is_verified = true
-    OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant)
+    OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant {tenant_id: $tenant_id})
     RETURN gp.name as name, 
            gp.hsn_code as hsn_code, 
            gp.sale_price as sale_price,
@@ -144,7 +147,8 @@ async def get_all_products(user_email: str = Depends(get_current_user_email)):
     """
     
     with driver.session() as session:
-        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email)])
+        tenant_id = tenant_id_ctx.get()
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email, tenant_id=tenant_id)])
 
 @router.post("/", response_model=Dict[str, str])
 async def save_product(product: ProductRequest, user_email: str = Depends(get_current_user_email)):
@@ -158,7 +162,7 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
 
     query = """
     MATCH (u:User {email: $user_email})
-    MERGE (gp:GlobalProduct {name: $name})
+    MERGE (gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
     
     // Ensure User manages this product (ownership/access)
     MERGE (u)-[:MANAGES]->(gp)
@@ -181,15 +185,15 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
         gp.category = $category,
         gp.schedule = $schedule
     
-    // Process Packaging Variants
-    WITH gp, $packaging_variants as variants
+    // Process Packaging Variants (Scoped to Tenant)
+    WITH gp, $packaging_variants as variants, $tenant_id as tid
     // Clear old variants to allow clean save (pseudo-overwrite)
-    OPTIONAL MATCH (gp)-[r:HAS_VARIANT]->()
-    DELETE r
+    OPTIONAL MATCH (gp)-[r:HAS_VARIANT]->(old_v:PackagingVariant {tenant_id: tid})
+    DELETE r, old_v
     
-    WITH gp, variants
+    WITH gp, variants, tid
     FOREACH (v IN variants |
-        MERGE (pv:PackagingVariant {pack_size: v.pack_size, product_name: gp.name})
+        MERGE (pv:PackagingVariant {pack_size: v.pack_size, product_name: gp.name, tenant_id: tid})
         ON CREATE SET pv.id = randomUUID()
         MERGE (gp)-[:HAS_VARIANT]->(pv)
         SET pv.unit_name = v.unit_name,
@@ -205,8 +209,10 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
     variants_data = [v.dict() for v in product.packaging_variants]
     
     with driver.session() as session:
+        tenant_id = tenant_id_ctx.get()
         session.execute_write(lambda tx: tx.run(query, 
             user_email=user_email,
+            tenant_id=tenant_id,
             name=product.name,
             hsn_code=product.hsn_code,
             item_code=product.item_code,
@@ -243,7 +249,8 @@ async def rename_product(payload: Dict[str, str], name: str = Query(..., descrip
     from src.domain.persistence import rename_product_with_alias
     
     try:
-        rename_product_with_alias(driver, user_email, name, new_name)
+        tenant_id = tenant_id_ctx.get()
+        rename_product_with_alias(driver, user_email, tenant_id, name, new_name)
         return {"status": "success", "message": f"Renamed '{name}' to '{new_name}'"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -266,12 +273,13 @@ async def add_alias(payload: Dict[str, str], name: str = Query(..., description=
     from src.domain.persistence import link_product_alias
     
     try:
-        link_product_alias(driver, user_email, name, raw_alias)
+        tenant_id = tenant_id_ctx.get()
+        link_product_alias(driver, user_email, tenant_id, name, raw_alias)
         # Also assume review is done, so unflag 'needs_review'? 
         # For now, let frontend call save to clear flag or we do it here.
         # Let's do it here for convenience.
         with driver.session() as session:
-            session.execute_write(lambda tx: tx.run("MATCH (gp:GlobalProduct {name: $name}) SET gp.needs_review = false", name=name))
+            session.execute_write(lambda tx: tx.run("MATCH (gp:GlobalProduct {name: $name, tenant_id: $tenant_id}) SET gp.needs_review = false", name=name, tenant_id=tenant_id))
             
         return {"status": "success", "message": f"Linked alias '{raw_alias}' to '{name}'"}
     except Exception as e:
@@ -287,9 +295,9 @@ async def get_product_history(name: str = Query(..., description="Product name")
          raise HTTPException(status_code=503, detail="Database unavailable")
 
     query = """
-    MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name})
-    MATCH (l:Line_Item)-[:IS_VARIANT_OF]->(gp)
-    MATCH (i:Invoice)-[:CONTAINS]->(l)
+    MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
+    MATCH (l:Line_Item {tenant_id: $tenant_id})-[:IS_VARIANT_OF]->(gp)
+    MATCH (i:Invoice {tenant_id: $tenant_id})-[:CONTAINS]->(l)
     MATCH (u)-[:OWNS]->(i)
     RETURN i.invoice_date as date,
            i.supplier_name as supplier,
@@ -305,4 +313,5 @@ async def get_product_history(name: str = Query(..., description="Product name")
     """
     
     with driver.session() as session:
-        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email, name=name)])
+        tenant_id = tenant_id_ctx.get()
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email, tenant_id=tenant_id, name=name)])
