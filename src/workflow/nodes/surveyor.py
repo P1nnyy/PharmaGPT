@@ -31,14 +31,23 @@ async def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
             logger.error(f"Image is empty: {image_path}")
             return {"extraction_plan": [], "error_logs": ["Image file is empty"]}
 
+        # Preprocess Image before Surveying (Rotation/Binarization)
+        from src.utils.image_processing import preprocess_image_for_ocr
+        import tempfile
+        
+        logger.info("Surveyor: Preprocessing image before layout analysis...")
+        processed_bytes = preprocess_image_for_ocr(image_path)
+        
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            tmp_file.write(processed_bytes)
+            tmp_image_path = tmp_file.name
+            
         # Upload file with Retries
         sample_file = None
         upload_retries = 3
         for attempt in range(upload_retries):
             try:
-                # In the new SDK, upload is via client.files.upload
-                # Now using throttled manager.upload_file_async
-                sample_file = await manager.upload_file_async(file_path=image_path)
+                sample_file = await manager.upload_file_async(file_path=tmp_image_path)
                 logger.info(f"File uploaded successfully: {sample_file.name}")
                 break
             except Exception as e:
@@ -47,6 +56,12 @@ async def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
                 await asyncio.sleep(2) # Wait before retry
                 if attempt == upload_retries - 1:
                      return {"extraction_plan": [], "error_logs": [f"Surveyor Upload Failed: {str(e)}"]}
+        
+        # Cleanup Tmp File
+        try:
+            os.unlink(tmp_image_path)
+        except:
+            pass
         
         prompt = """
         Analyze this invoice and identify distinct layout zones.

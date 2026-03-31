@@ -223,12 +223,36 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         gross_sum = net_sum
 
     # 2. Extract Modifier values
-    global_discount = abs(parse_float(global_modifiers.get("global_discount") or global_modifiers.get("Global_Discount_Amount") or 0.0))
-    total_sgst = abs(parse_float(global_modifiers.get("total_sgst") or global_modifiers.get("SGST_Amount") or 0.0))
-    total_cgst = abs(parse_float(global_modifiers.get("total_cgst") or global_modifiers.get("CGST_Amount") or 0.0))
-    credit_note = abs(parse_float(global_modifiers.get("credit_note_amount") or global_modifiers.get("Credit_Note_Amount") or 0.0))
-    extra_charges = abs(parse_float(global_modifiers.get("extra_charges") or global_modifiers.get("Extra_Charges") or 0.0))
-    round_off = parse_float(global_modifiers.get("round_off") or global_modifiers.get("Round_Off") or 0.0)
+    global_discount = abs(parse_float(
+        global_modifiers.get("global_discount") or 
+        global_modifiers.get("Global_Discount_Amount") or 
+        global_modifiers.get("discount") or 0.0
+    ))
+    total_sgst = abs(parse_float(
+        global_modifiers.get("total_sgst") or 
+        global_modifiers.get("SGST_Amount") or 
+        global_modifiers.get("sgst") or 0.0
+    ))
+    total_cgst = abs(parse_float(
+        global_modifiers.get("total_cgst") or 
+        global_modifiers.get("CGST_Amount") or 
+        global_modifiers.get("cgst") or 0.0
+    ))
+    credit_note = abs(parse_float(
+        global_modifiers.get("credit_note_amount") or 
+        global_modifiers.get("Credit_Note_Amount") or 
+        global_modifiers.get("credit_note") or 
+        global_modifiers.get("CN_Amount") or 
+        global_modifiers.get("less_cn") or 0.0
+    ))
+    extra_charges = abs(parse_float(
+        global_modifiers.get("extra_charges") or 
+        global_modifiers.get("Extra_Charges") or 0.0
+    ))
+    round_off = parse_float(
+        global_modifiers.get("round_off") or 
+        global_modifiers.get("Round_Off") or 0.0
+    )
     
     # 3. Mode Detection (Disambiguation)
     # Equation A: net_sum + RoundOff == GrandTotal -> PER_ITEM (Items are final)
@@ -317,15 +341,9 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
              total_cgst = round(inferred_tax / 2, 2)
              logger.info(f"Financials: Inferred Tax breakdown {inferred_tax:.2f} (SGST: {total_sgst}) from line-level GST percentages.")
 
-    # 4d. Credit Note Auto-Inference (The Gap Closer)
-    # If there is a large gap and no CN was extracted, infer it.
-    final_pre_cn = (line_sum + round_off) if mode == "PER_ITEM" else (line_sum - global_discount + total_sgst + total_cgst + round_off + extra_charges)
-    gap_to_total = final_pre_cn - grand_total
-    
-    if gap_to_total > 5.0 and credit_note < 1.0:
-        # Inferred Credit Note explains the gap perfectly
-        credit_note = round(gap_to_total, 2)
-        logger.info(f"Financials: Inferred Credit Note of {credit_note:.2f} to explain gap.")
+    # 4d. Credit Note Auto-Inference (Removed to prevent hallucinations)
+    # We no longer infer credit notes to close gaps, as this can lead to errors with fuzzy OCR totals.
+    pass
 
     # 4e. Final Ledger Result
     if mode == "PER_ITEM":

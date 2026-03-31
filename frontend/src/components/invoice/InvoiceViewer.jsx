@@ -18,6 +18,7 @@ const InvoiceViewer = ({
 
     const {
         fileQueue,
+        setFileQueue,
         selectedQueueId,
         setSelectedQueueId
     } = useQueue();
@@ -50,6 +51,15 @@ const InvoiceViewer = ({
     const handleQueueItemClick = (id) => {
         if (onQueueSelect) onQueueSelect(id);
         if (isMobile) setIsListOpen(false); // Auto-close on mobile selection
+    };
+
+    const handleManualRotate = () => {
+        if (!selectedQueueId) return;
+        const current = activeItem?.rotation || 0;
+        const next = (current + 90) % 360;
+        setFileQueue(prev => prev.map(item => 
+            item.id === selectedQueueId ? { ...item, rotation: next } : item
+        ));
     };
 
     return (
@@ -109,8 +119,8 @@ const InvoiceViewer = ({
                                     )}
                                     {item.status === 'completed' && (
                                         <div className="bg-green-500/20 p-1.5 rounded-full drop-shadow-md">
-                                            <div className="bg-green-500 p-0.5 rounded-full shadow-lg">
-                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <div className="bg-green-500 p-0.5 rounded-full shadow-lg text-white">
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </div>
@@ -125,8 +135,8 @@ const InvoiceViewer = ({
                                     )}
                                     {item.status === 'error' && (
                                         <div className="bg-red-500/20 p-1.5 rounded-full backdrop-blur-sm">
-                                            <div className="bg-red-500 p-0.5 rounded-full shadow-lg">
-                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <div className="bg-red-500 p-0.5 rounded-full shadow-lg text-white">
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                                 </svg>
                                             </div>
@@ -147,7 +157,21 @@ const InvoiceViewer = ({
 
                                         {/* Dropdown */}
                                         {menuOpenId === item.id && (
-                                            <div className="absolute right-0 top-6 w-32 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                                            <div className="absolute right-0 top-6 w-40 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const current = item?.rotation || 0;
+                                                        const next = (current + 90) % 360;
+                                                        setFileQueue(prev => prev.map(f => 
+                                                            f.id === item.id ? { ...f, rotation: next } : f
+                                                        ));
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-xs font-medium text-indigo-400 hover:bg-gray-800 flex items-center gap-2 border-b border-gray-800"
+                                                >
+                                                    <RefreshCw className="w-3 h-3" />
+                                                    Rotate Image
+                                                </button>
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -179,7 +203,7 @@ const InvoiceViewer = ({
             )}
 
             {/* MAIN PREVIEW AREA */}
-            <div className="flex-1 flex flex-col relative">
+            <div className="flex-1 flex flex-col relative w-full overflow-hidden">
                 {/* Header */}
                 <div className="p-3 md:p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/50 backdrop-blur-sm sticky top-0 z-10 w-full">
                     <div className="flex items-center gap-3">
@@ -222,23 +246,40 @@ const InvoiceViewer = ({
                     )}
                 </div>
 
-                {/* Content */}
-                <div className="flex-1 flex items-center justify-center overflow-hidden relative bg-black/20">
+                {/* Content Area */}
+                <div className="flex-1 flex items-center justify-center overflow-hidden relative bg-black/20 group/viewer w-full h-full">
                     {previewUrl ? (
                         <div className="relative w-full h-full flex items-center justify-center p-4">
+                            {/* Manual Rotate Floating Button */}
+                            <div className="absolute top-6 right-6 z-30 opacity-0 group-hover/viewer:opacity-100 transition-opacity">
+                                <button 
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleManualRotate();
+                                    }}
+                                    className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-2xl border border-indigo-400/50 flex items-center gap-2 font-bold text-sm"
+                                    title="Rotate 90° Clockwise"
+                                >
+                                    <RefreshCw className="w-5 h-5" />
+                                    <span>Rotate</span>
+                                </button>
+                            </div>
+
                             <TransformWrapper
-                                key={activeItem?.id || 'empty'}
+                                key={`${activeItem?.id || 'empty'}-${activeItem?.rotation || 0}`}
                                 initialScale={1}
-                                minScale={0.5}
-                                maxScale={4}
+                                minScale={0.1}
+                                maxScale={8}
                                 centerOnInit={true}
-                                wheel={{ step: 0.2 }}
+                                wheel={{ step: 0.1 }}
                             >
                                 <TransformComponent wrapperClass="w-full h-full" contentClass="w-full h-full flex items-center justify-center">
                                     <img
                                         src={previewUrl}
                                         alt="Invoice Preview"
                                         className="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300"
+                                        style={{ transform: `rotate(${activeItem?.rotation || 0}deg)` }}
                                         onError={(e) => {
                                             e.target.onerror = null;
                                             e.target.src = "https://placehold.co/600x800?text=Image+Not+Found";
@@ -246,7 +287,7 @@ const InvoiceViewer = ({
                                     />
                                 </TransformComponent>
                             </TransformWrapper>
-                            <AgentTerminal status={activeItem.status} message={activeItem.status_message} />
+                            <AgentTerminal status={activeItem?.status} message={activeItem?.status_message} />
                         </div>
                     ) : (
                         <label className="flex flex-col items-center justify-center w-full h-full border-2 border-dashed border-gray-800 rounded-xl cursor-pointer hover:bg-gray-900/50 hover:border-indigo-500/50 transition-all group m-4">
@@ -266,5 +307,3 @@ const InvoiceViewer = ({
 };
 
 export default InvoiceViewer;
-
-

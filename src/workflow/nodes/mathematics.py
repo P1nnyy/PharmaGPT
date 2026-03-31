@@ -83,20 +83,22 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
             qty = parse_quantity(item.get("Qty"), item.get("Free") or 0)
             item["Standard_Quantity"] = qty
             
-            # Apply correction factor ONLY if it's within a reasonable tolerance (5%)
-            # This prevents "squashing" items when a large credit note/discount is missed.
+            # Apply correction factor ONLY if it's within a very strict tolerance (3%)
+            # and if the gap wasn't already explained by a Credit Note or missing tax
             diag_str = f" [Gap:{gap:.2f}/CF:{correction_factor:.4f}]"
-            if 0.95 <= correction_factor <= 1.05:
+            
+            # Use stricter tolerance for scaling to avoid "inflation"
+            if 0.98 <= correction_factor <= 1.02 and not recon_stats.get("healer_active"):
                  raw_net = float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0)
                  item["Net_Line_Amount"] = round(raw_net * correction_factor, 2)
                  # Re-calculate landing cost with factor
                  item["effective_landing_cost"] = round(item["effective_landing_cost"] * correction_factor, 2)
                  item["Logic_Note"] = (item.get("Logic_Note", "") + f" [Auto-Adjusted {correction_factor:.4f}]{diag_str}").strip()
             else:
-                 # If gap is huge, preserve the STATED line amount for the UI table
-                 # But calculate effective_landing_cost to match the money (for the shop's ledger)
+                 # If gap is significant (>2%) or already explained, DO NOT SCALE the UI Net Amount.
+                 # Only scale the internal landing cost to ensure the ledger balances.
                  item["effective_landing_cost"] = round(item["effective_landing_cost"] * correction_factor, 2)
-                 item["Logic_Note"] = (item.get("Logic_Note", "") + f" [Landed Scaled {correction_factor:.2f}]{diag_str}").strip()
+                 item["Logic_Note"] = (item.get("Logic_Note", "") + f" [Landed Scaled Only]{diag_str}").strip()
 
             cost_price = item.get("Final_Unit_Cost", 0.0)
             if qty > 0:
@@ -160,32 +162,16 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     final_json["grand_total"] = final_stats.get("grand_total", 0.0)
     final_json["Stated_Grand_Total"] = stated_total
     
-    # 6. Final Discount Recovery: If we have a large gap in GLOBAL mode, it's likely a missing discount
-    if mode == "GLOBAL" and parse_float(final_json.get("global_discount")) == 0:
-        # Expected Total if discount was 0: SubTotal + Tax + RoundOff
-        # If this is HIGHER than GrandTotal, the gap is likely the missing discount.
-        expected_if_no_disc = final_json["sub_total"] + final_json["total_sgst"] + final_json["total_cgst"] + final_json["round_off"]
-        gap_to_grand = expected_if_no_disc - stated_total
-        
-        if gap_to_grand > 2.0:
-            logger.info(f"Solver: Inferred missing discount of {gap_to_grand:.2f}")
-            final_json["global_discount"] = round(gap_to_grand, 2)
-            final_json["taxable_value"] = round(final_json["sub_total"] - gap_to_grand, 2)
-            final_json["Logic_Note"] = final_json.get("Logic_Note", "") + f" [Inferred Discount: {gap_to_grand:.2f}]"
-    
-    # Signify if we inferred a missing discount
-
-    if mode == "GLOBAL" and initial_stats.get("sub_total", 0) > stated_total and parse_float(headers.get("global_discount")) == 0:
-         implied_disc = round(initial_stats.get("sub_total", 0) - stated_total, 2)
-         if implied_disc > 1.0:
-              final_json["Logic_Note"] = final_json.get("Logic_Note", "") + f" [Inferred Disc {implied_disc}]"
+    # 6. Final Discount Recovery (Removed to prevent hallucinations)
+    # We no longer infer discounts to close gaps.
+    pass
 
     # 7. FINAL AUDIT FLAG (The "Verification Layer" for the User)
     final_json["Extraction_Warnings"] = []
     gap_percent = (gap / stated_total) * 100 if stated_total > 0 else 100
     
     if gap > 2.0:
-        warning = f"Calculation Audit: Reconciled Total ₹{final_stats.get('grand_total'):.2f} differs from Stated ₹{stated_total:.2f}. Please verify."
+        warning = f"Calculation Audit: Reconciled Total ₹{final_stats.get('grand_total', initial_calc_total):.2f} differs from Stated ₹{stated_total:.2f}. Please verify."
         final_json["audit_status"] = "WARNING"
         final_json["Extraction_Warnings"].append(warning)
         if gap_percent > 10:

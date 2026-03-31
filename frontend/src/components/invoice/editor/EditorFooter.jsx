@@ -10,7 +10,7 @@ const EditorFooter = ({ lineItems, invoiceData, isSaving, onExport, onConfirm, r
     const creditNote = Number(invoiceData?.credit_note_amount) || 0;
     const extraCharges = Number(invoiceData?.extra_charges) || 0;
     const roundOff = Number(invoiceData?.round_off) || 0;
-    const grandTotal = Number(invoiceData?.Stated_Grand_Total) || Number(invoiceData?.grand_total) || 0;
+    const grandTotal = Number(invoiceData?.grand_total) || Number(invoiceData?.Stated_Grand_Total) || 0;
 
     if (!lineItems || lineItems.length === 0) return null;
 
