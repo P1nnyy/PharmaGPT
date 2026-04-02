@@ -22,13 +22,13 @@ def upsert_user(driver, user_data: Dict[str, Any]):
                     name=user_data.get("name"),
                     picture=user_data.get("picture")))
 
-def _merge_supplier_tx(tx, name: str, details: Dict[str, Any], user_email: str, tenant_id: str):
+def _merge_supplier_tx(tx, name: str, details: Dict[str, Any], shop_id: str, tenant_id: str):
     query = """
-    MATCH (u:User {email: $user_email})
+    MATCH (sh:Shop {id: $shop_id})
     MERGE (s:Supplier {name: $name, tenant_id: $tenant_id})
     
-    // Create management relationship if not exists
-    MERGE (u)-[:MANAGES_SUPPLIER]->(s)
+    // Create relationship to Shop
+    MERGE (sh)-[:HAS_SUPPLIER]->(s)
     
     SET s.address = $address,
         s.gstin = $gstin,
@@ -38,7 +38,7 @@ def _merge_supplier_tx(tx, name: str, details: Dict[str, Any], user_email: str, 
         s.updated_at = timestamp()
     """
     tx.run(query, 
-           user_email=user_email,
+           shop_id=shop_id,
            name=name,
            tenant_id=tenant_id,
            address=details.get("Address"),

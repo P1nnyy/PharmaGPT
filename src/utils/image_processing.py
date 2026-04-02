@@ -56,59 +56,66 @@ def correct_rotation(image):
     Detects and corrects the orientation of the image (0, 90, 180, 270).
     Uses a multi-factor scoring system: 
     1. Text Line Alignment (Horizontal vs Vertical)
-    2. Vertical Asymmetry (Header blocks should be in top 30%)
-    3. Grid Density (Tables are usually in the bottom 70%)
+    2. Header vs Footer Asymmetry (Supplier info is at top)
+    3. Vertical Line Detection (Tables should have vertical columns in portrait)
     """
     try:
         def get_orientation_score(img):
             if len(img.shape) == 3:
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = img
+            else: gray = img
             
             h_img, w_img = img.shape[:2]
-            
-            # 1. Text Line Scoring (Detect Horizontal Flow)
-            # Thresholding
+            # Thresholding for structural analysis
             thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
             
-            # kernel for horizontal lines (text rows)
-            # We use a kernel that is wide enough to pick up text lines but ignore noise
-            k_width = max(30, w_img // 40)
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_width, 1))
-            horizontal = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+            # 1. Horizontal Text Score (Rows)
+            # Most important: Horizontal line density for text
+            k_w = max(40, w_img // 30)
+            h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_w, 1))
+            horizontal = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, h_kernel)
             text_score = np.sum(horizontal) / 255
             
-            # 2. Asymmetry Check: Largest blocks (Headings) should be at the TOP
-            # We compare the top 25% vs bottom 25%
+            # 2. Vertical Line Score (Columns - should be vertical in correct orientation)
+            k_h = max(40, h_img // 30)
+            v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, k_h))
+            vertical = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, v_kernel)
+            v_line_score = np.sum(vertical) / 255
+
+            # 3. Asymmetry (Header Analysis)
+            # Headers are in top 30%, Footers/Tables in bottom 70%
+            # We look for "Large Blocks" (Supplier Name/Logos) in the top
             top_zone = thresh[0:int(h_img * 0.25), :]
             bot_zone = thresh[int(h_img * 0.75):, :]
             
-            def get_header_complexity(zone):
-                # Dilate to join letters into words/blocks
-                k = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 5))
+            def get_block_complexity(zone):
+                # Join characters into words/lines
+                k = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 5))
                 dilated = cv2.dilate(zone, k, iterations=1)
                 cnts, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 score = 0
                 for c in cnts:
                     bx, by, bw, bh = cv2.boundingRect(c)
-                    # Headers are usually very wide and taller than body text
-                    if bw > 150 and bh > 15:
+                    # Headers are usually very wide (supplier name) and taller than body text
+                    if bw > 150:
+                        # Larger Weight for tall/wide text blocks (Headers)
                         score += (bw * bh)
                 return score
 
-            top_h_score = get_header_complexity(top_zone)
-            bot_h_score = get_header_complexity(bot_zone)
+            top_h_score = get_block_complexity(top_zone)
+            bot_h_score = get_block_complexity(bot_zone)
             
-            # Vertical Bias: Invoices usually have a dense header area and a complex footer
-            # But the supplier logo/name is almost always at the very top.
+            # Bias Calculation
             bias = 1.0
-            if top_h_score > bot_h_score * 1.5:
-                bias = 2.5 # Strong confidence in this orientation
-            elif bot_h_score > top_h_score * 1.5:
-                bias = 0.2 # Likely upside down
+            # If the top has significantly more "header-like" blocks than the bottom
+            # In an upside down image, the bot_h_score will be high because it contains the physical top.
+            if top_h_score > bot_h_score * 2.0:
+                bias = 3.0 # Top looks like a header
+            elif bot_h_score > top_h_score * 2.0:
+                bias = 0.3 # Bottom looks like a header (Upside down!)
                 
-            return text_score * bias
+            # Final scoring: Vertical lines are also a strong signal for portrait
+            return (text_score + (v_line_score * 2.0)) * bias
 
         # Test orientations
         orientations = [
@@ -124,16 +131,17 @@ def correct_rotation(image):
         
         for angle, img in orientations:
             score = get_orientation_score(img)
-            # Portrait bias (standard for mobile uploads)
+            # Orientation Preference: Portrait is standard for invoices
             h, w = img.shape[:2]
-            if h > w: score *= 1.2
+            if h > w: 
+                score *= 2.0 # Strong portrait bias
             
             if score > best_score:
                 best_score = score
                 best_img = img
                 best_angle = angle
         
-        logger.info(f"ImageProcessing: Auto-Rotation determined {best_angle}° (Score: {best_score:.0f})")
+        logger.info(f"ImageProcessing: Auto-Rotation determined {best_angle}° (Final Score: {best_score:.0f})")
         return best_img
 
     except Exception as e:

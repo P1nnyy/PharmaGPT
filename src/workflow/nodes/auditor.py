@@ -7,8 +7,56 @@ from src.workflow.state import InvoiceState as InvoiceStateDict
 from src.utils.logging_config import get_logger
 from src.domain.normalization import parse_float
 from src.domain.constants import BLACKLIST_KEYWORDS, AUDITOR_CONFIG, SCHEME_PATTERNS
+from src.services.ai_client import manager
+from src.services.mistake_memory import MEMORY
+from src.utils.ai_retry import ai_retry
 
 logger = get_logger("auditor")
+
+@ai_retry
+async def llm_hallucination_cleanup(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rules_list = MEMORY.get_rules()
+    memory_rules = "\n    ".join([f"- {r}" for r in rules_list]) if rules_list else "- No previous mistakes recorded."
+
+    prompt = f"""
+    You are an Expert Pharmacy Data Auditor.
+    I am giving you a JSON array of invoice line items mapped by an AI.
+    Your task is to CLEAN UP these items logically BEFORE they undergo programmatic deduplication.
+
+    CRITICAL RULES TO FOLLOW (Learned from mistakes.json):
+    {memory_rules}
+
+    Return the cleaned items as a valid JSON array. Do not remove any items unless instructed by the rules.
+    Use the exact same schema.
+
+    Raw Extracted Items:
+    {json.dumps(items, indent=2)}
+    
+    Output format:
+    [
+        {{ ...item... }},
+        {{ ...item... }}
+    ]
+    """
+    
+    try:
+        response = await manager.generate_content_async(
+            model="gemini-2.0-flash",
+            contents=[prompt]
+        )
+        text = response.text.strip().replace("```json", "").replace("```", "")
+        cleaned_items = json.loads(text)
+        
+        if isinstance(cleaned_items, dict):
+            for k, v in cleaned_items.items():
+                if isinstance(v, list):
+                    return v
+        if isinstance(cleaned_items, list):
+            return cleaned_items
+        return items
+    except Exception as e:
+        logger.error(f"Auditor LLM Cleanup Failed: {e}")
+        return items
 
 async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     """
@@ -22,6 +70,10 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
     
     if not image_path or not line_items:
         return {"error_logs": ["Auditor: Missing input data."]}
+
+    # --- LLM CLEANUP PASS ---
+    logger.info("Auditor: Initiating LLM hallucination cleanup based on mistakes.json...")
+    line_items = await llm_hallucination_cleanup(line_items)
 
     # --- PHASE 3: THE AGGREGATION "CLUBBING" ENGINE ---
     # Rule: If Product and Batch match, SUM them.
@@ -77,6 +129,18 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 item["Amount"] = n_val
                 item["Logic_Note"] = item.get("Logic_Note", "") + " [Decimal Fix]"
 
+            # 2a. RETURN ITEM DETECTION (New Feature)
+            # If item name contains "RETURN", negate the amount to ensure sum is correct
+            is_return_keyword = any(k in desc_lower for k in ["return", "cr note", "credit note", "less", "cr.note"])
+            if is_return_keyword:
+                logger.info(f"Auditor: Detected return item '{desc_lower}'. Negating amount.")
+                n_val = -abs(n_val) # Ensure it's negative
+                q_val = -abs(q_val)
+                item["Amount"] = n_val
+                item["Qty"] = q_val
+                item["Is_Return"] = True
+                item["Logic_Note"] = (item.get("Logic_Note", "") + " [Return Item - Negated]").strip()
+            
             # 3. Create Aggregation Key (Product + Batch)
             # Use raw description but standardized tokens
             p_key = " ".join(str(item.get("Product", "")).strip().lower().split())
@@ -148,13 +212,36 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
              except:
                  pass
     
+    # 6. PRICE PLAUSIBILITY CHECK (Self-Healing)
+    # Check for Column Swap: MRP <= Rate (Invalid in retail pharmacy)
+    swap_detected = False
+    swap_count = 0
+    valid_p_count = 0
+    for item in deduped_line_items:
+        try:
+            m_val = parse_float(item.get("MRP") or 0)
+            r_val = parse_float(item.get("Rate") or 0)
+            if m_val > 0 and r_val > 0:
+                valid_p_count += 1
+                if m_val <= r_val: # Should be MRP > Rate
+                    swap_count += 1
+        except: pass
+    
+    if valid_p_count > 0 and (swap_count / valid_p_count) > 0.3: # > 30% Mismatch
+        logger.warning(f"Auditor: SUSPECTED COLUMN SWAP! ({swap_count}/{valid_p_count} items have MRP <= Rate)")
+        swap_detected = True
+
     # Strict Python list comprehension to purge invalid items and nulls
     cleaned_items = [
         item for item in deduped_line_items
         if item is not None and isinstance(item, dict) and (item.get('name') or item.get('Product') or item.get('Standard_Item_Name') or item.get('Amount') or item.get('Net_Line_Amount'))
     ]
 
-    return {"line_items": cleaned_items, "global_modifiers": cleaned_modifiers}
+    return {
+        "line_items": cleaned_items, 
+        "global_modifiers": cleaned_modifiers,
+        "column_swap_mrp": swap_detected
+    }
 
 def _reconcile_quantities_with_math(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """

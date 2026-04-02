@@ -63,7 +63,6 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
                  logger.error(f"Failed to upload to R2 in background: {e}")
 
         # 2. Run Extraction (The Single Source of Truth)
-        from src.domain.persistence import update_invoice_status
         
         async def on_graph_update(node, message):
             logger.info(f"AG-UI Update [{invoice_id}]: {message}")
@@ -101,7 +100,7 @@ async def process_invoice_background(invoice_id, local_path, public_url, user_em
         # Construct Final Result State
         supplier_name = extracted_data.get("Supplier_Name", "")
         # Run normalization to map internal schema (Product, Batch, Qty) to UI schema (Standard_Item_Name, Batch_No, Standard_Quantity)
-        line_items_results = extracted_data.get("Line_Items", [])
+        line_items_results = extracted_data.get("Line_Items") or []
         normalized_items = []
         for item in line_items_results:
              normalized = normalize_line_item(item, supplier_name)
@@ -166,13 +165,13 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
             # But user might want to fill gaps. Let's check first.
             
             check_query = """
-            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
+            MATCH (s:Shop {id: $shop_id})-[:HAS_PRODUCT]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
             RETURN gp.manufacturer as m, gp.salt_composition as s
             """
             
             needs_enrichment = True
             with driver.session() as session:
-                rec = session.execute_read(lambda tx: tx.run(check_query, user_email=user_email, name=product_name, tenant_id=tenant_id).single())
+                rec = session.execute_read(lambda tx: tx.run(check_query, shop_id=tenant_id, name=product_name, tenant_id=tenant_id).single())
                 if rec and rec["m"] and rec["m"] != "Unknown" and rec["s"]:
                      needs_enrichment = False
             
@@ -196,19 +195,19 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
 
             # Update DB
             update_query = """
-            MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
+            MATCH (s:Shop {id: $shop_id})-[:HAS_PRODUCT]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
             SET gp.manufacturer = $manufacturer,
                 gp.salt_composition = $salt,
                 gp.category = $category,
                 gp.is_enriched = true,
-                gp.needs_review = $needs_review,
+                gp.needs_review = coalesce(gp.needs_review, false) OR $needs_review,
                 gp.pack_size_primary = $psp,
                 gp.updated_at = timestamp()
             """
             
             with driver.session() as session:
                 session.execute_write(lambda tx: tx.run(update_query, 
-                            user_email=user_email,
+                            shop_id=tenant_id,
                             name=product_name,
                             tenant_id=tenant_id,
                             manufacturer=result.get("manufacturer"),
@@ -232,13 +231,13 @@ async def enrich_invoice_items_background(normalized_items: list, user_email: st
                 logger.info(f"Correcting Base Unit for {product_name} -> {new_base_unit} (Cat: {enrichment_category})")
                 
                 unit_update_query = """
-                MATCH (u:User {email: $user_email})-[:MANAGES]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
+                MATCH (s:Shop {id: $shop_id})-[:HAS_PRODUCT]->(gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
                 SET gp.base_unit = $base_unit,
                     gp.unit_name = $base_unit
                 """
                 with driver.session() as session:
                     session.execute_write(lambda tx: tx.run(unit_update_query, 
-                                user_email=user_email, 
+                                shop_id=tenant_id, 
                                 name=product_name, 
                                 tenant_id=tenant_id,
                                 base_unit=new_base_unit))

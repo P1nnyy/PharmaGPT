@@ -8,8 +8,6 @@
     "CRITICAL: Watch out for missed decimal points. If MRP is > 1000, check if it should be divided by 100 (e.g. 16500 -> 165.00).",
     "CRITICAL: Batch Numbers like 'Batch 123' and '123' are the SAME. Merge them.",
     "CRITICAL: Do NOT list the same item twice. If Product and Batch match, SUM them.",
-    "CRITICAL: Quantity must be an INTEGER (Whole Packs). If you see '1.84', it means '2'. Round decimals UP.",
-    "CRITICAL: Amount matches the Quantity. If you extract 1.84 as 2, ensure you extract the Amount that corresponds to it (or keep original Amount and let Solver adjust Rate).",
     "CRITICAL: Perform a Sanity Check: Does 'Qty * Rate' approx equal 'Amount'? If not, check for missing decimal points in Rate or Amount.",
     "CRITICAL: Column Selection: If you see 'Total' (often Gross) and 'Amount' (often Net), prefer 'Amount'.",
     "CRITICAL: 'Total Cost' mismatch is often due to picking 'Taxable Value' or 'Gross Total' instead of 'Net Amount'. Pick the lowest final column.",

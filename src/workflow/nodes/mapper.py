@@ -62,8 +62,20 @@ async def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     rules_list = MEMORY.get_rules()
     memory_rules = "\n    ".join([f"- {r}" for r in rules_list]) if rules_list else "- No previous mistakes recorded."
     
-    # C. Model Setup (Context Handling)
-    context_text = "\n".join(raw_rows)
+    # C. Model Setup (Context Handling with Deduplication)
+    # If multiple zones overlap and capture the same table, we deduplicate them here.
+    unique_rows = []
+    seen_content = set()
+    for row in raw_rows:
+        # Simple hash of non-whitespace content to catch near-identical redundant extractions
+        content_key = "".join(row.split()).lower()
+        if content_key not in seen_content:
+            unique_rows.append(row)
+            seen_content.add(content_key)
+        else:
+            logger.info("Mapper: Dropped redundant table fragment (Overlap detected).")
+            
+    context_text = "\n".join(unique_rows)
     
     # --- D. RAG: Dynamic Few-Shotting ---
     cheat_sheet = "No similar examples found."

@@ -9,29 +9,29 @@ from neo4j.exceptions import ClientError
 
 logger = get_logger(__name__)
 
-def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]], user_email: str, tenant_id: str, supplier_details: Dict[str, Any] = None):
+def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, normalized_items: List[Dict[str, Any]], shop_id: str, tenant_id: str, supplier_details: Dict[str, Any] = None):
     """
-    Ingests invoice and line item data into Neo4j, scoped to a specific User, Tenant, and Invoice ID.
+    Ingests invoice and line item data into Neo4j, anchored to a Shop.
     """
     
     # Use the finalized grand total from the extraction object
     grand_total = getattr(invoice_data, 'grand_total', 0.0)
     
     def _full_ingestion_tx(tx):
-        # 1. Update/Merge Invoice (Scoped to User, Tenant, and ID)
-        _create_invoice_tx(tx, invoice_id, invoice_data, grand_total, user_email, tenant_id)
+        # 1. Update/Merge Invoice (Scoped to Shop)
+        _create_invoice_tx(tx, invoice_id, invoice_data, grand_total, shop_id, tenant_id)
         
-        # 2. Merge Separate Supplier Node
+        # 2. Merge Separate Supplier Node (Can still keep user_email for audit if needed, but shop is anchor)
         if supplier_details:
             supplier_name = invoice_data.Supplier_Name
-            _merge_supplier_tx(tx, supplier_name, supplier_details, user_email, tenant_id)
+            _merge_supplier_tx(tx, supplier_name, supplier_details, shop_id, tenant_id)
         
         # 3. Clean up existing line items for this specific invoice
-        tx.run("MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", 
-               invoice_id=invoice_id, tenant_id=tenant_id)
+        tx.run("MATCH (s:Shop {id: $shop_id})-[:HAS_INVOICE]->(i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})-[r:CONTAINS]->(l:Line_Item) DETACH DELETE l", 
+               shop_id=shop_id, invoice_id=invoice_id, tenant_id=tenant_id)
 
         # 4. Process all items in a single batch transaction
-        _ingest_line_items_batch_tx(tx, invoice_data.Invoice_No, normalized_items, user_email, tenant_id, invoice_id=invoice_id)
+        _ingest_line_items_batch_tx(tx, invoice_data.Invoice_No, normalized_items, shop_id, tenant_id, invoice_id=invoice_id)
 
     try:
         with driver.session() as session:
@@ -42,18 +42,13 @@ def ingest_invoice(driver, invoice_id: str, invoice_data: InvoiceExtraction, nor
         logger.error(f"Detailed Ingestion Error for Invoice {invoice_data.Invoice_No}: {e}")
         raise e
 
-def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, grand_total: float, user_email: str, tenant_id: str):
+def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, grand_total: float, shop_id: str, tenant_id: str):
     query = """
-    MATCH (u:User {email: $user_email})
-    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    MATCH (s:Shop {id: $shop_id})
     MATCH (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     
-    // Ensure this user owns it
-    MERGE (u)-[:OWNS]->(i)
-    
-    FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
-        MERGE (i)-[:BELONGS_TO]->(shop)
-    )
+    // Ensure this Shop owns it
+    MERGE (s)-[:HAS_INVOICE]->(i)
     
     SET i.status = 'CONFIRMED',
         i.invoice_number = $invoice_no,
@@ -65,7 +60,7 @@ def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, gra
         i.updated_at = timestamp()
     """
     tx.run(query, 
-           user_email=user_email,
+           shop_id=shop_id,
            invoice_id=invoice_id,
            tenant_id=tenant_id,
            invoice_no=invoice_data.Invoice_No, 
@@ -74,18 +69,17 @@ def _create_invoice_tx(tx, invoice_id: str, invoice_data: InvoiceExtraction, gra
            grand_total=grand_total,
            image_path=invoice_data.image_path)
 
-def create_processing_invoice(driver, invoice_id: str, filename: str, image_path: str, user_email: str, tenant_id: str):
+def create_processing_invoice(driver, invoice_id: str, filename: str, image_path: str, shop_id: str, tenant_id: str):
     """
-    Creates an initial Invoice node with status 'PROCESSING'.
-    Used for immediate feedback before analysis completes.
+    Creates an initial Invoice node with status 'PROCESSING', anchored to a Shop.
     """
     with driver.session() as session:
-        session.execute_write(_create_processing_tx, invoice_id, filename, image_path, user_email, tenant_id)
+        session.execute_read(lambda tx: tx.run("MERGE (s:Shop {id: $id})", id=shop_id)) # Ensure shop exists
+        session.execute_write(_create_processing_tx, invoice_id, filename, image_path, shop_id, tenant_id)
 
-def _create_processing_tx(tx, invoice_id, filename, image_path, user_email, tenant_id):
+def _create_processing_tx(tx, invoice_id, filename, image_path, shop_id, tenant_id):
     query = """
-    MATCH (u:User {email: $user_email})
-    OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
+    MATCH (s:Shop {id: $shop_id})
     MERGE (i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})
     ON CREATE SET 
         i.status = 'PROCESSING',
@@ -95,14 +89,10 @@ def _create_processing_tx(tx, invoice_id, filename, image_path, user_email, tena
         i.created_at = timestamp(),
         i.updated_at = timestamp()
         
-    MERGE (u)-[:OWNS]->(i)
-    
-    FOREACH (shop IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
-        MERGE (i)-[:BELONGS_TO]->(shop)
-    )
+    MERGE (s)-[:HAS_INVOICE]->(i)
     """
     tx.run(query, 
-           user_email=user_email,
+           shop_id=shop_id,
            invoice_id=invoice_id,
            tenant_id=tenant_id,
            filename=filename,

@@ -39,6 +39,14 @@ async def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             "error_metadata": {"last_error": error_type, "total_attempts": current_total}
         }
 
+    # 1.5 - SELF-HEALING LOOP: Check for Column Swap Flag from Auditor
+    if state.get("column_swap_mrp"):
+        logger.warning("Critic: Auditor flagged a SUSPECTED COLUMN SWAP. Requesting self-correction.")
+        return retry_response(
+            reason="CRITICAL: You swapped the MRP and Rate columns. The current MRP is mathematically too low for this product to be plausible. Re-examine the image, identify the true MRP column (which is typically the highest unit price), and try again.",
+            error_type="column_swap_retry"
+        )
+
     if not lines:
         logger.warning("Critic: Missing lines. Requesting RETRY.")
         return retry_response("Extraction yielded 0 items. Retry with Full Page Scan.", "missing_lines")
@@ -84,17 +92,9 @@ async def critique_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
 
     if diff_percent < 1.0:
         logger.info(f"Critic: Match Exact (or close). APPROVE.")
-        headers = state.get("global_modifiers", {})
-        final_output = headers.copy()
-        final_output["Line_Items"] = lines
-        supplier_details = state.get("supplier_details")
-        if supplier_details:
-             final_output["supplier_details"] = supplier_details
-        
         return {
             "critic_verdict": "APPROVE", 
-            "correction_factor": 1.0,
-            "final_output": final_output
+            "correction_factor": 1.0
         } 
         
     elif ratio > 1.0 and ratio < 1.30:

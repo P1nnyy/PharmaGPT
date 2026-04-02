@@ -243,6 +243,8 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "total_base_units": 1,
             "conversion_factor": 1,
             "base_unit": base_unit,
+            "primary_unit_name": base_unit,
+            "secondary_unit_name": base_unit,
             "type": "LIQUID_WEIGHT"
         }
         
@@ -261,7 +263,6 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
         elif any(x in s for x in ['VIAL', ' V ']): unit = 'Vial'
         elif any(x in s for x in ['AMPOULE', ' AMP ']): unit = 'Ampoule'
         elif any(x in s for x in ['BOTTLE', ' B ']): unit = 'Bottle'
-        elif any(x in s for x in ['TABLET', ' TABS ', ' TAB ']): unit = 'Tablet'
         
         return {
             "primary_pack_size": qty,
@@ -269,6 +270,8 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "total_base_units": qty,
             "conversion_factor": qty,
             "base_unit": unit,
+            "primary_unit_name": unit,
+            "secondary_unit_name": 'Strip' if unit in ['Tablet', 'Capsule'] else 'Box',
             "type": "TABLET_STRIP" if unit in ['Tablet', 'Capsule'] else "LIQUID_UNIT"
         }
         
@@ -284,6 +287,8 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "total_base_units": inner * outer, 
             "conversion_factor": inner * outer,
             "base_unit": 'Tablet', # Defaulting to Tablet/Capsule for NxM
+            "primary_unit_name": 'Tablet',
+            "secondary_unit_name": 'Strip',
             "type": "TABLET_BOX"
         }
 
@@ -297,6 +302,8 @@ def structure_packaging_hierarchy(pack_string: str, enrichment_category: str = N
             "total_base_units": qty,
             "conversion_factor": qty,
             "base_unit": 'Unit',
+            "primary_unit_name": 'Unit',
+            "secondary_unit_name": 'Box',
             "type": "SINGLE_UNIT"
         }
 

@@ -13,8 +13,8 @@ async def read_inventory(user_email: str = Depends(get_current_user_email)):
     if not driver:
         return []
     try:
-        tenant_id = tenant_id_ctx.get()
-        data = get_inventory(driver, user_email=user_email, tenant_id=tenant_id)
+        shop_id = tenant_id_ctx.get()
+        data = get_inventory(driver, shop_id, shop_id)
         return data
     except Exception as e:
         logger.error(f"Failed to fetch inventory: {e}")

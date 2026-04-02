@@ -4,20 +4,18 @@ from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-def get_activity_log(driver, user_email: str, tenant_id: str, role: str = "Employee"):
+def get_activity_log(driver, shop_id: str, tenant_id: str, role: str = "Employee"):
     """
-    Fetches the last 20 processed invoices for the dashboard history, scoped to User/Role and Tenant.
+    Fetches the last 20 processed invoices for the shop, anchored to Shop.
     """
     query = """
-    MATCH (u:User {email: $user_email})
-    MATCH (inv:Invoice {tenant_id: $tenant_id, status: 'CONFIRMED'})
-    WHERE $role = 'Admin' OR (u)-[:OWNS]->(inv)
+    MATCH (s:Shop {id: $shop_id})
+    MATCH (s)-[:HAS_INVOICE]->(inv:Invoice {tenant_id: $tenant_id, status: 'CONFIRMED'})
     
-    OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
+    OPTIONAL MATCH (s)-[:HAS_SUPPLIER]->(supp:Supplier {name: inv.supplier_name})
     
-    // Get the User who OWNS this invoice (Deduplicate)
+    // Get the User who OWNS this invoice (Audit/Credit)
     OPTIONAL MATCH (owner:User)-[:OWNS]->(inv)
-    WITH inv, supp, u, s, collect(owner)[0] as first_owner
     
     RETURN inv.invoice_id as id,
            inv.invoice_number as invoice_number, 
@@ -30,7 +28,7 @@ def get_activity_log(driver, user_email: str, tenant_id: str, role: str = "Emplo
            supp.phone as supplier_phone,
            supp.dl_no as supplier_dl,
            supp.address as supplier_address,
-           coalesce(first_owner.name, 'User') as saved_by
+           coalesce(owner.name, 'Admin') as saved_by
     ORDER BY inv.updated_at DESC LIMIT 20
     """
     with driver.session() as session:
@@ -39,50 +37,47 @@ def get_activity_log(driver, user_email: str, tenant_id: str, role: str = "Emplo
              "supplier_name": record["supplier_name"] or "Unknown Supplier",
              "total": record["total"] or 0.0,
              "saved_by": record["saved_by"] or "User"} 
-            for record in tx.run(query, user_email=user_email, tenant_id=tenant_id, role=role)
+            for record in tx.run(query, shop_id=shop_id, tenant_id=tenant_id, role=role)
         ])
 
-def get_inventory(driver, user_email: str, tenant_id: str, role: str = "Employee"):
+def get_inventory(driver, shop_id: str, tenant_id: str, role: str = "Employee"):
     """
-    Fetches aggregated inventory data for the dashboard, scoped to User/Role and Tenant.
+    Fetches aggregated inventory data for the Shop.
     """
     query = """
-    MATCH (u:User {email: $user_email})
-    MATCH (inv:Invoice {tenant_id: $tenant_id, status: 'CONFIRMED'})-[:CONTAINS]->(l:Line_Item)
-    WHERE $role = 'Admin' OR (u)-[:OWNS]->(inv)
-      
+    MATCH (s:Shop {id: $shop_id})
+    MATCH (s)-[:HAS_INVOICE]->(inv:Invoice {tenant_id: $tenant_id, status: 'CONFIRMED'})-[:CONTAINS]->(l:Line_Item)
     MATCH (l)-[:IS_VARIANT_OF]->(gp:GlobalProduct)
+    
     RETURN gp.name as product_name, 
            sum(l.quantity) as total_quantity, 
            max(l.mrp) as mrp
     ORDER BY total_quantity DESC
     """
     with driver.session() as session:
-        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, user_email=user_email, tenant_id=tenant_id, role=role)])
+        return session.execute_read(lambda tx: [dict(record) for record in tx.run(query, shop_id=shop_id, tenant_id=tenant_id, role=role)])
 
-def get_invoice_details(driver, invoice_no, user_email: str, tenant_id: str, role: str = "Employee"):
+def get_invoice_details(driver, invoice_no, shop_id: str, tenant_id: str, role: str = "Employee"):
     """
-    Fetches full invoice details and line items, checking User/Role ownership and Tenant context.
+    Fetches full invoice details anchored to Shop.
     """
     query = """
-    MATCH (u:User {email: $user_email})
-    MATCH (inv:Invoice {invoice_number: $invoice_no, tenant_id: $tenant_id})
-    WHERE $role = 'Admin' OR (u)-[:OWNS]->(inv)
+    MATCH (s:Shop {id: $shop_id})-[:HAS_INVOICE]->(inv:Invoice {invoice_number: $invoice_no, tenant_id: $tenant_id})
     
-    OPTIONAL MATCH (u)-[:OWNS]->(supp:Supplier {name: inv.supplier_name})
+    OPTIONAL MATCH (s)-[:HAS_SUPPLIER]->(supp:Supplier {name: inv.supplier_name})
     OPTIONAL MATCH (inv)-[:CONTAINS]->(l:Line_Item)
     OPTIONAL MATCH (l)-[:IS_VARIANT_OF]->(p:GlobalProduct)
     RETURN inv, supp, collect({
         line: l, 
         product: p,
-        raw_desc: l.raw_description, # Compatibility for HTML report
+        raw_desc: l.raw_description,
         stated_net: l.stated_net_amount,
         batch_no: l.batch_no,
         hsn_code: l.hsn_code
     }) as items
     """
     with driver.session() as session:
-        result = session.execute_read(lambda tx: tx.run(query, invoice_no=invoice_no, user_email=user_email, tenant_id=tenant_id, role=role).single())
+        result = session.execute_read(lambda tx: tx.run(query, invoice_no=invoice_no, shop_id=shop_id, tenant_id=tenant_id, role=role).single())
         
     if not result:
         return None
@@ -90,7 +85,6 @@ def get_invoice_details(driver, invoice_no, user_email: str, tenant_id: str, rol
     invoice_node = dict(result["inv"]) if result["inv"] else {}
     supplier_node = dict(result["supp"]) if result["supp"] else {}
     
-    # Merge supplier info into invoice dict for convenience
     invoice_data = {**invoice_node}
     invoice_data["supplier_phone"] = supplier_node.get("phone")
     invoice_data["supplier_gst"] = supplier_node.get("gstin")
@@ -102,7 +96,6 @@ def get_invoice_details(driver, invoice_no, user_email: str, tenant_id: str, rol
         l_node = dict(item["line"]) if item["line"] else {}
         p_node = dict(item["product"]) if item["product"] else {}
         
-        # Construct flat item dict
         line_item = {
             **l_node,
             "product_name": (p_node.get("name") or l_node.get("raw_description") or "Unknown Item"),
@@ -118,26 +111,23 @@ def get_invoice_details(driver, invoice_no, user_email: str, tenant_id: str, rol
         "line_items": line_items
     }
 
-def get_grouped_invoice_history(driver, user_email: str, tenant_id: str, role: str = "Employee"):
+def get_grouped_invoice_history(driver, shop_id: str, tenant_id: str, role: str = "Employee"):
     """
-    Fetches invoices grouped by Supplier for the History View, scoped to User/Role and Tenant.
+    Fetches invoices grouped by Supplier for the Shop.
     """
     query = """
-    MATCH (u:User {email: $user_email})
-    MATCH (inv:Invoice {tenant_id: $tenant_id, status: 'CONFIRMED'})
-    WHERE $role = 'Admin' OR (u)-[:OWNS]->(inv)
+    MATCH (s:Shop {id: $shop_id})-[:HAS_INVOICE]->(inv:Invoice {tenant_id: $tenant_id, status: 'CONFIRMED'})
     
     // Group by Supplier Name
-    WITH coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, inv
+    WITH s, coalesce(inv.supplier_name, 'Unknown Supplier') as supplier_name, inv
     
-    // Get the User who OWNS this invoice (Deduplicate)
+    // Audit Trail (User who owns the upload)
     OPTIONAL MATCH (owner:User)-[:OWNS]->(inv)
-    WITH supplier_name, inv, collect(owner)[0] as first_owner
     
     WITH supplier_name, 
          inv, 
-         coalesce(first_owner.name, 'Unknown') as uploader_name,
-         coalesce(first_owner.email, '') as uploader_email
+         coalesce(owner.name, 'Admin') as uploader_name,
+         coalesce(owner.email, '') as uploader_email
     
     WITH supplier_name, 
          collect({
@@ -162,14 +152,13 @@ def get_grouped_invoice_history(driver, user_email: str, tenant_id: str, role: s
     
     with driver.session() as session:
         def _read_history(tx):
-            result = tx.run(query, user_email=user_email, tenant_id=tenant_id, role=role)
+            result = tx.run(query, shop_id=shop_id, tenant_id=tenant_id, role=role)
             data = []
             for record in result:
                 supplier_name = record["supplier_name"]
                 total_spend = record["total_spend"]
                 invoices = record["inv_details"]
                 
-                # Sort invoices by date
                 invoices.sort(key=lambda x: x.get("date") or "", reverse=True)
                 
                 data.append({

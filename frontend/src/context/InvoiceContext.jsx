@@ -273,7 +273,7 @@ export const InvoiceProvider = ({ children }) => {
                                 return !recentlySavedIdsRef.current.has(d.id.toString());
                             })
                             .map(d => {
-                                // Try to find local item by ID OR by filename (for newly uploaded items whose IDs we don't know yet)
+                                // Try to find local item by ID OR by filename
                                 let localItem = localMap.get(d.id.toString());
                                 if (!localItem) {
                                     localItem = prevQueue.find(item => 
@@ -291,7 +291,8 @@ export const InvoiceProvider = ({ children }) => {
                                     status_message: d.status_message,
                                     warning: d.duplicate_warning,
                                     filename: d.filename || d.file?.name || localItem?.filename,
-                                    file: d.file || localItem?.file
+                                    file: d.file || localItem?.file,
+                                    rotation: localItem?.rotation || 0 // CRITICAL: Preserve manual rotation
                                 };
                             });
 
@@ -311,10 +312,17 @@ export const InvoiceProvider = ({ children }) => {
                             }
                         });
 
-                        return newQueue.sort((a, b) => {
+                        const finalItems = newQueue.sort((a, b) => {
                             const score = (s) => (s === 'completed' || s === 'duplicate' ? 3 : s === 'processing' ? 2 : 1);
                             return score(b.status) - score(a.status);
                         });
+
+                        // AUTO-SELECT FIRST IF NONE SELECTED
+                        if (!selectedQueueId && finalItems.length > 0) {
+                            setSelectedQueueId(finalItems[0].id);
+                        }
+
+                        return finalItems;
                     });
                 }
             };

@@ -44,8 +44,8 @@ async def get_drafts(
     driver = get_db_driver()
     if not driver:
         return []
-    tenant_id = tenant_id_ctx.get()
-    return get_draft_invoices(driver, user_email, tenant_id, role=role)
+    shop_id = tenant_id_ctx.get()
+    return get_draft_invoices(driver, shop_id, shop_id, role=role)
 
 @router.delete("/drafts")
 async def clear_drafts(user_email: str = Depends(get_current_user_email)):
@@ -57,8 +57,8 @@ async def clear_drafts(user_email: str = Depends(get_current_user_email)):
     task_manager.cancel_all(user_email)
     
     # 2. Cleanup Database
-    tenant_id = tenant_id_ctx.get()
-    delete_draft_invoices(driver, user_email, tenant_id)
+    shop_id = tenant_id_ctx.get()
+    delete_draft_invoices(driver, shop_id, shop_id)
     return {"status": "success", "message": "Drafts cleared and active scans cancelled"}
 @router.delete("/{invoice_id}")
 async def discard_invoice(invoice_id: str, wipe: bool = False, user_email: str = Depends(get_current_user_email), role: str = Depends(get_current_user_role)):
@@ -71,8 +71,8 @@ async def discard_invoice(invoice_id: str, wipe: bool = False, user_email: str =
     
     # 2. Delete from DB
     is_admin = (role == "Admin")
-    tenant_id = tenant_id_ctx.get()
-    delete_invoice_by_id(driver, invoice_id, user_email, tenant_id, wipe=wipe, is_admin=is_admin)
+    shop_id = tenant_id_ctx.get()
+    delete_invoice_by_id(driver, invoice_id, shop_id, shop_id, wipe=wipe, is_admin=is_admin)
     return {"status": "success", "message": f"Invoice {invoice_id} {'wiped' if wipe else 'discarded'} and scan cancelled"}
 
 @router.get("/stream-status")
@@ -168,8 +168,8 @@ async def read_invoice_items(
         raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
-        tenant_id = tenant_id_ctx.get()
-        data = get_invoice_details(driver, invoice_number, user_email=user_email, tenant_id=tenant_id, role=role)
+        shop_id = tenant_id_ctx.get()
+        data = get_invoice_details(driver, invoice_number, shop_id, shop_id, role=role)
         if not data:
             raise HTTPException(status_code=404, detail="Invoice not found")
         return data
@@ -199,13 +199,13 @@ async def upload_batch(
             await asyncio.to_thread(shutil.copyfileobj, file.file, tmp)
             processing_path = tmp.name
         
-        # Create DB entry first with tenant context
-        tenant_id = tenant_id_ctx.get()
-        create_processing_invoice(driver, invoice_id, file.filename, None, user_email, tenant_id)
+        # Create DB entry first with shop context
+        shop_id = tenant_id_ctx.get()
+        create_processing_invoice(driver, invoice_id, file.filename, None, shop_id, shop_id)
         
         # Use background_tasks for safer execution and proper context management
         background_tasks.add_task(
-            process_invoice_background, invoice_id, processing_path, None, user_email, tenant_id, file.filename
+            process_invoice_background, invoice_id, processing_path, None, user_email, shop_id, file.filename
         )
         # Registration now happens INSIDE the background task for synchronization
         
@@ -251,23 +251,19 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
         draft_id = request.invoice_data.get("id") or request.invoice_data.get("invoice_id")
         original_draft = None
         invoice_id_lookup = draft_id
+        shop_id = tenant_id_ctx.get()
 
         if invoice_no and not draft_id:
             # Legacy/Fallback: Try to find by number if ID is missing
             find_draft_query = """
-            MATCH (u:User {email: $user_email})
-            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-            WITH u, s
-            
-            MATCH (i:Invoice {tenant_id: $tenant_id})
+            MATCH (s:Shop {id: $shop_id})-[:HAS_INVOICE]->(i:Invoice {tenant_id: $tenant_id})
             WHERE i.status IN ['DRAFT', 'PROCESSING', 'ERROR'] 
               AND i.invoice_number = $invoice_no
             RETURN i.invoice_id as id, i.raw_state as state LIMIT 1
             """
             with driver.session() as session:
                 def _find_draft(tx):
-                    tenant_id = tenant_id_ctx.get()
-                    rec = tx.run(find_draft_query, user_email=user_email, tenant_id=tenant_id, invoice_no=invoice_no).single()
+                    rec = tx.run(find_draft_query, shop_id=shop_id, tenant_id=shop_id, invoice_no=invoice_no).single()
                     if rec:
                         return rec["id"], json.loads(rec["state"]) if rec["state"] else None
                     return None, None
@@ -277,17 +273,12 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
         if invoice_id_lookup and not original_draft:
             # Fetch draft data if we only have the ID
             fetch_query = """
-            MATCH (u:User {email: $user_email})
-            OPTIONAL MATCH (u)-[:OWNS_SHOP|WORKS_AT]->(s:Shop)
-            WITH u, s
-            
-            MATCH (i:Invoice {invoice_id: $id, tenant_id: $tenant_id})
+            MATCH (s:Shop {id: $shop_id})-[:HAS_INVOICE]->(i:Invoice {invoice_id: $id, tenant_id: $tenant_id})
             RETURN i.raw_state as state
             """
             with driver.session() as session:
                 def _fetch_state(tx):
-                    tenant_id = tenant_id_ctx.get()
-                    res = tx.run(fetch_query, user_email=user_email, id=invoice_id_lookup, tenant_id=tenant_id).single()
+                    res = tx.run(fetch_query, shop_id=shop_id, id=invoice_id_lookup, tenant_id=shop_id).single()
                     return res["state"] if res else None
                 state_str = session.execute_read(_fetch_state)
                 if state_str:
@@ -295,7 +286,7 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
 
         if invoice_id_lookup and original_draft:
             logger.info(f"Checking for corrections on Invoice {invoice_id_lookup}...")
-            log_correction(driver, invoice_id_lookup, original_draft, request.invoice_data, user_email)
+            log_correction(driver, invoice_id_lookup, original_draft, request.invoice_data, user_email, shop_id)
             
             original_data = original_draft.get("invoice_data", {})
             if not request.invoice_data.get("raw_text") and original_data.get("raw_text"):
@@ -309,21 +300,14 @@ async def confirm_invoice(request: ConfirmInvoiceRequest, background_tasks: Back
         invoice_obj = InvoiceExtraction(**request.invoice_data)
         supplier_details = request.invoice_data.get("supplier_details")
         
-        # Use invoice_id_lookup to update the EXACT node that was previously in draft/processing status
-        tenant_id = tenant_id_ctx.get()
-        ingest_invoice(driver, invoice_id_lookup, invoice_obj, request.normalized_items, user_email=user_email, tenant_id=tenant_id, supplier_details=supplier_details)
+        ingest_invoice(driver, invoice_id_lookup, invoice_obj, request.normalized_items, shop_id, shop_id, supplier_details=supplier_details)
         
         logger.info(f"Confirmed Invoice {invoice_obj.Invoice_No}. ID: {invoice_id_lookup}")
         
-        # Note: No need for delete_redundant_draft because ingest_invoice now 
-        # overwrites the draft node directly using its invoice_id.
-        
-        
         # Trigger Automated Enrichment and RAG Indexing in background
-        tenant_id = tenant_id_ctx.get()
-        background_tasks.add_task(enrich_invoice_items_background, request.normalized_items, user_email, tenant_id)
+        background_tasks.add_task(enrich_invoice_items_background, request.normalized_items, user_email, shop_id)
         background_tasks.add_task(index_invoice_for_rag, driver, invoice_obj)
-        background_tasks.add_task(run_supply_chain_intelligence, tenant_id, user_email)
+        background_tasks.add_task(run_supply_chain_intelligence, shop_id, user_email)
 
         return {
             "status": "success",

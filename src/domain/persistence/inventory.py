@@ -49,28 +49,27 @@ def _generate_sku(tx, product_name: str) -> str:
     # 3. Format SKU
     return f"{prefix}-{count:03d}"
 
-def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, Any]], user_email: str, tenant_id: str, invoice_id: str = None):
+def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, Any]], shop_id: str, tenant_id: str, invoice_id: str = None):
     """
     Creates multiple line items in a single transaction using UNWIND.
-    Fastest way to ingest batch data into Neo4j.
-    Now enforced with tenant_id for RLS.
+    Anchors to a Shop node instead of a User node for Multi-Tenancy.
     """
     # Use invoice_id for precise matching if available, otherwise fallback to number (legacy)
-    match_clause = "MATCH (u)-[:OWNS]->(i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})" if invoice_id else "MATCH (u)-[:OWNS]->(i:Invoice {invoice_number: $invoice_no, tenant_id: $tenant_id})"
+    match_clause = "MATCH (s)-[:HAS_INVOICE]->(i:Invoice {invoice_id: $invoice_id, tenant_id: $tenant_id})" if invoice_id else "MATCH (s)-[:HAS_INVOICE]->(i:Invoice {invoice_number: $invoice_no, tenant_id: $tenant_id})"
     
     batch_query = f"""
-    MATCH (u:User {{email: $user_email}})
+    MATCH (s:Shop {{id: $shop_id}})
     {match_clause}
     
     UNWIND $items as item
     
     // 1. Alias Lookup & Product Resolution (Scoped to Tenant)
     OPTIONAL MATCH (alias:ProductAlias {{raw_name: item.standard_item_name, tenant_id: $tenant_id}})-[:MAPS_TO]->(master:GlobalProduct {{tenant_id: $tenant_id}})
-    WITH u, i, item, coalesce(master.name, item.standard_item_name) as final_product_name
+    WITH s, i, item, coalesce(master.name, item.standard_item_name) as final_product_name
     
     // 2. Merge Global Product (Enforced with tenant_id)
     MERGE (gp:GlobalProduct {{name: final_product_name, tenant_id: $tenant_id}})
-    MERGE (u)-[:MANAGES]->(gp)
+    MERGE (s)-[:HAS_PRODUCT]->(gp)
     ON CREATE SET 
         gp.is_verified = false,
         gp.needs_review = true,
@@ -85,39 +84,63 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     MERGE (i)-[:CONTAINS]->(l)
     MERGE (l)-[:IS_VARIANT_OF]->(gp)
     
-    // 5. Merge HSN (HSN is global, but relation is specific)
-    WITH gp, l, item
-    WHERE item.hsn_code IS NOT NULL
-    MERGE (h:HSN {{code: item.hsn_code}})
-    MERGE (l)-[:BELONGS_TO_HSN]->(h)
+    // 5. Merge HSN
+    WITH s, gp, l, item
+    CALL {{
+        WITH l, item
+        WHERE item.hsn_code IS NOT NULL
+        MERGE (h:HSN {{code: item.hsn_code}})
+        MERGE (l)-[:BELONGS_TO_HSN]->(h)
+    }}
     
-    // 6. Packaging Variant tracking (Enforced with tenant_id)
-    WITH gp, l, item
-    MERGE (pv:PackagingVariant {{pack_size: item.pack_size, product_name: gp.name, tenant_id: $tenant_id}})
-    MERGE (gp)-[:HAS_VARIANT]->(pv)
-    MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
-    ON CREATE SET
-        pv.unit_name = item.unit_2nd,
-        pv.mrp = item.mrp,
-        pv.conversion_factor = item.conversion_factor,
-        pv.created_at = timestamp()
-    ON MATCH SET
-        pv.mrp = item.mrp,
-        pv.updated_at = timestamp()
+    // 6. Packaging Variant tracking (SKIP FOR RETURNS)
+    WITH s, gp, l, item
+    CALL {{
+        WITH gp, l, item, s
+        WHERE NOT item.is_return
+        MERGE (pv:PackagingVariant {{pack_size: item.pack_size, product_name: gp.name, tenant_id: item.properties.tenant_id}})
+        MERGE (gp)-[:HAS_VARIANT]->(pv)
+        MERGE (l)-[:IS_PACKAGING_VARIANT]->(pv)
+        ON CREATE SET
+            pv.unit_name = item.unit_2nd,
+            pv.mrp = item.mrp,
+            pv.conversion_factor = item.conversion_factor,
+            pv.primary_unit_name = item.primary_unit_name,
+            pv.secondary_unit_name = item.secondary_unit_name,
+            pv.created_at = timestamp()
+        ON MATCH SET
+            pv.mrp = item.mrp,
+            pv.primary_unit_name = coalesce(item.primary_unit_name, pv.primary_unit_name),
+            pv.secondary_unit_name = coalesce(item.secondary_unit_name, pv.secondary_unit_name),
+            pv.updated_at = timestamp()
+    }}
         
-    // 7. Update Master Product Info
-    SET gp.sale_price = coalesce(item.mrp, gp.sale_price),
-        gp.purchase_price = coalesce(item.unit_base_rate, gp.purchase_price),
-        gp.tax_rate = coalesce(item.total_tax_rate, gp.tax_rate),
-        gp.hsn_code = coalesce(item.hsn_code, gp.hsn_code),
-        gp.category = coalesce(item.category, gp.category),
-        gp.manufacturer = coalesce(item.manufacturer, gp.manufacturer),
-        gp.salt_composition = coalesce(item.salt, gp.salt_composition)
+    // 7. Update Master Product Info (SKIP FOR RETURNS)
+    WITH gp, item
+    CALL {{
+        WITH gp, item
+        WHERE NOT item.is_return
+        SET gp.sale_price = coalesce(item.mrp, gp.sale_price),
+            gp.purchase_price = coalesce(item.unit_base_rate, gp.purchase_price),
+            gp.tax_rate = coalesce(item.total_tax_rate, gp.tax_rate),
+            gp.hsn_code = coalesce(item.hsn_code, gp.hsn_code),
+            gp.category = coalesce(item.category, gp.category),
+            gp.manufacturer = coalesce(item.manufacturer, gp.manufacturer),
+            gp.salt_composition = coalesce(item.salt, gp.salt_composition),
+            gp.base_unit = coalesce(item.base_unit, gp.base_unit),
+            gp.unit_name = coalesce(item.base_unit, gp.unit_name)
+    }}
     
     // 8. Rebuild Hierarchy JSON (APOC)
     WITH gp
-    MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant {{tenant_id: $tenant_id}})
-    WITH gp, collect({{unit: all_v.unit_name, pack: all_v.pack_size, mrp: all_v.mrp}}) as hierarchy
+    MATCH (gp)-[:HAS_VARIANT]->(all_v:PackagingVariant {{tenant_id: gp.tenant_id}})
+    WITH gp, collect({{
+        unit: all_v.unit_name, 
+        pack: all_v.pack_size, 
+        mrp: all_v.mrp,
+        primary_unit: all_v.primary_unit_name,
+        secondary_unit: all_v.secondary_unit_name
+    }}) as hierarchy
     SET gp.packaging_hierarchy = apoc.convert.toJson(hierarchy)
     
     RETURN gp.name as name, gp.item_code as code
@@ -125,19 +148,27 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
     
     # Pre-process items for the batch
     prepared_items = []
+    from src.domain.normalization.text import structure_packaging_hierarchy
     for item in items_data:
-        pack_data = parse_pack_size(item.get("Pack_Size_Description"))
+        pack_str = item.get("Pack_Size_Description")
+        pack_data = parse_pack_size(pack_str)
+        struct = structure_packaging_hierarchy(pack_str)
         
         # Tax Calculation
         total_tax_rate = float((item.get("SGST_Percent") or 0.0) + (item.get("CGST_Percent") or 0.0) + (item.get("IGST_Percent") or 0.0))
         if total_tax_rate == 0 and (item.get("GST_Percent") or 0.0) > 0:
             total_tax_rate = float(item.get("GST_Percent"))
 
+        is_item_return = item.get("is_return", False)
+
         prepared_items.append({
             "standard_item_name": item.get("Standard_Item_Name"),
             "hsn_code": item.get("HSN_Code") or "UNKNOWN",
             "pack_size": pack_data.get("pack") or "1x1",
             "unit_2nd": item.get("Unit_2nd") or pack_data.get("unit"),
+            "base_unit": struct.get("base_unit") if struct else "Unit",
+            "primary_unit_name": struct.get("primary_unit_name") if struct else "Unit",
+            "secondary_unit_name": struct.get("secondary_unit_name") if struct else "Box",
             "mrp": item.get("MRP", 0.0),
             "conversion_factor": pack_data.get("conversion_factor", 1),
             "total_tax_rate": total_tax_rate,
@@ -145,6 +176,7 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
             "category": item.get("category") or item.get("Category"),
             "manufacturer": item.get("manufacturer"),
             "salt": item.get("salt_composition"),
+            "is_return": is_item_return,
             "properties": {
                 "pack_size": pack_data.get("pack") or "1x1",
                 "quantity": item.get("Standard_Quantity"),
@@ -163,13 +195,14 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
                 "unit_1st": item.get("Unit_1st") or pack_data.get("unit"),
                 "unit_2nd": item.get("Unit_2nd") or pack_data.get("unit"),
                 "sales_rate_a": item.get("Sales_Rate_A"),
-                "calculated_tax_amount": item.get("Calculated_Tax_Amount", 0.0)
+                "calculated_tax_amount": item.get("Calculated_Tax_Amount", 0.0),
+                "is_return": is_item_return
             }
         })
 
     # Execute Batch
     result = tx.run(batch_query, 
-                    user_email=user_email, 
+                    shop_id=shop_id, 
                     tenant_id=tenant_id,
                     invoice_no=invoice_no, 
                     invoice_id=invoice_id,
@@ -182,19 +215,19 @@ def _ingest_line_items_batch_tx(tx, invoice_no: str, items_data: List[Dict[str, 
             new_sku = _generate_sku(tx, rec["name"])
             tx.run(QUERY_UPDATE_SKU, name=rec["name"], sku=new_sku, tenant_id=tenant_id)
 
-def link_product_alias(driver, user_email: str, tenant_id: str, master_product_name: str, raw_alias: str):
+def link_product_alias(driver, shop_id: str, tenant_id: str, master_product_name: str, raw_alias: str):
     """
     Links a raw product name (alias) to a Master GlobalProduct.
     """
     with driver.session() as session:
-        session.execute_write(_link_alias_tx, user_email, tenant_id, master_product_name, raw_alias)
+        session.execute_write(_link_alias_tx, shop_id, tenant_id, master_product_name, raw_alias)
 
-def _link_alias_tx(tx, user_email, tenant_id, master_product_name, raw_alias):
+def _link_alias_tx(tx, shop_id, tenant_id, master_product_name, raw_alias):
     query = """
-    MATCH (u:User {email: $user_email})
+    MATCH (s:Shop {id: $shop_id})
     
-    // Find Master Product (must exist and be managed by user or globally available)
-    MATCH (gp:GlobalProduct {name: $master_name, tenant_id: $tenant_id})
+    // Find Master Product (scoped to Shop)
+    MATCH (s)-[:HAS_PRODUCT]->(gp:GlobalProduct {name: $master_name, tenant_id: $tenant_id})
     
     // Create Alias Node (Scoped to Tenant)
     MERGE (alias:ProductAlias {raw_name: $raw_alias, tenant_id: $tenant_id})
@@ -202,30 +235,33 @@ def _link_alias_tx(tx, user_email, tenant_id, master_product_name, raw_alias):
     // Link Alias to Master
     MERGE (alias)-[:MAPS_TO]->(gp)
     """
-    tx.run(query, user_email=user_email, tenant_id=tenant_id, master_name=master_product_name, raw_alias=raw_alias)
+    tx.run(query, shop_id=shop_id, tenant_id=tenant_id, master_name=master_product_name, raw_alias=raw_alias)
 
-def rename_product_with_alias(driver, user_email: str, tenant_id: str, old_name: str, new_name: str):
+def rename_product_with_alias(driver, shop_id: str, tenant_id: str, old_name: str, new_name: str):
     """
     Renames a GlobalProduct or Merges it if the new name already exists.
-    In both cases, creates a ProductAlias for the old name pointing to the new name.
+    Anchored to Shop.
     """
     with driver.session() as session:
-        session.execute_write(_rename_product_tx, user_email, tenant_id, old_name, new_name)
+        session.execute_write(_rename_product_tx, shop_id, tenant_id, old_name, new_name)
 
-def _rename_product_tx(tx, user_email, tenant_id, old_name, new_name):
+def _rename_product_tx(tx, shop_id, tenant_id, old_name, new_name):
     # Check if target exists (Merge Case vs Rename Case)
-    check_q = "MATCH (gp:GlobalProduct {name: $new_name, tenant_id: $tenant_id}) RETURN count(gp) as cnt"
-    target_exists = tx.run(check_q, new_name=new_name, tenant_id=tenant_id).single()["cnt"] > 0
+    check_q = """
+    MATCH (s:Shop {id: $shop_id})-[:HAS_PRODUCT]->(gp:GlobalProduct {name: $new_name, tenant_id: $tenant_id})
+    RETURN count(gp) as cnt
+    """
+    target_exists = tx.run(check_q, shop_id=shop_id, tenant_id=tenant_id, new_name=new_name).single()["cnt"] > 0
     
     if target_exists:
         # MERGE CASE: Repoint & Delete Old
         logger.info(f"Merging '{old_name}' into existing '{new_name}'")
         query = """
-        MATCH (u:User {email: $user_email})
-        MATCH (old:GlobalProduct {name: $old_name, tenant_id: $tenant_id})
-        MATCH (new:GlobalProduct {name: $new_name, tenant_id: $tenant_id})
+        MATCH (s:Shop {id: $shop_id})
+        MATCH (s)-[:HAS_PRODUCT]->(old:GlobalProduct {name: $old_name, tenant_id: $tenant_id})
+        MATCH (s)-[:HAS_PRODUCT]->(new:GlobalProduct {name: $new_name, tenant_id: $tenant_id})
         
-        // 1. Repoint Alias links (Aliases pointing to Old now point to New)
+        // 1. Repoint Alias links
         OPTIONAL MATCH (alias:ProductAlias {tenant_id: $tenant_id})-[r1:MAPS_TO]->(old)
         DELETE r1
         MERGE (alias)-[:MAPS_TO]->(new)
@@ -239,7 +275,6 @@ def _rename_product_tx(tx, user_email, tenant_id, old_name, new_name):
         OPTIONAL MATCH (old)-[r3:HAS_VARIANT]->(v:PackagingVariant {tenant_id: $tenant_id})
         DELETE r3
         MERGE (new)-[:HAS_VARIANT]->(v)
-        // Update variant product_name property
         SET v.product_name = $new_name
         
         // 4. Create Alias for the Old Name itself
@@ -249,16 +284,16 @@ def _rename_product_tx(tx, user_email, tenant_id, old_name, new_name):
         // 5. Delete Old Node
         DETACH DELETE old
         """
-        tx.run(query, user_email=user_email, tenant_id=tenant_id, old_name=old_name, new_name=new_name)
+        tx.run(query, shop_id=shop_id, tenant_id=tenant_id, old_name=old_name, new_name=new_name)
         
     else:
         # RENAME CASE: Just update name and create alias
         logger.info(f"Renaming '{old_name}' to new '{new_name}'")
         query = """
-        MATCH (u:User {email: $user_email})
-        MATCH (gp:GlobalProduct {name: $old_name, tenant_id: $tenant_id})
+        MATCH (s:Shop {id: $shop_id})
+        MATCH (s)-[:HAS_PRODUCT]->(gp:GlobalProduct {name: $old_name, tenant_id: $tenant_id})
         
-        // 1. Create Alias for Old Name (Scoped to Tenant)
+        // 1. Create Alias for Old Name
         MERGE (alias:ProductAlias {raw_name: $old_name, tenant_id: $tenant_id})
         MERGE (alias)-[:MAPS_TO]->(gp)
         
@@ -271,4 +306,4 @@ def _rename_product_tx(tx, user_email, tenant_id, old_name, new_name):
         OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(pv:PackagingVariant {tenant_id: $tenant_id})
         SET pv.product_name = $new_name
         """
-        tx.run(query, user_email=user_email, tenant_id=tenant_id, old_name=old_name, new_name=new_name)
+        tx.run(query, shop_id=shop_id, tenant_id=tenant_id, old_name=old_name, new_name=new_name)

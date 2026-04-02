@@ -82,22 +82,25 @@ async def survey_document(state: InvoiceStateDict) -> Dict[str, Any]:
         3. Header: Top section with Supplier Name, Invoice Date, Invoice No.
         4. Footer: Bottom section with Grand Total, Net Payable, Bank Details.
         
-        Output JSON Schema: 
+        Output JSON Schema (Normalized Coordinates 0-1000): 
         [
             {
                 "zone_id": "header_1",
                 "type": "header",
+                "ymin": 0, "xmin": 0, "ymax": 200, "xmax": 1000,
                 "description": "Top section with supplier details"
             },
             {
                 "zone_id": "table_1", 
                 "type": "primary_table", 
-                "description": "Main product grid with columns Item, Qty, Rate, Amount"
+                "ymin": 200, "xmin": 0, "ymax": 850, "xmax": 1000,
+                "description": "Main product grid"
             },
             {
                 "zone_id": "footer_1",
                 "type": "footer",
-                "description": "Footer area with Grand Total and Tax Breakdown"
+                "ymin": 850, "xmin": 0, "ymax": 1000, "xmax": 1000,
+                "description": "Footer area with Grand Total"
             }
         ]
         """

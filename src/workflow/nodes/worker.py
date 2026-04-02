@@ -5,13 +5,48 @@ import os
 import logging
 from typing import Dict, Any, List
 from src.workflow.state import InvoiceState as InvoiceStateDict
-from src.utils.config_loader import load_column_aliases
+from src.utils.config_loader import load_column_aliases, load_vendor_rules
 from src.utils.logging_config import get_logger
 from src.utils.image_processing import preprocess_image_for_ocr
 from src.utils.ai_retry import ai_retry
 import tempfile
 
 logger = get_logger(__name__)
+
+def get_config_context() -> str:
+    """
+    Loads column aliases and vendor rules into a formatted string for the LLM.
+    """
+    try:
+        aliases = load_column_aliases().get("global_column_aliases", {})
+        vendor_data = load_vendor_rules().get("vendors", {})
+        
+        alias_context = "\n".join([f"- **{k}**: {', '.join(v)}" for k, v in aliases.items()])
+        
+        vendor_context = ""
+        for vendor, details in vendor_data.items():
+            if details.get("aliases") or details.get("extraction_notes"):
+                vendor_context += f"\nVendor: {vendor}\n"
+                if details.get("aliases"):
+                    vendor_context += f"  Aliases: {json.dumps(details.get('aliases'))}\n"
+                if details.get("extraction_notes"):
+                    notes = details.get("extraction_notes").replace('\n', ' ')
+                    vendor_context += f"  Notes: {notes}\n"
+
+        config_str = f"""
+        [GLOBAL COLUMN ALIASES]
+        {alias_context}
+        
+        [VENDOR SPECIFIC RULES]
+        {vendor_context}
+        
+        [STRICT OVERRIDE INSTRUCTION]
+        Use your general reasoning to extract the invoice data. However, you MUST treat the provided column_aliases and vendor_rules as high-priority overrides. If you encounter an ambiguous column, check the aliases. If the supplier matches a vendor in the rules (like C M Associates), you must rigidly apply their specific mappings (e.g., mapping PCode to Batch_No as defined).
+        """
+        return config_str
+    except Exception as e:
+        logger.error(f"Failed to load config context for LLM: {e}")
+        return ""
 
 @ai_retry
 async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> Dict[str, Any]:
@@ -21,22 +56,18 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
     """
     zone_type = zone.get("type", "table")
     description = zone.get("description", "")
+    config_context = get_config_context()
     
     try:
         if "table" in zone_type.lower():
             # Scenario A: Table Extraction
-            # Inject Column Aliases
-            aliases = load_column_aliases().get("global_column_aliases", {})
-            # Flatten aliases for prompt context
-            alias_context = "\n".join([f"- **{k}**: {', '.join(v)}" for k, v in aliases.items()])
-            
             prompt = f"""
             Target Zone: {description}
             
             TASK: EXTRACT RAW TABLE DATA (VERBATIM).
             
-            **KNOWN COLUMN HEADERS (LOOK FOR THESE):**
-            {alias_context}
+            **CONFIGURATION & RULES:**
+            {config_context}
             
             Instructions:
             1. Look at the table in this image.
@@ -55,6 +86,10 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             - **IGNORE UFC/FACTOR**: Do not extract "UFC", "Factor", "Case" columns as "MRP". Identify them as "Pack" or "Unit" if needed, but NEVER as a price column.
             - **SPLIT BATCH/DESCRIPTION**: If the "Batch No" is printed inside or right next to the "Item Description", you MUST SPLIT THEM. Return the Batch in the 'Batch' column and the Item Name in the 'Description' column. **DO NOT CLUB THEM**.
             
+            9. **Language & Characters**: 
+                - **STRICT EN/IN ONLY**: If you see characters that look like foreign scripts (e.g. Thai, Arabic, Cyrillic), it is NOISE. 
+                - Do NOT hallucinate foreign characters. If it's not English or a digit, ignore it or map it to the closest English character.
+            
             IMPORTANT:
             - **DENSITY**: If a cell has multiple lines (e.g. "Batch\n123"), capture BOTH lines in the markdown cell (use <br> or space).
             - **DUPLICATES**: If the Exact Same Item appears on multiple lines (e.g. "Dolo 650" twice), LIST IT TWICE. Do not combine them.
@@ -70,6 +105,7 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
             - **IGNORE "Bank Details"**: Do not extract bank info as rows.
             - **IGNORE "Header Info"**: Do not extract Supplier Name, Invoice No, or Date as a table row. ONLY extract the Product Line Items.
+            - **DETECT RETURNS**: If a section of the table is clearly listed under a header like "Sales Return", "Sale Ret", "CR Note", "Adjustment", or "Returns", you MUST extract all items in that section with NEGATIVE values for Quantity, Net Amount, and Tax (e.g. Qty: -1, Amount: -150.00). Do NOT prepend "RETURN: " to the name; let the negative numbers handle the math.
             
             Output Format Example:
             | Description | Pcode | Qty | Rate | Amount | Net Amount |
@@ -91,6 +127,9 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             Target Zone: {description}
             
             Task: Extract global financial fields from the summary/footer block.
+            
+            **CONFIGURATION & RULES:**
+            {config_context}
             
             Fields to Extract:
             - **sub_total**: The total of all line items BEFORE tax and discount.
@@ -147,6 +186,9 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             Target Zone: {description}
             
             Task: Extract invoice header details.
+            
+            **CONFIGURATION & RULES:**
+            {config_context}
             
             视觉区═══════════════════════════════════════════════════════
             CRITICAL DISTINCTION — SELLER vs BUYER:
@@ -214,8 +256,8 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
                         return {"type": "error", "error": f"Invalid JSON from Header: {text[:50]}..."}
         
     except Exception as e:
-        logger.error(f"Failed to extract zone {zone}: {e}")
-        return {"type": "error", "error": str(e)}
+        logger.warning(f"Zone extract failed. Propagating to @ai_retry: {e}")
+        raise e
 
     return {}
 
@@ -263,6 +305,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 feedback_context = f"\n            PREVIOUS ATTEMPT FAILED. CRITIC FEEDBACK: {latest_feedback}\n            PLEASE CORRECT THIS ERROR."
             
             # FALLBACK STRATEGY: SCAN WHOLE PAGE AS RAW TABLE
+            config_context = get_config_context()
             prompt = f"""
             CRITICAL RECOVERY MODE:
             The previous zone-based extraction failed. 
@@ -270,6 +313,9 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             {feedback_context}
             
             TASK: EXTRACT ALL TABLES AS RAW MARKDOWN.
+            
+            **CONFIGURATION & RULES:**
+            {config_context}
             
             Instructions:
             1. Find the main table with Products, Qty, Amounts.
@@ -302,12 +348,15 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             
         else:
             # NORMAL MODE: ZONE BASED
+            # Sort plan by y-coordinate to ensure top-to-bottom processing
+            plan.sort(key=lambda z: z.get("ymin", 0))
+            
             tasks = []
             for zone in plan:
                 tasks.append(extract_from_zone(None, sample_file, zone))
                 
             # Run Concurrent
-            results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # Aggregate Results
             line_item_fragments = [] 
@@ -317,6 +366,11 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
             error_logs = []
             
             for res in results:
+                if isinstance(res, Exception):
+                    logger.error(f"Zone Extraction Failed Unrecoverably: {str(res)}")
+                    error_logs.append(f"Zone Extraction Failed: {str(res)}")
+                    continue
+                    
                 if res.get("type") == "raw_text":
                     rows = res.get("data", [])
                     raw_text_rows.extend(rows)

@@ -85,11 +85,17 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
     raw_gst = parse_float(raw_item.get("Raw_GST_Percentage") or raw_item.get("GST_Percent"))
     
     # 4. Financials (Preserve Solved Values if available)
+    is_return = raw_item.get("is_return", False)
     net_line_amount = parse_float(raw_item.get("Net_Line_Amount") or raw_item.get("Amount"))
+    
+    # Force negative for returns if not already
+    if is_return:
+        net_line_amount = -abs(net_line_amount)
+    
     base_amount = net_line_amount # Default to net if no tax
     calc_tax_amt = 0.0
     
-    if raw_gst > 0 and net_line_amount > 0:
+    if raw_gst > 0 and net_line_amount != 0:
         # Tax_Amount = Net - (Net / (1 + Rate/100))
         # This assumes Net Amount is Inclusive of Tax
         base_amount = net_line_amount / (1 + (raw_gst / 100))
@@ -99,9 +105,15 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
     # Merge the normalized fields into the original item to preserve 
     # Solver outputs (effective_landing_cost, Sales Rates, etc.)
     result = raw_item.copy()
+    
+    # Adjust quantities for returns
+    final_std_qty = -abs(std_qty) if is_return else std_qty
+    final_free_qty = -abs(free_qty_val) if is_return else free_qty_val
+
     result.update({
         "Standard_Item_Name": std_name or raw_item.get("Standard_Item_Name") or raw_desc or "Unknown Item",
         "Pack_Size_Description": pack_size,
+        "is_return": is_return,
         "Batch_No": batch_no,
         "HSN_Code": final_hsn,
         # PASS THROUGH RAW NUMBERS FOR THE SOLVER
@@ -111,25 +123,23 @@ def normalize_line_item(raw_item: dict, supplier_name: str = "") -> dict:
         "Raw_MRP": raw_item.get("MRP"),
         
         # REQUIRED FOR FRONTEND / SERVER SCHEMA
-        "Standard_Quantity": std_qty,
-        "Free_Quantity": free_qty_val, # New Field
+        "Standard_Quantity": final_std_qty,
+        "Free_Quantity": final_free_qty, 
         "Net_Line_Amount": net_line_amount,
         
         # Calculate Unit Cost (Amount / Total Qty) to reflect "Scheme" benefit
-        # CRITICAL FIX: The customer pays 'Amount' but receives 'Standard_Quantity' (Billed + Free)
-        # So Unit Cost = Net Amount / (Billed + Free)
-        "Final_Unit_Cost": (net_line_amount / (std_qty or 1.0)) if std_qty > 0 else 0.0,
-        "Logic_Note": f"Qty: {billed_qty_val}+{free_qty_val}={std_qty} (Scheme Applied)",
+        # For returns, we use absolute values for unit cost calculation to avoid negative prices
+        "Final_Unit_Cost": (abs(net_line_amount) / (abs(final_std_qty) or 1.0)) if final_std_qty != 0 else 0.0,
+        "Logic_Note": (str(raw_item.get("Logic_Note", "")) + f" [Qty: {billed_qty_val}+{free_qty_val}={std_qty}]" + (" (RETURN)" if is_return else "")).strip(),
         
         # Metadata Populated
         "MRP": raw_item.get("MRP"),
-        "Rate": (net_line_amount / (std_qty or 1.0)) if std_qty > 0 else raw_item.get("Rate"),
+        "Rate": (abs(net_line_amount) / (abs(final_std_qty) or 1.0)) if final_std_qty != 0 else raw_item.get("Rate"),
         
-        # Tax Fields
         # Tax Fields
         "Raw_GST_Percentage": raw_gst,
         # Unit Base Rate (Pre-Tax)
-        "Unit_Base_Rate": (base_amount / (std_qty or 1.0)) if std_qty > 0 else 0.0,
+        "Unit_Base_Rate": (base_amount / (final_std_qty or 1.0)) if final_std_qty != 0 else 0.0,
         # For compatibility, we map this to standard fields if useful
         "SGST_Percent": parse_float(raw_item.get("SGST_Percent")) if raw_item.get("SGST_Percent") else (raw_gst / 2 if raw_gst > 0 else 0),
         "CGST_Percent": parse_float(raw_item.get("CGST_Percent")) if raw_item.get("CGST_Percent") else (raw_gst / 2 if raw_gst > 0 else 0),

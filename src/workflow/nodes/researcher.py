@@ -41,7 +41,6 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
     if not needs_enrichment:
         return item
     
-    ddgs = DDGS() # Initialized locally for thread safety with to_thread
     product_name = item.get("Standard_Item_Name") or item.get("Product") or "Unknown Product"
     if product_name.lower() == "unknown product":
         return item
@@ -62,6 +61,8 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
     # ---------------------------
 
     try:
+        ddgs = DDGS() # Initialize here, only if we actually need web search
+        
         # 1. Broaden Search Strategy
         search_results = "No results found."
         search_queries = []
@@ -98,24 +99,30 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
         
         TASK:
         Extract official details for this product. 
-        If it's a medicine, find active salts. 
-        If it's an OMC/Personal Care item (like toothpaste, shampoo), find the main ingredients.
+        
+        CATEGORIZATION:
+        - Medicine: Prescription or OTC drugs (e.g. Paracetamol, Atorvastatin). Requires active salts.
+        - FMCG/Personal Care: Diapers, Soaps, Shampoos, House-hold items (e.g. Pampers, Tide). 
+          *CRITICAL*: For FMCG, leave 'salt_composition' as null unless it is a medicated product (e.g. Ketoconazole shampoo).
+          Do NOT extract generic ingredients like 'Aloe vera', 'Moisturizer', 'Vitamin E' as salts for FMCG.
         
         EXPANSION HINTS: {", ".join(expanded_names)}
         
         OUTPUT FIELDS:
-        1. manufacturer: Company Name (e.g. Colgate Palmolive, Sun Pharma)
-        2. salt_composition: Leading active ingredients or salts.
-        3. packaging_size: Best guess for pack size (e.g. Strip of 15 tablets, 70g tube).
-        4. mrp: The Maximum Retail Price (MRP) for THIS EXACT pack size. Use ONLY raw numeric values (e.g. 150.0).
+        1. product_type: String ("Medicine" or "FMCG")
+        2. manufacturer: Official Company Name (e.g. P&G, Sun Pharma)
+        3. salt_composition: Leading ACTIVE PHARMACEUTICAL INGREDIENTS (APIs) or salts. 
+           Null for most FMCG.
+        4. packaging_size: Best guess for pack size (e.g. Strip of 15 tablets, 70g tube).
+        5. mrp: RAW numeric Maximum Retail Price (e.g. 150.0). No currency symbols.
         
         RULES:
         - Use the most credible source.
-        - IMPORTANT: For 'mrp', do NOT include currency symbols or units. Just the number.
-        - Return strictly valid JSON.
+        - Important: Return strictly valid JSON.
         
         OUTPUT FORMAT:
         {{
+            "product_type": "string",
             "manufacturer": "string or null",
             "salt_composition": "string or null",
             "packaging_size": "string or null",
@@ -130,36 +137,49 @@ async def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
         text = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(text)
         
+        found_type = data.get("product_type", "Medicine")
         found_mfr = data.get("manufacturer")
         found_salt = data.get("salt_composition")
+        
+        # --- POST-PROCESSING HEURISTIC ---
+        # Suppression of non-medicinal "filler" salts
+        filler_salts = {"aloe vera", "moisturizer", "fragrance", "vitamin e", "green tea", "charcoal"}
+        if found_type == "FMCG" and found_salt:
+            if found_salt.lower() in filler_salts or len(found_salt.split(',')) > 5:
+                # If it's a long list of ingredients for a diaper, or a common filler -> hide it.
+                found_salt = None
+        # ---------------------------------
         found_pack = data.get("packaging_size")
         web_mrp = data.get("mrp")
         
-        # --- PHASE 2: MRP ANCHOR VALIDATION ---
+        # --- PHASE 2: MRP GUARDRAIL VALIDATION ---
         local_mrp = item.get("MRP")
         needs_review = False
         
         if web_mrp and local_mrp:
             try:
                 # Sanitize web_mrp (it might be a string due to LLM variance)
+                import re
                 s_web = str(web_mrp).replace(',', '')
                 match = re.search(r'(\d+(?:\.\d+)?)', s_web)
                 web_mrp_f = float(match.group(1)) if match else 0.0
-                
                 local_mrp_f = float(local_mrp)
-                difference = abs(web_mrp_f - local_mrp_f)
-                threshold = local_mrp_f * 0.15 
                 
-                if web_mrp_f > 0 and (difference > threshold and difference > 5):
-                    logger.warning(f"Researcher MRP Mismatch! Web: {web_mrp_f} vs Local: {local_mrp_f}")
-                    needs_review = True
-                    found_pack = "Review Required (MRP Mismatch)"
-                    item["pack_size_primary"] = 1
-            except:
-                pass
+                if web_mrp_f > 0 and local_mrp_f > 0:
+                    # PROMPT 2 GUARDRAIL: 20% THRESHOLD
+                    difference_pct = abs(web_mrp_f - local_mrp_f) / local_mrp_f
+                    
+                    if difference_pct > 0.20:
+                        logger.warning(f"MRP Guardrail: Large Discrepancy ({difference_pct*100:.1f}%) for {product_name}")
+                        needs_review = True
+                        item["Suggested_Web_MRP"] = web_mrp_f
+                        item["Logic_Note"] = (item.get("Logic_Note", "") + 
+                            f" [MRP Guardrail: Web suggests {web_mrp_f}, Invoice says {local_mrp_f}]").strip()
+            except Exception as e:
+                logger.warning(f"MRP Guardrail check failed: {e}")
         
-        item["needs_review"] = needs_review
-        # --------------------------------------
+        item["needs_review"] = needs_review or item.get("needs_review", False)
+        # ------------------------------------------
         
         # 3. Update Item
         if found_mfr:

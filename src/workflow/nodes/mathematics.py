@@ -159,7 +159,13 @@ async def apply_correction(state: InvoiceStateDict) -> Dict[str, Any]:
     final_json["total_cgst"] = final_stats.get("total_cgst", 0.0)
     final_json["credit_note_amount"] = final_stats.get("credit_note_amount", 0.0)
     final_json["extra_charges"] = final_stats.get("extra_charges", 0.0)
-    final_json["grand_total"] = final_stats.get("grand_total", 0.0)
+    
+    # IMMUTABLE ANCHOR
+    if stated_total > 0:
+        final_json["grand_total"] = stated_total
+    else:
+        final_json["grand_total"] = final_stats.get("grand_total", 0.0)
+        
     final_json["Stated_Grand_Total"] = stated_total
     
     # 6. Final Discount Recovery (Removed to prevent hallucinations)

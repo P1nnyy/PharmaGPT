@@ -30,7 +30,16 @@ def build_graph():
     # NEW: Terminal State for Recursive Failures
     def human_fallback_queue(state: InvoiceState) -> Dict[str, Any]:
         logger.warning(f"CIRCUIT BREAKER: Invoice {state.get('image_path')} routed to HUMAN FALLBACK.")
-        return {"final_output": {"status": "HUMAN_REVIEW_REQUIRED", "reason": "Mathematical Verification Loop Exhausted"}}
+        # Prepare best-effort output instead of blank status
+        headers = state.get("global_modifiers", {})
+        lines = state.get("line_items") or state.get("line_item_fragments", [])
+        
+        final_output = headers.copy()
+        final_output["Line_Items"] = lines
+        final_output["status"] = "HUMAN_REVIEW_REQUIRED"
+        final_output["reason"] = "Mathematical Verification Loop Exhausted"
+        
+        return {"final_output": final_output}
     
     workflow.add_node("human_fallback", human_fallback_queue)
     
@@ -72,7 +81,7 @@ def build_graph():
         retry_count = state.get("retry_counters", {}).get("math_verification", 0)
         logger.info(f"Graph Decision: Verdict is {verdict} (Math Retry: {retry_count})")
         
-        if verdict in ["APPLY_MARKUP", "APPLY_MARKDOWN"]:
+        if verdict in ["APPROVE", "APPLY_MARKUP", "APPLY_MARKDOWN"]:
             return "solver"
         elif verdict == "RETRY_OCR":
             # Circuit Breaker: Check total accumulated retries from ALL nodes

@@ -54,11 +54,16 @@ const InvoiceViewer = ({
     };
 
     const handleManualRotate = () => {
-        if (!selectedQueueId) return;
+        const targetId = selectedQueueId || activeItem?.id;
+        if (!targetId) return;
+
+        // If nothing was selected but we have a default active item, select it now
+        if (!selectedQueueId) setSelectedQueueId(targetId);
+
         const current = activeItem?.rotation || 0;
         const next = (current + 90) % 360;
         setFileQueue(prev => prev.map(item => 
-            item.id === selectedQueueId ? { ...item, rotation: next } : item
+            item.id === targetId ? { ...item, rotation: next } : item
         ));
     };
 
@@ -275,16 +280,23 @@ const InvoiceViewer = ({
                                 wheel={{ step: 0.1 }}
                             >
                                 <TransformComponent wrapperClass="w-full h-full" contentClass="w-full h-full flex items-center justify-center">
-                                    <img
-                                        src={previewUrl}
-                                        alt="Invoice Preview"
-                                        className="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300"
-                                        style={{ transform: `rotate(${activeItem?.rotation || 0}deg)` }}
-                                        onError={(e) => {
-                                            e.target.onerror = null;
-                                            e.target.src = "https://placehold.co/600x800?text=Image+Not+Found";
-                                        }}
-                                    />
+                                    <div className="relative flex items-center justify-center auto-size">
+                                        <img
+                                            src={previewUrl}
+                                            alt="Invoice Preview"
+                                            className={`shadow-2xl transition-all duration-300 pointer-events-none transform-gpu
+                                                ${(activeItem?.rotation || 0) % 180 !== 0 ? 'max-h-[80vw] max-w-[80vh]' : 'max-w-full max-h-full'}
+                                            `}
+                                            style={{ 
+                                                transform: `rotate(${activeItem?.rotation || 0}deg)`,
+                                                objectFit: 'contain'
+                                            }}
+                                            onError={(e) => {
+                                                e.target.onerror = null;
+                                                e.target.src = "https://placehold.co/600x800?text=Image+Not+Found";
+                                            }}
+                                        />
+                                    </div>
                                 </TransformComponent>
                             </TransformWrapper>
                             <AgentTerminal status={activeItem?.status} message={activeItem?.status_message} />

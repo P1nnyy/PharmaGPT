@@ -38,8 +38,8 @@ async def get_report(
     if not driver:
          return templates.TemplateResponse("error.html", {"request": request, "message": "Database unavailable"})
 
-    tenant_id = tenant_id_ctx.get()
-    data = get_invoice_details(driver, invoice_no, user_email, tenant_id, role=role)
+    shop_id = tenant_id_ctx.get()
+    data = get_invoice_details(driver, invoice_no, shop_id, shop_id, role=role)
         
     if not data:
         return templates.TemplateResponse("error.html", {"request": request, "message": f"Invoice {invoice_no} not found or access denied."})
@@ -59,8 +59,8 @@ async def read_activity_log(
     if not driver:
         return [] 
     try:
-        tenant_id = tenant_id_ctx.get()
-        data = get_activity_log(driver, user_email=user_email, tenant_id=tenant_id, role=role)
+        shop_id = tenant_id_ctx.get()
+        data = get_activity_log(driver, shop_id, shop_id, role=role)
         return data
     except Exception as e:
         logger.error(f"Failed to fetch activity log: {e}")
@@ -75,8 +75,8 @@ async def read_history(
     if not driver:
         return []
     try:
-        tenant_id = tenant_id_ctx.get()
-        data = get_grouped_invoice_history(driver, user_email=user_email, tenant_id=tenant_id, role=role)
+        shop_id = tenant_id_ctx.get()
+        data = get_grouped_invoice_history(driver, shop_id, shop_id, role=role)
         return data
     except Exception as e:
         logger.error(f"Failed to fetch history: {e}")

@@ -36,8 +36,9 @@ vendors:
       "SGST Amt": "SGST_Amount"
       "CGST Amt": "CGST_Amount"
     extraction_notes: |
-      - Ignore "Total Qty" column (it duplicates Pcs).
-      - Map "Pcs" to Quantity.
+      - CRITICAL: The MRP column is located exactly between the UPC and Cs (Cases) columns. Do NOT confuse the Rate or Net Amt with the MRP.
+      - Ignore "Total Qty" column entirely (it is redundant). 
+      - Map "Pcs" exactly to Quantity as-is (do NOT sum or multiply).
     calculation_rules: {}
   "sood medicos":
     calculation_rules: {}

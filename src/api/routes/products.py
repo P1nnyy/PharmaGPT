@@ -161,11 +161,11 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
          raise HTTPException(status_code=503, detail="Database unavailable")
 
     query = """
-    MATCH (u:User {email: $user_email})
+    MATCH (s:Shop {id: $shop_id})
     MERGE (gp:GlobalProduct {name: $name, tenant_id: $tenant_id})
     
-    // Ensure User manages this product (ownership/access)
-    MERGE (u)-[:MANAGES]->(gp)
+    // Link to Shop
+    MERGE (s)-[:HAS_PRODUCT]->(gp)
     
     SET gp.hsn_code = $hsn_code,
         gp.item_code = $item_code,
@@ -187,9 +187,9 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
     
     // Process Packaging Variants (Scoped to Tenant)
     WITH gp, $packaging_variants as variants, $tenant_id as tid
-    // Clear old variants to allow clean save (pseudo-overwrite)
-    OPTIONAL MATCH (gp)-[r:HAS_VARIANT]->(old_v:PackagingVariant {tenant_id: tid})
-    DELETE r, old_v
+    // Clear old variants using DETACH DELETE to handle historical LineItem relationships
+    OPTIONAL MATCH (gp)-[:HAS_VARIANT]->(old_v:PackagingVariant {tenant_id: tid})
+    DETACH DELETE old_v
     
     WITH gp, variants, tid
     FOREACH (v IN variants |
@@ -199,8 +199,17 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
         SET pv.unit_name = v.unit_name,
             pv.mrp = v.mrp,
             pv.conversion_factor = v.conversion_factor,
+            pv.primary_unit_name = v.primary_unit_name,
+            pv.secondary_unit_name = v.secondary_unit_name,
             pv.updated_at = timestamp()
     )
+    
+    // Update base units from first variant
+    WITH gp, variants
+    WHERE size(variants) > 0
+    WITH gp, variants[0] as first_v
+    SET gp.base_unit = coalesce(first_v.primary_unit_name, gp.base_unit),
+        gp.unit_name = coalesce(first_v.primary_unit_name, gp.unit_name)
         
     RETURN gp.name as name
     """
@@ -209,10 +218,10 @@ async def save_product(product: ProductRequest, user_email: str = Depends(get_cu
     variants_data = [v.dict() for v in product.packaging_variants]
     
     with driver.session() as session:
-        tenant_id = tenant_id_ctx.get()
+        shop_id = tenant_id_ctx.get()
         session.execute_write(lambda tx: tx.run(query, 
-            user_email=user_email,
-            tenant_id=tenant_id,
+            shop_id=shop_id,
+            tenant_id=shop_id,
             name=product.name,
             hsn_code=product.hsn_code,
             item_code=product.item_code,

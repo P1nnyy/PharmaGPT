@@ -113,6 +113,7 @@ class RawLineItem(BaseModel):
 
     # New Field for Manufacturer Extraction
     Manufacturer: Optional[Union[str, List[str]]] = Field(None, description="The manufacturer or company name extracted from the line item.")
+    is_return: bool = Field(False, description="True if this is a sales return item.")
     effective_landing_cost: float = Field(0.0, description="The true cost of the item after tax and global discounts.")
 
     @model_validator(mode='before')
@@ -133,6 +134,13 @@ class RawLineItem(BaseModel):
             if field in data and isinstance(data[field], list) and len(data[field]) > 0:
                 data[field] = data[field][0]
                 
+        # 4. Detect Returns via Prefix
+        product_desc = data.get('Product', '')
+        if isinstance(product_desc, str) and product_desc.upper().startswith("RETURN:"):
+            data['is_return'] = True
+            # Clean the tag for cleaner processing later
+            data['Product'] = re.sub(r'^RETURN:\s*', '', product_desc, flags=re.IGNORECASE).strip()
+            
         return data
 
 class InvoiceExtraction(BaseModel):
@@ -179,6 +187,7 @@ class NormalizedLineItem(BaseModel):
     
     # Net Amount (Passed Through)
     Net_Line_Amount: float = Field(..., description="Total final cost of the line item (Invoice Value).")
+    is_return: bool = Field(False, description="True if this is a sales return item.")
     
     # The Critical Value for the Shop
     Final_Unit_Cost: float = Field(..., description="Landed Cost per unit (Net / Qty).")
@@ -257,6 +266,8 @@ class PackagingVariant(BaseModel):
     pack_size: str = Field(..., description="Pack size description (e.g., 1x10, 10's).")
     mrp: float = Field(..., description="Maximum Retail Price for this specific pack.")
     conversion_factor: int = Field(1, description="How many base units are in this pack.")
+    primary_unit_name: Optional[str] = Field(None, description="Primary unit (e.g. Tablet).")
+    secondary_unit_name: Optional[str] = Field(None, description="Secondary unit (e.g. Strip).")
 
 class ProductRequest(BaseModel):
     """

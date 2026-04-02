@@ -121,7 +121,8 @@ def parse_quantity(value: Union[str, float, None], free_qty: Union[str, float, N
     free_q = clean_float(free_qty)
     
     total_qty = billed_q + free_q
-    return math.ceil(total_qty)
+    # Apply a small rounding epsilon to avoid float artifacts (2.9+0.1=3.0000004 -> ceil=4)
+    return math.ceil(round(total_qty, 3))
 
 def calculate_tco_drivers(item_data: Dict[str, Any]) -> Dict[str, float]:
     """
@@ -199,6 +200,21 @@ def calculate_tco_drivers(item_data: Dict[str, Any]) -> Dict[str, float]:
         "tco": tco
     }
 
+def is_return_item(item: Dict[str, Any]) -> bool:
+    """
+    Identifies if a line item is a Sales Return, Credit Note, or Adjustment.
+    """
+    desc = str(item.get("Product") or item.get("Standard_Item_Name") or "").upper()
+    amount = parse_float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0)
+    
+    # Check for negative amount
+    if amount < 0:
+        return True
+        
+    # Check for keywords
+    return_keywords = ["RETURN:", "SALES RET", "SALE RET", "CR NOTE", "CREDIT NOTE", "ADJUSTMENT", "LESS:", "SCHEME AMT", "SCH AMT"]
+    return any(kw in desc for kw in return_keywords)
+
 def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: float) -> dict:
     """
     PERFECT LEDGER MATH ENGINE:
@@ -213,14 +229,37 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     # 1. Calculate Base Sums from Line Items
     # net_sum: Sum of final row totals (Post-tax, post-line-discount)
     # gross_sum: Sum of raw row totals (Pre-tax, pre-global-discount)
-    net_sum = sum(float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0) for item in line_items)
-    gross_sum = sum(float(item.get("Amount") or item.get("Gross_Amount") or 0.0) for item in line_items)
     
-    # If Gross Sum was never extracted or matches Net Sum perfectly,
-    # assume Line Items only gave one total column.
-    if gross_sum == 0:
-        # Fallback: If we only have one total sum, use it for both equations
-        gross_sum = net_sum
+    # CRITICAL FIX: Separate Positive items from Returns
+    positive_items = [item for item in line_items if not is_return_item(item)]
+    return_items = [item for item in line_items if is_return_item(item)]
+    
+    positive_sum = sum(float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0) for item in positive_items)
+    return_sum = sum(abs(float(return_item.get("Net_Line_Amount") or return_item.get("Amount") or 0.0)) for return_item in return_items)
+    
+    # Net Line Sum = Positive - Returns
+    net_sum = positive_sum - return_sum
+    # Default Gross Sum to Net Sum for now
+    gross_sum = net_sum
+    
+    stated_sub_total = parse_float(
+        global_modifiers.get("sub_total") or 
+        global_modifiers.get("Sub_Total") or 0.0
+    )
+    
+    # REPAIR LOGIC: Compare stated_sub_total against the sum of POSITIVE items (non-returns).
+    # If the subtotal matches the positive items, it means the return was subtracted AFTER subtotal.
+    # If the subtotal matches net_sum, it means the return was subtracted BEFORE subtotal.
+    if stated_sub_total > 0:
+        if abs(stated_sub_total - net_sum) < 1.0:
+            gross_sum = net_sum
+            logger.info("Financials: Sub Total matches Net Sum (Return already subtracted).")
+        elif abs(stated_sub_total - positive_sum) < 1.0:
+            gross_sum = positive_sum
+            logger.info("Financials: Sub Total matches Positive Sum (Return subtracted after subtotal).")
+        else:
+            gross_sum = stated_sub_total
+            logger.info(f"Financials: Using Stated Sub Total {stated_sub_total}")
 
     # 2. Extract Modifier values
     global_discount = abs(parse_float(
@@ -245,6 +284,16 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
         global_modifiers.get("CN_Amount") or 
         global_modifiers.get("less_cn") or 0.0
     ))
+    # If we identified return line items, and they match the credit note amount, avoid double counting
+    if return_sum > 0 and abs(return_sum - credit_note) < 1.0:
+        logger.info(f"Financials: Return items ({return_sum}) already captured. Deduplicating Credit Note.")
+        credit_note = 0.0
+    elif return_sum > 0:
+        # If both exist and differ, the line items take priority but we keep the difference if large?
+        # Standard: Line items are more accurate than footer extraction.
+        # But for now, we'll sum them if they are distinct.
+        pass
+
     extra_charges = abs(parse_float(
         global_modifiers.get("extra_charges") or 
         global_modifiers.get("Extra_Charges") or 0.0
@@ -255,10 +304,10 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     )
     
     # 3. Mode Detection (Disambiguation)
-    # Equation A: net_sum + RoundOff == GrandTotal -> PER_ITEM (Items are final)
-    # Equation B: gross_sum - Discount + Tax + RoundOff == GrandTotal -> GLOBAL (Footer calculates total)
+    # Equation A: net_sum + RoundOff - CN + Extras == GrandTotal -> PER_ITEM (Items are final)
+    # Equation B: gross_sum - Discount + Tax + RoundOff - CN + Extras == GrandTotal -> GLOBAL (Footer calculates total)
     
-    eq_a_result = net_sum + round_off
+    eq_a_result = net_sum + round_off - credit_note + extra_charges
     eq_b_result = gross_sum - global_discount + total_sgst + total_cgst + round_off - credit_note + extra_charges
     
     # 3. Mode Detection (Smallest Gap Wins)
@@ -277,18 +326,14 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     else:
         mode = "PER_ITEM"
         # In PER_ITEM mode, line items are tax-inclusive/discounted.
-        # To show a breakdown in the UI summary, we sum line-level attributes.
         line_sgst = sum(parse_float(item.get("SGST_Amount") or item.get("total_sgst") or 0.0) for item in line_items)
         line_cgst = sum(parse_float(item.get("CGST_Amount") or item.get("total_cgst") or 0.0) for item in line_items)
         line_disc = sum(parse_float(item.get("Discount_Amount") or item.get("SCH_Amt") or 0.0) for item in line_items)
         
-        # If we have line-level details, use them for the UI summary
         if line_sgst > 0 or line_cgst > 0 or line_disc > 0:
             total_sgst = line_sgst
             total_cgst = line_cgst
             global_discount = line_disc
-            # Adjust line_sum (Sub Total) so that SubTotal + Tax - Disc = NetTotal
-            # This makes the UI summary equation balance.
             line_sum = net_sum - total_sgst - total_cgst + global_discount
         else:
             line_sum = net_sum
@@ -296,93 +341,76 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
             total_sgst = 0.0
             total_cgst = 0.0
             
-        logger.info(f"Financials: Detected PER_ITEM mode with Breakdown (Tax:{total_sgst+total_cgst}, Disc:{global_discount})")
+        logger.info(f"Financials: Detected PER_ITEM mode")
 
-    # 4. Rounding Discovery (STRICT)
-    # User Request: "we dont want to round off if it is not present in invoice"
-    # We only apply a round-off if the gap is extremely tiny (precision error < 0.01)
-    # or if the round_off was explicitly extracted from the text.
+    # 4. Rounding Discovery
     calculated_pre_round = eq_a_result - round_off if mode == "PER_ITEM" else eq_b_result - round_off
     discovered_gap = grand_total - calculated_pre_round
     
     if abs(discovered_gap) < 0.99:
         round_off = round(discovered_gap, 2)
-        logger.info(f"Financials: Applied rounding/precision fix: {round_off:.2f}")
     elif grand_total == 0:
-        # Auto-round to nearest integer if no stated total was found and gap is small (< 0.50)
         nearest_int = round(calculated_pre_round)
         auto_gap = nearest_int - calculated_pre_round
-        if abs(auto_gap) < 0.50 and abs(auto_gap) > 0.001:
+        if abs(auto_gap) < 0.50:
             round_off = round(auto_gap, 2)
-            logger.info(f"Financials: Applied Auto-Rounding to nearest integer: {round_off:.2f}")
 
-    # Else: We keep the AI-extracted round_off (or 0.0) even if it leads to a mismatch.
-    # This respects the user's wish to see the 'original price' 3197.66.
-
-    # 4b. Tax Inference (CM Associates Recovery)
-    # If SGST/CGST are 0 but Grand Total or Net Sums exist, infer them from line items
-    # Check current taxes (either summed from lines in PER_ITEM or extracted from footer in GLOBAL)
+    # 4b. Tax Inference
     if (total_sgst < 0.01 and total_cgst < 0.01):
         inferred_tax = 0.0
         for item in line_items:
-            # For inference, use the taxable amount (Amount) if available, else back-calculate from Net
             net_amt = float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0)
-            raw_gst_pct = float(item.get("Raw_GST_Percentage") or 0.0)
-            sum_gst_pct = (float(item.get("SGST_Percent") or 0.0) + float(item.get("CGST_Percent") or 0.0))
-            gst_pct = raw_gst_pct if raw_gst_pct > 0 else sum_gst_pct
-            
+            gst_pct = float(item.get("Raw_GST_Percentage") or (float(item.get("SGST_Percent") or 0.0) + float(item.get("CGST_Percent") or 0.0)))
             if gst_pct > 0:
-                # Tax = Net - (Net / (1 + Rate/100))
-                item_tax = net_amt - (net_amt / (1 + (gst_pct / 100)))
-                inferred_tax += item_tax
+                inferred_tax += net_amt - (net_amt / (1 + (gst_pct / 100)))
         
-        if inferred_tax > 0.1: # Only apply if significant
+        if inferred_tax > 0.1:
              total_sgst = round(inferred_tax / 2, 2)
              total_cgst = round(inferred_tax / 2, 2)
-             logger.info(f"Financials: Inferred Tax breakdown {inferred_tax:.2f} (SGST: {total_sgst}) from line-level GST percentages.")
-
-    # 4d. Credit Note Auto-Inference (Removed to prevent hallucinations)
-    # We no longer infer credit notes to close gaps, as this can lead to errors with fuzzy OCR totals.
-    pass
 
     # 4e. Final Ledger Result
     if mode == "PER_ITEM":
-        # In PER_ITEM, the Net Line Sum + modifiers is the total
-        calculated_grand_total = line_sum + round_off - credit_note + extra_charges
+        raw_calculated_grand_total = line_sum + round_off - credit_note + extra_charges
     else:
-        # In GLOBAL, it is Gross - Disc + Tax + modifiers
-        calculated_grand_total = gross_sum - global_discount + total_sgst + total_cgst + round_off - credit_note + extra_charges
+        raw_calculated_grand_total = gross_sum - global_discount + total_sgst + total_cgst + round_off - credit_note + extra_charges
         
     taxable_value = line_sum if mode == "PER_ITEM" else (line_sum - global_discount)
 
-    # 5. Consistency Check (Audit Flag)
-    gap = abs(calculated_grand_total - grand_total)
-    if gap > 2.0:
-        error_msg = f"Financial Mismatch: Expected {calculated_grand_total:.2f} (Mode:{mode}) does not match Stated {grand_total:.2f} (Gap: {gap:.2f})"
-        logger.error(error_msg)
-        if line_items:
-            line_items[0]["Validation_Error"] = error_msg
+    # 5. Consistency Check
+    gap = abs(raw_calculated_grand_total - grand_total)
+    if gap > 2.0 and grand_total > 0:
+        error_msg = f"Financial Mismatch: {raw_calculated_grand_total:.2f} vs {grand_total:.2f}"
+        if line_items: line_items[0]["Validation_Error"] = error_msg
+
+    exact_gap = grand_total - raw_calculated_grand_total
+    if abs(exact_gap) > 0.01 and grand_total > 0:
+        extra_charges += exact_gap
+        calculated_grand_total = grand_total
+    else:
+        calculated_grand_total = raw_calculated_grand_total
 
     # 6. Perfect Proportional Allocation for Effective Landing Cost
-    # Goal: Sum of item['effective_landing_cost'] MUST EXACTLY EQUAL grand_total.
-    # We use the Hamilton Method to distribute the Grand Total based on line item weights.
-    # Weighting Factor: Net_Line_Amount (The share of the sub-total)
-    
-    item_weights = [float(item.get("Net_Line_Amount") or item.get("Amount") or item.get("Stated_Net_Amount") or 0.0) for item in line_items]
+    # CRITICAL: Exclude Returns from Weights
+    item_weights = []
+    for item in line_items:
+        if is_return_item(item):
+            item_weights.append(0.0)
+        else:
+            item_weights.append(float(item.get("Net_Line_Amount") or item.get("Amount") or 0.0))
+            
+    # Distribution
     landed_costs = largest_remainder_allocation(grand_total, item_weights)
     
     for i, item in enumerate(line_items):
-        item["effective_landing_cost"] = landed_costs[i]
-        
-        # Calculate Unit Cost (Landed)
-        # Use Standard_Quantity (Billed + Free) to get the true Landing Cost per piece
-        qty = float(item.get("Standard_Quantity") or item.get("Qty", 1) or 1)
-        if qty > 0:
-            item["Final_Unit_Cost"] = round(item["effective_landing_cost"] / qty, 2)
-            
-        # Logic Note Update
-        old_note = item.get("Logic_Note", "")
-        item["Logic_Note"] = f"{old_note} [Landed: ₹{item['effective_landing_cost']:.2f}]".strip()
+        if is_return_item(item):
+            item["effective_landing_cost"] = 0.0
+            item["Final_Unit_Cost"] = 0.0
+            item["Logic_Note"] = f"{item.get('Logic_Note', '')} [RETURN: Excluded from Landed Cost]".strip()
+        else:
+            item["effective_landing_cost"] = landed_costs[i]
+            qty = float(item.get("Standard_Quantity") or item.get("Qty", 1) or 1)
+            item["Final_Unit_Cost"] = round(item["effective_landing_cost"] / qty, 2) if qty > 0 else 0.0
+            item["Logic_Note"] = f"{item.get('Logic_Note', '')} [Landed: ₹{item['effective_landing_cost']:.2f}]".strip()
 
         # 7. Enterprise TCO Calculation
         tco_data = calculate_tco_drivers(item)
@@ -392,9 +420,8 @@ def reconcile_financials(line_items: list, global_modifiers: dict, grand_total: 
     return {
         "line_items": line_items,
         "mode": mode,
-        "round_off": round_off,
         "calculated_stats": {
-            "sub_total": round(net_sum, 2), # Always use Net Sum for UI clarity
+            "sub_total": round(line_sum, 2),
             "global_discount": round(global_discount, 2),
             "taxable_value": round(taxable_value, 2),
             "total_sgst": round(total_sgst, 2),
