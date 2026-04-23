@@ -176,7 +176,9 @@ async def run_extraction_pipeline(image_path: str, user_email: str, public_url: 
                 on_update(node_name, msg)
 
         # Merge delta into result_state
-        result_state.update(event[node_name])
+        update_data = event[node_name]
+        if update_data:
+            result_state.update(update_data)
     
     # Extract final output
     final_output = result_state.get("final_output")

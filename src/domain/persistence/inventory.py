@@ -21,9 +21,13 @@ def init_db_constraints(driver):
             # 3. Invoice Number Index
             session.execute_write(lambda tx: tx.run("CREATE INDEX invoice_number_idx IF NOT EXISTS FOR (i:Invoice) ON (i.invoice_number)"))
             
-            logger.info("Database constraints and indices initialized.")
+            # 4. Initialize Core Roles
+            session.execute_write(lambda tx: tx.run("MERGE (r:Role {name: 'Admin'}) SET r.permissions = ['all']"))
+            session.execute_write(lambda tx: tx.run("MERGE (r:Role {name: 'Employee'}) SET r.permissions = ['read', 'scan']"))
+
+            logger.info("Database constraints, indices, and roles initialized.")
     except Exception as e:
-        logger.error(f"Failed to create constraints/indices: {e}")
+        logger.error(f"Failed to create constraints/indices/roles: {e}")
 
 def _generate_sku(tx, product_name: str) -> str:
     """

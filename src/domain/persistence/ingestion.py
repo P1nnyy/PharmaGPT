@@ -74,7 +74,7 @@ def create_processing_invoice(driver, invoice_id: str, filename: str, image_path
     Creates an initial Invoice node with status 'PROCESSING', anchored to a Shop.
     """
     with driver.session() as session:
-        session.execute_read(lambda tx: tx.run("MERGE (s:Shop {id: $id})", id=shop_id)) # Ensure shop exists
+        session.execute_write(lambda tx: tx.run("MERGE (s:Shop {id: $id})", id=shop_id)) # Ensure shop exists
         session.execute_write(_create_processing_tx, invoice_id, filename, image_path, shop_id, tenant_id)
 
 def _create_processing_tx(tx, invoice_id, filename, image_path, shop_id, tenant_id):

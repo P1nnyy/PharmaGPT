@@ -52,44 +52,23 @@ function AppContent() {
     }
   }, [activeTab, user]);
 
-  // --- Auth Initialization ---
+  // --- Invitations Management ---
   useEffect(() => {
-    const initAuth = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const tokenFromUrl = params.get('token');
-
-      if (tokenFromUrl) {
-        setAuthToken(tokenFromUrl);
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-
-      try {
-        const savedToken = localStorage.getItem('auth_token');
-        if (savedToken) {
-          setAuthToken(savedToken);
-          const profile = await getUserProfile();
-          setUser(profile);
-          
-          // Fetch invitations if user exists - wrap in its own try/catch 
-          // to avoid logging out the user if the invitations service is flaky
-          try {
-            const pending = await getInvitations();
-            setInvitations(pending);
-          } catch (invErr) {
-            console.warn("Could not fetch invitations:", invErr);
-            setInvitations([]);
-          }
+    if (user) {
+      const fetchInvitations = async () => {
+        try {
+          const pending = await getInvitations();
+          setInvitations(pending);
+        } catch (err) {
+          console.warn("Could not fetch invitations:", err);
+          setInvitations([]);
         }
-      } catch (err) {
-        console.error("Auth initialization failed:", err);
-        setAuthToken(null);
-        setUser(null);
-      } finally {
-        setIsLoadingAuth(false);
-      }
-    };
-    initAuth();
-  }, [setUser, setIsLoadingAuth]);
+      };
+      fetchInvitations();
+    } else {
+      setInvitations([]);
+    }
+  }, [user]);
 
   const handleAcceptInvite = async (inviteId) => {
     try {

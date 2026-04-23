@@ -44,6 +44,8 @@ services:
       - CLICKHOUSE_CLUSTER_ENABLED=false
       - ENCRYPTION_SECRET=7ce657521cb028b57b65331bef2707d9a13c8f97ce7b1a6669f4d7dbd90e442d
       - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       # S3 storage for events / multi-modal tracing
       - LANGFUSE_S3_EVENT_UPLOAD_BUCKET=${R2_BUCKET_NAME}
       - LANGFUSE_S3_EVENT_UPLOAD_REGION=auto
@@ -89,6 +91,8 @@ services:
       - CLICKHOUSE_CLUSTER_ENABLED=false
       - ENCRYPTION_SECRET=7ce657521cb028b57b65331bef2707d9a13c8f97ce7b1a6669f4d7dbd90e442d
       - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       # S3 storage for events / multi-modal tracing
       - LANGFUSE_S3_EVENT_UPLOAD_BUCKET=${R2_BUCKET_NAME}
       - LANGFUSE_S3_EVENT_UPLOAD_REGION=auto

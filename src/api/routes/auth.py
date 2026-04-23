@@ -77,12 +77,17 @@ async def get_current_user_role(user_email: str = Depends(get_current_user_email
     query = """
     MATCH (u:User {email: $email})
     OPTIONAL MATCH (u)-[:HAS_ROLE]->(r:Role)
-    RETURN r.name AS role
+    OPTIONAL MATCH (u)-[:OWNS_SHOP]->(s:Shop)
+    WITH u, r, count(s) AS shop_count
+    RETURN r.name AS role, shop_count > 0 AS is_owner
     """
     with driver.session() as session:
         result = session.execute_read(lambda tx: tx.run(query, email=user_email).single())
-        if result and result["role"]:
-            return result["role"]
+        if result:
+            if result["role"]:
+                return result["role"]
+            if result["is_owner"]:
+                return "Admin"
     return "Employee"
 
 async def resolve_user_tenant(email: str) -> str:
@@ -174,10 +179,16 @@ async def auth_callback(request: Request):
                 shop_id = shop_res["shop_id"]
             else:
                 # Auto-create shop for new user (Legacy Support / Onboarding)
+                # AND Assign Admin Role
                 create_shop_query = """
                 MATCH (u:User {email: $email})
                 MERGE (u)-[:OWNS_SHOP]->(s:Shop)
                 ON CREATE SET s.name = coalesce(u.name, 'Admin') + "'s Shop", s.id = randomUUID()
+                
+                WITH u, s
+                MATCH (admin:Role {name: 'Admin'})
+                MERGE (u)-[:HAS_ROLE]->(admin)
+                
                 RETURN s.id as shop_id
                 """
                 shop_res = session.run(create_shop_query, email=user_email).single()
@@ -218,7 +229,9 @@ async def get_current_user_profile(user_email: str = Depends(get_current_user_em
     query = """
     MATCH (u:User {email: $email})
     OPTIONAL MATCH (u)-[:HAS_ROLE]->(r:Role)
-    RETURN u, r.name AS role, r.permissions AS permissions
+    OPTIONAL MATCH (u)-[:OWNS_SHOP]->(s:Shop)
+    WITH u, r, count(s) AS shop_count
+    RETURN u, r.name AS role, r.permissions AS permissions, shop_count > 0 AS is_owner
     """
     with driver.session() as session:
         result = session.execute_read(lambda tx: tx.run(query, email=user_email).single())
@@ -227,8 +240,8 @@ async def get_current_user_profile(user_email: str = Depends(get_current_user_em
         raise HTTPException(status_code=404, detail="User not found")
         
     user_data = dict(result["u"]) if result["u"] else {}
-    user_data["role"] = result["role"] or "Employee"
-    user_data["permissions"] = result["permissions"] or []
+    user_data["role"] = result["role"] or ("Admin" if result["is_owner"] else "Employee")
+    user_data["permissions"] = result["permissions"] or (['all'] if result["role"] == "Admin" or result["is_owner"] else [])
 
     # --- Shop Logic (Production Scaling) ---
     shop_query = """

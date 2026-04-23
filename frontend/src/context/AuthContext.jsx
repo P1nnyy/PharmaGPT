@@ -18,6 +18,17 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const initAuth = async () => {
             try {
+                // 1. Check URL for token (OAuth redirect)
+                const params = new URLSearchParams(window.location.search);
+                const tokenFromUrl = params.get('token');
+
+                if (tokenFromUrl) {
+                    setAuthTokenAPI(tokenFromUrl);
+                    // Clear URL without refresh
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+
+                // 2. Check LocalStorage
                 const savedToken = localStorage.getItem('auth_token');
                 if (savedToken) {
                     setAuthTokenAPI(savedToken);

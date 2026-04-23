@@ -101,7 +101,7 @@ async def extract_from_zone(unused_model, image_file, zone: Dict[str, Any]) -> D
             - **MANUFACTURER**: Aggressively look for "Mfr", "CMPNY", "Co", "Make" columns. extract them!
             
             NEGATIVE CONSTRAINTS (CRITICAL):
-            - **IGNORE "Initiative Name" Tables**: Do NOT extract tables with headers like "Initiative Name", "Product Batch No", "Free Product". These are schemes, not line items.
+            - **FILTER SCHEME ROWS (CRITICAL)**: If you see a row or sub-section titled "Initiative Name", "Offer Summary", or "Free Product", you MUST SKIP those individual rows. Do NOT discard the entire primary table above it just because a scheme section exists below it. Only skip the specific rows belonging to schemes.
             - **IGNORE "Tax" Breakdowns**: Do not extract GST summary tables.
             - **IGNORE "Bank Details"**: Do not extract bank info as rows.
             - **IGNORE "Header Info"**: Do not extract Supplier Name, Invoice No, or Date as a table row. ONLY extract the Product Line Items.

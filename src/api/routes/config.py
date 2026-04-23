@@ -16,12 +16,10 @@ from src.services.database import get_db_driver
 
 async def admin_required(user_email: str = Depends(get_current_user_email)):
     """Dependency to enforce Admin role."""
-    driver = get_db_driver()
-    query = "MATCH (u:User {email: $email})-[:HAS_ROLE]->(r:Role) RETURN r.name as role"
-    with driver.session() as session:
-        result = session.execute_read(lambda tx: tx.run(query, email=user_email).single())
-        if not result or result["role"] != "Admin":
-            raise HTTPException(status_code=403, detail="Not authorized. Admin role required.")
+    from src.api.routes.auth import get_current_user_role
+    role = await get_current_user_role(user_email)
+    if role != "Admin":
+        raise HTTPException(status_code=403, detail="Not authorized. Admin role required.")
     return user_email
 
 router = APIRouter(prefix="/config", tags=["Configuration & Admin Backoffice"])

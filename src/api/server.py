@@ -182,11 +182,14 @@ if os.path.exists(frontend_path):
 # --- Startup / Shutdown ---
 @app.on_event("startup")
 def startup_event():
-    connect_db() 
+    db = connect_db()
+    if db:
+        from src.domain.persistence import init_db_constraints
+        from src.services.database import init_vector_index
+        init_db_constraints(db)
+        init_vector_index(db)
+        
     init_storage_client()
-    # Ensure static directory exists if needed
-    # os.makedirs("static", exist_ok=True)
-    # app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("shutdown")
 def shutdown_event():

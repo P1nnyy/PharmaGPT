@@ -14,29 +14,34 @@ def is_retryable_exception(exception):
     """
     Checks if the exception is a 429 (Rate Limit) or 5xx (Server Error).
     """
-    # 1. New google-genai error handling
-    if isinstance(exception, errors.APIError):
-        # 429 = ResourceExhausted
-        if exception.code == 429:
-            return True
-        # 5xx = Server Errors
-        if 500 <= (exception.code or 0) < 600:
-            return True
-    
-    # 2. Legacy/Generic Check for robustness
-    err_str = str(exception).lower()
-    if "429" in err_str or "resource exhausted" in err_str:
-        return True
-    if "500" in err_str or "503" in err_str or "service unavailable" in err_str:
-        return True
+    try:
+        # 1. New google-genai error handling
+        if isinstance(exception, errors.APIError):
+            if getattr(exception, 'code', None) == 429:
+                return True
+            if 500 <= (getattr(exception, 'code', 0) or 0) < 600:
+                return True
         
-    return False
+        # 2. Legacy/Generic Check for robustness
+        err_str = str(exception).lower()
+        if "429" in err_str or "resource exhausted" in err_str:
+            return True
+        if "500" in err_str or "503" in err_str or "service unavailable" in err_str:
+            return True
+            
+        return False
+    except Exception as check_e:
+        # Failsafe: if our check fails, don't crash tenacious loops blindly
+        err_str = str(exception).lower()
+        if "429" in err_str or "resource" in err_str:
+            return True
+        return False
 
 # Reusable retry decorator
 ai_retry = retry(
     retry=retry_if_exception(is_retryable_exception),
-    wait=wait_exponential(multiplier=1, min=2, max=60),
-    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1.5, min=2, max=120),
+    stop=stop_after_attempt(12),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True
 )
