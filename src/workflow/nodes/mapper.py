@@ -29,12 +29,15 @@ async def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     Takes Raw Text Rows (from Worker) and maps them to the Strict Schema.
     """
     raw_rows = state.get("raw_text_rows", [])
+    mapped_items = state.get("line_item_fragments", [])
     
-    if not raw_rows:
-        logger.warning("Mapper: No raw text rows found. Skipping.")
+    if mapped_items:
+        logger.info(f"Mapper: Received {len(mapped_items)} pre-structured JSON fragments from Worker. Skipping LLM parse.")
+    elif raw_rows:
+         logger.info(f"Mapper: Processing {len(raw_rows)} raw text fragments via LLM...")
+    else:
+        logger.warning("Mapper: No raw text rows or mapped items found. Skipping.")
         return {}
-
-    logger.info(f"Mapper: Processing {len(raw_rows)} raw text fragments...")
     
     # --- 1. Load Context & Memory ---
     # A. Vendor Rules (The "Context")
@@ -214,14 +217,15 @@ async def execute_mapping(state: InvoiceStateDict) -> Dict[str, Any]:
     """
     
     try:
-        response = await manager.generate_content_async(
-            model="gemini-2.0-flash",
-            contents=[prompt]
-        )
-        text = response.text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(text)
-        
-        mapped_items = data.get("line_items", [])
+        if not mapped_items:
+            response = await manager.generate_content_async(
+                model="gemini-2.0-flash",
+                contents=[prompt]
+            )
+            text = response.text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(text)
+            
+            mapped_items = data.get("line_items", [])
         
         # --- SMART MAPPING POST-PROCESS ---
         driver = get_db_driver()

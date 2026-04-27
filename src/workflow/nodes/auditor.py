@@ -8,22 +8,40 @@ from src.utils.logging_config import get_logger
 from src.domain.normalization import parse_float
 from src.domain.constants import BLACKLIST_KEYWORDS, AUDITOR_CONFIG, SCHEME_PATTERNS
 from src.services.ai_client import manager
-from src.services.mistake_memory import MEMORY
+import chromadb
+from src.services.embeddings import generate_embedding
 from src.utils.ai_retry import ai_retry
 
 logger = get_logger("auditor")
 
 @ai_retry
-async def llm_hallucination_cleanup(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    rules_list = MEMORY.get_rules()
-    memory_rules = "\n    ".join([f"- {r}" for r in rules_list]) if rules_list else "- No previous mistakes recorded."
+async def llm_hallucination_cleanup(items: List[Dict[str, Any]], supplier_name: str) -> List[Dict[str, Any]]:
+    memory_rules = "- No specific rules found (Chroma DB fallback)."
+    try:
+        chroma_client = chromadb.PersistentClient(path="./data/chroma")
+        collection = chroma_client.get_collection(name="vendor_guardrails")
+        
+        query_text = f"Supplier {supplier_name}. Find mathematical errors or anomaly rules."
+        query_emb = generate_embedding(query_text)
+        
+        if query_emb:
+            results = collection.query(
+                query_embeddings=[query_emb],
+                n_results=3
+            )
+            if results and "documents" in results and results["documents"]:
+                docs = results["documents"][0]
+                if docs:
+                    memory_rules = "\n    ".join([f"- {r}" for r in docs])
+    except Exception as e:
+        logger.warning(f"Auditor: ChromaDB semantic extraction failed: {e}")
 
     prompt = f"""
     You are an Expert Pharmacy Data Auditor.
     I am giving you a JSON array of invoice line items mapped by an AI.
     Your task is to CLEAN UP these items logically BEFORE they undergo programmatic deduplication.
 
-    CRITICAL RULES TO FOLLOW (Learned from mistakes.json):
+    CRITICAL RULES TO FOLLOW (Contextually Retrieved):
     {memory_rules}
 
     Return the cleaned items as a valid JSON array. Do not remove any items unless instructed by the rules.
@@ -72,8 +90,9 @@ async def audit_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         return {"error_logs": ["Auditor: Missing input data."]}
 
     # --- LLM CLEANUP PASS ---
-    logger.info("Auditor: Initiating LLM hallucination cleanup based on mistakes.json...")
-    line_items = await llm_hallucination_cleanup(line_items)
+    supplier_name = global_modifiers.get("Supplier_Name", "Unknown")
+    logger.info(f"Auditor: Initiating LLM hallucination cleanup based on semantic rules for {supplier_name}...")
+    line_items = await llm_hallucination_cleanup(line_items, supplier_name)
 
     # --- PHASE 3: THE AGGREGATION "CLUBBING" ENGINE ---
     # Rule: If Product and Batch match, SUM them.

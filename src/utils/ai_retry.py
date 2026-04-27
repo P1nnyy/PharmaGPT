@@ -40,8 +40,8 @@ def is_retryable_exception(exception):
 # Reusable retry decorator
 ai_retry = retry(
     retry=retry_if_exception(is_retryable_exception),
-    wait=wait_exponential(multiplier=1.5, min=2, max=120),
-    stop=stop_after_attempt(12),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    stop=stop_after_attempt(5),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True
 )

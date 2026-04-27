@@ -25,54 +25,60 @@ class AIClientManager:
                 logger.error("GOOGLE_API_KEY not found. AI features will fail.")
         return self._client
 
+    @ai_retry
     async def generate_content_async(self, model: str, contents: list, **kwargs):
         """
-        Async wrapper for Gemini generate_content. Relies on explicit AsyncRetrying for rate limit backoff.
+        Async wrapper for Gemini generate_content. Relies on the ai_retry decorator for rate limit backoff.
         """
-        from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
-        from src.utils.ai_retry import is_retryable_exception
-        
         if not self.client:
             raise RuntimeError("Gemini Client not initialized (Missing API Key)")
 
         if not hasattr(self, "_semaphore") or self._semaphore is None:
             self._semaphore = asyncio.Semaphore(2)
 
-        async for attempt in AsyncRetrying(
-            retry=retry_if_exception(is_retryable_exception),
-            wait=wait_exponential(multiplier=1.5, min=4, max=120),
-            stop=stop_after_attempt(12),
-            reraise=True
-        ):
-            with attempt:
-                async with self._semaphore:
-                    # Use aio for non-blocking IO
-                    return await self.client.aio.models.generate_content(
-                        model=model,
-                        contents=contents,
-                        **kwargs
-                    )
+        async with self._semaphore:
+            # Use aio for non-blocking IO
+            return await self.client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                **kwargs
+            )
 
+    @ai_retry
     async def upload_file_async(self, file_path: str):
         """
         Async wrapper for file uploading.
         """
-        from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
-        from src.utils.ai_retry import is_retryable_exception
-        
         if not self.client:
             raise RuntimeError("Gemini Client not initialized")
 
-        async for attempt in AsyncRetrying(
-            retry=retry_if_exception(is_retryable_exception),
-            wait=wait_exponential(multiplier=1.5, min=4, max=120),
-            stop=stop_after_attempt(12),
-            reraise=True
-        ):
-            with attempt:
-                # Offload sync upload to a thread to avoid blocking the event loop
-                sample_file = await asyncio.to_thread(self.client.files.upload, file=file_path)
-                return sample_file
+        # Offload sync upload to a thread to avoid blocking the event loop
+        sample_file = await asyncio.to_thread(self.client.files.upload, file=file_path)
+        return sample_file
+
+    @ai_retry
+    async def create_cached_content_async(self, model: str, contents: list, ttl_seconds: int = 900):
+        """
+        Async wrapper to create Gemini Context Caching.
+        Catches 400 errors silently if the request size is beneath the 4096 token minimum.
+        """
+        from google.genai import types
+        if not self.client:
+            raise RuntimeError("Gemini Client not initialized")
+            
+        try:
+            return await self.client.aio.caches.create(
+                model=model,
+                config=types.CreateCachedContentConfig(
+                    contents=contents,
+                    ttl=f"{ttl_seconds}s"
+                )
+            )
+        except Exception as e:
+            if "total_token_count" in str(e) or "400" in str(e):
+                logger.warning(f"Cache rejected (too small or invalid): {e}. Proceeding without caching.")
+                return None
+            raise e
 
     def generate_content_sync(self, model: str, contents: list, **kwargs):
         """

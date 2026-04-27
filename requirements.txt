@@ -26,3 +26,5 @@ duckduckgo-search
 langchain_community
 googlesearch-python
 tenacity
+chromadb
+chromadb

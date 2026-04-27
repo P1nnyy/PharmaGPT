@@ -15,6 +15,9 @@ if [ -f "$ROOT_DIR/.env" ]; then
     set +a
 fi
 
+# Ensure Homebrew and standard bin paths are accessible
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 echo "[1/6] Cleaning up stale processes..."
 # Kill by pattern (be specific to avoid killing VS Code)
 pkill -9 -f "src.api.server" 2>/dev/null
