@@ -27,4 +27,3 @@ langchain_community
 googlesearch-python
 tenacity
 chromadb
-chromadb

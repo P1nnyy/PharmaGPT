@@ -37,6 +37,9 @@ class AIClientManager:
             self._semaphore = asyncio.Semaphore(2)
 
         async with self._semaphore:
+            # Quick Tip: Add a sleep between parallel iterations to "smooth out" the 15 RPM limit 
+            await asyncio.sleep(2.0) 
+
             # Use aio for non-blocking IO
             return await self.client.aio.models.generate_content(
                 model=model,
@@ -51,6 +54,9 @@ class AIClientManager:
         """
         if not self.client:
             raise RuntimeError("Gemini Client not initialized")
+
+        # Quick Tip: Add a sleep before uploading to "smooth out" traffic
+        await asyncio.sleep(1.5)
 
         # Offload sync upload to a thread to avoid blocking the event loop
         sample_file = await asyncio.to_thread(self.client.files.upload, file=file_path)

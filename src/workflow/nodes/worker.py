@@ -87,19 +87,7 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         
         sample_file = None
         
-        if retry_count > 0 and cached_name:
-            logger.info(f"Worker: Using Gemini Context Cache: {cached_name}")
-        else:
-            sample_file = await manager.upload_file_async(file_path=tmp_image_path)
-            
-            logger.info("Worker: Creating Context Cache for future retry loops...")
-            cached_content = await manager.create_cached_content_async(
-                model='gemini-2.0-flash', 
-                contents=[sample_file], 
-                ttl_seconds=900
-            )
-            if cached_content:
-                cached_name = cached_content.name
+        sample_file = await manager.upload_file_async(file_path=tmp_image_path)
 
         if retry_count > 0 and feedback_logs:
             latest_feedback = feedback_logs[-1]
@@ -187,9 +175,6 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
                 input_contents.append(sample_file)
                 
             gen_config = {}
-            if cached_name and retry_count > 0:
-                gen_config["cached_content"] = cached_name
-                input_contents = [prompt] # Pass prompt only if using Cache to avoid duplication 
             
             response = await manager.generate_content_async(
                 model='gemini-2.0-flash',
@@ -237,26 +222,14 @@ async def execute_extraction(state: InvoiceStateDict) -> Dict[str, Any]:
         
         logger.info(f"Worker (Batch Optimized): Extraction Complete. Attempt {new_total}. Items Found: {len(line_item_fragments)}")
 
-        if retry_count > 0:
-            return {
-                "line_item_fragments": line_item_fragments,
-                "global_modifiers": global_modifiers,
-                "anchor_totals": anchor_totals,
-                "error_logs": [],
-                "retry_count": 1, # Resolves via operator.add
-                "cached_content_name": cached_name
-            }
-
         return {
-            "line_item_fragments": line_item_fragments, 
-            "raw_text_rows": [], # Deprecated
+            "line_item_fragments": line_item_fragments,
             "global_modifiers": global_modifiers,
             "anchor_totals": anchor_totals,
             "error_logs": [],
-            "retry_count": 1,
-            "cached_content_name": cached_name
+            "retry_count": 1
         }
-        
+
     except Exception as e:
         logger.error(f"Worker Master Error: {e}")
         return {
